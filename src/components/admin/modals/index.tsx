@@ -1,0 +1,335 @@
+'use client';
+// src/components/admin/modals/index.tsx
+// All six modals exported from one file.
+// Each is a completely independent component — no shared state between them.
+
+import React, { useState } from 'react';
+import { cn, formatQty } from '@/lib/utils';
+import type { Stage } from '@/lib/constants/stages';
+import type { Job } from '@/lib/types';
+
+// ── Shared modal wrapper ──────────────────────────────────────
+
+function ModalBackdrop({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="modal-panel bg-white shadow-2xl w-full">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ── 1. Sequential Warning Modal ───────────────────────────────
+
+export function SequentialWarningModal({
+  targetStage,
+  missingStage,
+  onCancel,
+  onOverride,
+}: {
+  targetStage:  Stage;
+  missingStage: Stage;
+  onCancel:     () => void;
+  onOverride:   () => void;
+}) {
+  return (
+    <ModalBackdrop>
+      <div className="p-6">
+        <div className="flex items-start gap-3 mb-4">
+          <span className="text-2xl">⚠️</span>
+          <div>
+            <h3 className="font-semibold text-brand-accent text-base">
+              Stage Not Yet Completed
+            </h3>
+            <p className="text-sm text-brand-muted mt-1">
+              You're moving to <strong className="text-brand-accent">{targetStage}</strong>, but
+              the previous stage <strong className="text-brand-accent">{missingStage}</strong> hasn't
+              been marked complete yet.
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-3 justify-end">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-sm font-medium text-brand-muted hover:text-brand-accent transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onOverride}
+            className="px-4 py-2 text-sm font-medium bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors"
+          >
+            Skip &amp; Continue
+          </button>
+        </div>
+      </div>
+    </ModalBackdrop>
+  );
+}
+
+// ── 2. On Hold Modal ──────────────────────────────────────────
+
+export function OnHoldModal({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel:  () => void;
+  onConfirm: (remark: string) => void;
+}) {
+  const [remark, setRemark] = useState('');
+
+  return (
+    <ModalBackdrop>
+      <div className="p-6">
+        <h3 className="font-semibold text-brand-accent text-base mb-1">
+          Place Order On Hold
+        </h3>
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+          ⚠️ This reason will be visible to the client on the tracking portal.
+        </p>
+
+        <label className="block text-xs font-medium text-brand-muted uppercase tracking-wide mb-1.5">
+          Halt Reason *
+        </label>
+        <textarea
+          value={remark}
+          onChange={(e) => setRemark(e.target.value)}
+          rows={3}
+          placeholder="e.g. Awaiting shade card approval from client…"
+          className={cn(
+            'w-full px-3 py-2 rounded-lg border text-sm resize-none',
+            'border-brand-border focus:outline-none focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent',
+            'transition-colors'
+          )}
+        />
+
+        <div className="flex gap-3 justify-end mt-4">
+          <button onClick={onCancel} className="px-4 py-2 text-sm text-brand-muted hover:text-brand-accent transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={() => remark.trim() && onConfirm(remark.trim())}
+            disabled={!remark.trim()}
+            className="px-4 py-2 text-sm font-medium bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-40 transition-colors"
+          >
+            Mark On Hold
+          </button>
+        </div>
+      </div>
+    </ModalBackdrop>
+  );
+}
+
+// ── 3. QC Modal ───────────────────────────────────────────────
+
+export function QCModal({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel:  () => void;
+  onConfirm: (remark: string) => void;
+}) {
+  const [remark, setRemark] = useState('');
+
+  return (
+    <ModalBackdrop>
+      <div className="p-6">
+        <h3 className="font-semibold text-brand-accent text-base mb-1">
+          Quality Check
+        </h3>
+        <p className="text-xs text-sky-700 bg-sky-50 border border-sky-200 rounded-lg px-3 py-2 mb-4">
+          Leave blank for a clean pass. If filled, the remark will be visible to the client.
+        </p>
+
+        <label className="block text-xs font-medium text-brand-muted uppercase tracking-wide mb-1.5">
+          QC Remark (optional)
+        </label>
+        <textarea
+          value={remark}
+          onChange={(e) => setRemark(e.target.value)}
+          rows={3}
+          placeholder="e.g. Minor colour variation within acceptable range…"
+          className={cn(
+            'w-full px-3 py-2 rounded-lg border text-sm resize-none',
+            'border-brand-border focus:outline-none focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent',
+            'transition-colors'
+          )}
+        />
+
+        <div className="flex gap-3 justify-end mt-4">
+          <button onClick={onCancel} className="px-4 py-2 text-sm text-brand-muted hover:text-brand-accent transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(remark.trim())}
+            className="px-4 py-2 text-sm font-medium bg-sky-600 text-white rounded-lg hover:bg-sky-700 transition-colors"
+          >
+            Save QC
+          </button>
+        </div>
+      </div>
+    </ModalBackdrop>
+  );
+}
+
+// ── 4. Partial Dispatch Modal ─────────────────────────────────
+// COMPLETELY SEPARATE from Full Dispatch — different trigger, different modal, different button.
+
+export function PartialDispatchModal({
+  remaining,
+  onCancel,
+  onConfirm,
+}: {
+  remaining: number;
+  onCancel:  () => void;
+  onConfirm: (qty: number) => void;
+}) {
+  const [qty, setQty] = useState<number | ''>('');
+
+  const isValid = typeof qty === 'number' && qty > 0 && qty <= remaining;
+
+  return (
+    <ModalBackdrop>
+      <div className="p-6">
+        <h3 className="font-semibold text-brand-accent text-base mb-1">
+          Partial Dispatch
+        </h3>
+        <p className="text-sm text-brand-muted mb-4">
+          Remaining: <strong className="text-brand-accent font-mono">{formatQty(remaining)}</strong> labels
+        </p>
+
+        <label className="block text-xs font-medium text-brand-muted uppercase tracking-wide mb-1.5">
+          Quantity to dispatch now *
+        </label>
+        <input
+          type="number"
+          min={1}
+          max={remaining}
+          value={qty}
+          onChange={(e) => setQty(e.target.value ? Number(e.target.value) : '')}
+          placeholder={`Max: ${remaining.toLocaleString('en-IN')}`}
+          className={cn(
+            'w-full px-3 py-2 rounded-lg border text-sm font-mono',
+            'border-brand-border focus:outline-none focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent',
+            'transition-colors'
+          )}
+        />
+        {typeof qty === 'number' && qty > remaining && (
+          <p className="text-xs text-red-600 mt-1">Cannot exceed remaining quantity.</p>
+        )}
+
+        <div className="flex gap-3 justify-end mt-4">
+          <button onClick={onCancel} className="px-4 py-2 text-sm text-brand-muted hover:text-brand-accent transition-colors">
+            Cancel
+          </button>
+          {/* NOTE: Only ONE button — Save Partial Dispatch. No full dispatch button here. */}
+          <button
+            onClick={() => isValid && onConfirm(qty as number)}
+            disabled={!isValid}
+            className="px-4 py-2 text-sm font-medium bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-40 transition-colors"
+          >
+            Save Partial Dispatch
+          </button>
+        </div>
+      </div>
+    </ModalBackdrop>
+  );
+}
+
+// ── 5. Full Dispatch Modal ────────────────────────────────────
+// COMPLETELY SEPARATE from Partial Dispatch. No qty input. No partial button.
+
+export function FullDispatchModal({
+  remaining,
+  onCancel,
+  onConfirm,
+}: {
+  remaining: number;
+  onCancel:  () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <ModalBackdrop>
+      <div className="p-6">
+        <h3 className="font-semibold text-brand-accent text-base mb-1">
+          Confirm Full Dispatch
+        </h3>
+        <p className="text-sm text-brand-muted mb-6">
+          Mark all remaining{' '}
+          <strong className="text-brand-accent font-mono">{formatQty(remaining)}</strong>{' '}
+          labels as fully dispatched?
+        </p>
+
+        <div className="flex gap-3 justify-end">
+          <button onClick={onCancel} className="px-4 py-2 text-sm text-brand-muted hover:text-brand-accent transition-colors">
+            Cancel
+          </button>
+          {/* NOTE: Only ONE button — Confirm Full Dispatch. No partial input here. */}
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+          >
+            Confirm Full Dispatch
+          </button>
+        </div>
+      </div>
+    </ModalBackdrop>
+  );
+}
+
+// ── 6. Close PO Modal ─────────────────────────────────────────
+
+export function ClosePOModal({
+  job,
+  onCancel,
+  onConfirm,
+}: {
+  job:       Job;
+  onCancel:  () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <ModalBackdrop>
+      <div className="p-6">
+        <h3 className="font-semibold text-brand-accent text-base mb-4">
+          Close PO &amp; Archive
+        </h3>
+
+        {/* Job summary */}
+        <div className="bg-brand-bg rounded-lg p-4 space-y-2 mb-4 font-mono text-sm">
+          <div className="flex justify-between">
+            <span className="text-brand-muted">Total Ordered</span>
+            <span className="text-brand-accent">{formatQty(job.label_qty)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-brand-muted">Dispatched</span>
+            <span className="text-green-700">{formatQty(job.dispatched_qty)}</span>
+          </div>
+          <div className="flex justify-between border-t border-brand-border pt-2">
+            <span className="text-brand-muted">Remaining</span>
+            <span className={job.remaining_qty ? 'text-amber-700' : 'text-green-700'}>
+              {formatQty(job.remaining_qty ?? 0)}
+            </span>
+          </div>
+        </div>
+
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+          This job will be archived. Clients can still track it by PO number. This action cannot be undone from the UI.
+        </p>
+
+        <div className="flex gap-3 justify-end">
+          <button onClick={onCancel} className="px-4 py-2 text-sm text-brand-muted hover:text-brand-accent transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 text-sm font-medium bg-brand-accent text-white rounded-lg hover:bg-brand-accent/90 transition-colors"
+          >
+            Close PO &amp; Archive
+          </button>
+        </div>
+      </div>
+    </ModalBackdrop>
+  );
+}
