@@ -32,8 +32,15 @@ export interface Job {
   qc_remark: string | null;
   is_scheduled_release: boolean;
   is_closed: boolean;
+  total_qty_dispatched: number;     // cumulative qty dispatched via print runs
+  has_partial_runs: boolean;        // true once a run is created with qty remaining
   created_at: string;               // ISO timestamp
   updated_at: string;
+  // Present when fetched with the job_stage_timestamps(stage) join —
+  // used to render ✓ marks for completed stages in the status dropdown.
+  job_stage_timestamps?: { stage: Stage }[];
+  // Present when fetched with the print_runs join — multi-cycle orders.
+  print_runs?: PrintRun[];
 }
 
 // Form data for Add Job — subset of Job used in the form
@@ -151,11 +158,54 @@ export interface JobDetail extends Job {
   dispatch_schedules: DispatchSchedule[];
 }
 
+// ── print_runs ────────────────────────────────────────────────
+// Multi-cycle large orders: each run moves through
+// Printing → QC → Packing → Dispatched independently.
+
+export type PrintRunStage  = 'Printing' | 'QC' | 'Packing' | 'Dispatched';
+export type PrintRunStatus = 'in_progress' | 'dispatched';
+
+export interface PrintRun {
+  id:                  string;
+  job_id:              string;
+  run_number:          number;          // 1, 2, 3… auto-assigned by DB trigger
+  qty_this_run:        number;
+  qty_remaining_after: number;          // total remaining after this run
+  current_stage:       PrintRunStage;
+  status:              PrintRunStatus;
+  started_at:          string;
+  dispatched_at:       string | null;   // set when this run reaches Dispatched
+  notes:               string | null;
+  created_at:          string;
+}
+
+export interface PrintRunStageLog {
+  id:           string;
+  print_run_id: string;
+  stage:        string;
+  changed_by:   string | null;          // auth.users id
+  changed_at:   string;
+  notes:        string | null;
+}
+
+// ── party_contacts ────────────────────────────────────────────
+
+export interface PartyContact {
+  id:           string;
+  party:        string;        // matches jobs.party exactly
+  contact_name: string | null;
+  email:        string | null;
+  whatsapp:     string | null; // WATI format: country code + number, no + or spaces
+  created_at:   string;
+  updated_at:   string;
+}
+
 // Status change payload — sent to /api/jobs/[id]/status
 export interface StatusChangePayload {
   new_status: Stage;
   dept: Department;
   remark?: string;              // halt_remark or qc_remark
   qty_dispatched?: number;      // Partial Dispatch only
-  override_prerequisite?: boolean;  // true = user clicked "Skip & Continue"
+  override_prerequisite?: boolean;  // true = Admin clicked "Skip & Continue"
+  override_remark?: string;     // required when override_prerequisite — Admin's justification
 }

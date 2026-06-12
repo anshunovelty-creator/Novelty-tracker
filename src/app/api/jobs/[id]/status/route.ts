@@ -20,7 +20,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { parseDepartment, canDeptSetStage } from '@/lib/constants/departments';
-import { getPrerequisite, isStageSkipped, NOTIFICATION_TRIGGER_STAGES } from '@/lib/constants/stages';
+import { getPrerequisite, getVisibleStages, isStageSkipped, NOTIFICATION_TRIGGER_STAGES } from '@/lib/constants/stages';
 import { toMonthKey } from '@/lib/utils';
 import type { Stage } from '@/lib/constants/stages';
 import type { StatusChangePayload } from '@/lib/types';
@@ -43,10 +43,26 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   const body: StatusChangePayload = await request.json();
-  const { new_status, remark, qty_dispatched, override_prerequisite } = body;
+  const { new_status, remark, qty_dispatched, override_prerequisite, override_remark } = body;
 
   if (!new_status) {
     return NextResponse.json({ error: 'new_status is required' }, { status: 400 });
+  }
+
+  // Skipping prerequisites is Admin-only and must be justified with a remark
+  if (override_prerequisite) {
+    if (dept !== 'Admin') {
+      return NextResponse.json(
+        { error: 'Only Admin can skip stage prerequisites' },
+        { status: 403 }
+      );
+    }
+    if (!override_remark?.trim()) {
+      return NextResponse.json(
+        { error: 'A remark is required when skipping a prerequisite stage' },
+        { status: 400 }
+      );
+    }
   }
 
   // ── 2. Department permission check ────────────────────────
@@ -87,7 +103,9 @@ export async function POST(request: NextRequest, { params }: Params) {
   // ── 5. Prerequisite check (unless On Hold or override) ───
   if (new_status !== 'On Hold' && !override_prerequisite) {
     const prereq = getPrerequisite(new_status, jobType);
-    if (prereq) {
+    // The prerequisite is satisfied if it's the stage being left right now —
+    // moving from stage N to N+1 completes N by definition.
+    if (prereq && prereq !== job.status) {
       // Check if prereq stage has a timestamp
       const { data: prereqTimestamp } = await admin
         .from('job_stage_timestamps')
@@ -111,6 +129,15 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   // ── 6. Validate dispatch-specific rules ──────────────────
+  // Jobs using print runs dispatch per-run via /print-runs/[runId]/stage —
+  // the classic dispatch stages would double-count quantities.
+  if (job.has_partial_runs && (new_status === 'Partial Dispatch' || new_status === 'Dispatched')) {
+    return NextResponse.json(
+      { error: 'This job uses print runs. Dispatch each run from the Print Runs panel instead.' },
+      { status: 400 }
+    );
+  }
+
   if (new_status === 'Partial Dispatch') {
     if (!qty_dispatched || qty_dispatched <= 0) {
       return NextResponse.json(
@@ -143,6 +170,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     jobUpdate.halt_remark = remark?.trim() ?? null;
   } else if (new_status === 'Quality Check') {
     jobUpdate.qc_remark = remark?.trim() ?? null;
+  } else if (remark?.trim() && (job as any).status === 'Quality Check') {
+    // Remark provided while advancing FROM Quality Check — persist as qc_remark
+    jobUpdate.qc_remark = remark.trim();
   }
 
   if (new_status === 'Partial Dispatch' && qty_dispatched) {
@@ -169,26 +199,38 @@ export async function POST(request: NextRequest, { params }: Params) {
   //  is still updated but the log/timestamp may be missing.
   //  For production-critical atomicity, wrap these in a Postgres function.)
 
+  // Write stage timestamps FIRST so the job select below (which joins
+  // job_stage_timestamps for the dropdown ✓ marks) returns fresh data.
+  // Reaching a pipeline stage means every earlier visible stage is complete
+  // too, so backfill all of them up to and including the new stage.
+  // ignoreDuplicates preserves original completed_at values for stages that
+  // were already stamped.
+  // On Hold / PO Closed are not pipeline stages — stamp only themselves.
+  const visibleStages = getVisibleStages(jobType);
+  const stageIdx = visibleStages.indexOf(new_status);
+  const stagesToStamp = stageIdx >= 0
+    ? visibleStages.slice(0, stageIdx + 1)
+    : [new_status];
+
+  await admin
+    .from('job_stage_timestamps')
+    .upsert(
+      stagesToStamp.map((stage) => ({ job_id: id, stage, completed_at: now })),
+      { onConflict: 'job_id,stage', ignoreDuplicates: true }
+    );
+
   // Update job
   const { data: updatedJob, error: updateError } = await admin
     .from('jobs')
     .update(jobUpdate)
     .eq('id', id)
-    .select()
+    .select('*, job_stage_timestamps(stage)')
     .single();
 
   if (updateError) {
     console.error('[POST status] update job:', updateError);
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
-
-  // Write stage timestamp (upsert — safe if stage was already timestamped)
-  await admin
-    .from('job_stage_timestamps')
-    .upsert(
-      { job_id: id, stage: new_status, completed_at: now },
-      { onConflict: 'job_id,stage' }
-    );
 
   // Write status log
   await admin
@@ -205,6 +247,19 @@ export async function POST(request: NextRequest, { params }: Params) {
                          ? (qty_dispatched ?? updatedJob.dispatched_qty)
                          : null,
     });
+
+  // Record the Admin's skip justification as an internal stage comment.
+  // stage_comments are never exposed to the client portal.
+  if (override_prerequisite && override_remark?.trim()) {
+    await admin
+      .from('stage_comments')
+      .insert({
+        job_id:     id,
+        stage:      new_status,
+        comment:    `[Prerequisite skipped] ${override_remark.trim()}`,
+        created_by: dept,
+      });
+  }
 
   // Write on-time dispatch log if fully dispatched
   if (new_status === 'Dispatched') {

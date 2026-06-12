@@ -21,18 +21,25 @@ function ModalBackdrop({ children }: { children: React.ReactNode }) {
 }
 
 // ── 1. Sequential Warning Modal ───────────────────────────────
+// Non-admin: hard block — sequential order is enforced.
+// Admin: may skip, but must give a justification remark (saved as an
+// internal stage comment for the audit trail).
 
 export function SequentialWarningModal({
   targetStage,
   missingStage,
+  isAdmin,
   onCancel,
   onOverride,
 }: {
   targetStage:  Stage;
   missingStage: Stage;
+  isAdmin:      boolean;
   onCancel:     () => void;
-  onOverride:   () => void;
+  onOverride:   (overrideRemark: string) => void;
 }) {
+  const [remark, setRemark] = useState('');
+
   return (
     <ModalBackdrop>
       <div className="p-6">
@@ -49,20 +56,55 @@ export function SequentialWarningModal({
             </p>
           </div>
         </div>
-        <div className="flex gap-3 justify-end">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-brand-muted hover:text-brand-accent transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onOverride}
-            className="px-4 py-2 text-sm font-medium bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors"
-          >
-            Skip &amp; Continue
-          </button>
-        </div>
+
+        {isAdmin ? (
+          <>
+            <label className="block text-xs font-medium text-brand-muted uppercase tracking-wide mb-1.5">
+              Reason for skipping *
+            </label>
+            <textarea
+              value={remark}
+              onChange={(e) => setRemark(e.target.value)}
+              rows={2}
+              placeholder="e.g. Stage was completed offline — updating system to match…"
+              className={cn(
+                'w-full px-3 py-2 rounded-lg border text-sm resize-none',
+                'border-brand-border focus:outline-none focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent',
+                'transition-colors'
+              )}
+            />
+            <div className="flex gap-3 justify-end mt-4">
+              <button
+                onClick={onCancel}
+                className="px-4 py-2 text-sm font-medium text-brand-muted hover:text-brand-accent transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => remark.trim() && onOverride(remark.trim())}
+                disabled={!remark.trim()}
+                className="px-4 py-2 text-sm font-medium bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-40 transition-colors"
+              >
+                Skip &amp; Continue
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              Stages must be completed in order. Complete{' '}
+              <strong>{missingStage}</strong> first, or ask Admin to skip it.
+            </p>
+            <div className="flex justify-end mt-4">
+              <button
+                onClick={onCancel}
+                className="px-4 py-2 text-sm font-medium bg-brand-accent text-white rounded-lg hover:bg-brand-accent/90 transition-colors"
+              >
+                OK
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </ModalBackdrop>
   );
@@ -271,6 +313,140 @@ export function FullDispatchModal({
             className="px-4 py-2 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
           >
             Confirm Full Dispatch
+          </button>
+        </div>
+      </div>
+    </ModalBackdrop>
+  );
+}
+
+// ── 7. Print Run Modal ────────────────────────────────────────
+// Shown when Production completes printing. Captures how many labels
+// were printed this cycle and whether more cycles will follow.
+// The two action buttons are mutually exclusive by quantity:
+//   "This completes the full order"  → enabled only when qty == remaining
+//   "More labels to be printed later" → enabled only when qty < remaining
+
+export function PrintRunModal({
+  totalQty,
+  alreadyDispatched,
+  onCancel,
+  onConfirm,
+}: {
+  totalQty:          number;   // job.label_qty
+  alreadyDispatched: number;   // job.total_qty_dispatched
+  onCancel:          () => void;
+  onConfirm:         (payload: {
+    qty_this_run:        number;
+    qty_remaining_after: number;
+    more_runs:           boolean;
+    notes:               string;
+  }) => void;
+}) {
+  const [qty,   setQty]   = useState<number | ''>('');
+  const [notes, setNotes] = useState('');
+
+  const remainingBefore = totalQty - alreadyDispatched;
+  const qtyNum          = typeof qty === 'number' ? qty : 0;
+  const remainingAfter  = Math.max(remainingBefore - qtyNum, 0);
+
+  const qtyValid    = qtyNum > 0 && qtyNum <= remainingBefore;
+  const isFullQty   = qtyValid && qtyNum === remainingBefore;
+  const isPartial   = qtyValid && qtyNum <  remainingBefore;
+
+  function confirm(moreRuns: boolean) {
+    onConfirm({
+      qty_this_run:        qtyNum,
+      qty_remaining_after: moreRuns ? remainingAfter : 0,
+      more_runs:           moreRuns,
+      notes:               notes.trim(),
+    });
+  }
+
+  return (
+    <ModalBackdrop>
+      <div className="p-6">
+        <h3 className="font-semibold text-brand-accent text-base mb-1">
+          Printing Complete — Record This Run
+        </h3>
+        <p className="text-sm text-brand-muted mb-4">
+          Order total: <strong className="text-brand-accent font-mono">{formatQty(totalQty)}</strong>
+          {alreadyDispatched > 0 && (
+            <> · Already dispatched: <strong className="text-green-700 font-mono">{formatQty(alreadyDispatched)}</strong></>
+          )}
+        </p>
+
+        <label className="block text-xs font-medium text-brand-muted uppercase tracking-wide mb-1.5">
+          How many labels printed in this run? *
+        </label>
+        <input
+          type="number"
+          min={1}
+          max={remainingBefore}
+          value={qty}
+          onChange={(e) => setQty(e.target.value ? Number(e.target.value) : '')}
+          placeholder={`Max: ${remainingBefore.toLocaleString('en-IN')}`}
+          className={cn(
+            'w-full px-3 py-2 rounded-lg border text-sm font-mono',
+            'border-brand-border focus:outline-none focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent',
+            'transition-colors'
+          )}
+        />
+        {qtyNum > remainingBefore && (
+          <p className="text-xs text-red-600 mt-1">Cannot exceed remaining quantity.</p>
+        )}
+
+        {/* Auto-calculated remaining */}
+        <div className="mt-3 bg-brand-bg rounded-lg px-3 py-2 flex justify-between text-sm font-mono">
+          <span className="text-brand-muted">Remaining after this run</span>
+          <span className={remainingAfter > 0 ? 'text-amber-700' : 'text-green-700'}>
+            {qtyValid ? formatQty(remainingAfter) : '—'}
+          </span>
+        </div>
+
+        <label className="block text-xs font-medium text-brand-muted uppercase tracking-wide mb-1.5 mt-4">
+          Notes (optional)
+        </label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={2}
+          placeholder="e.g. Client requested early partial delivery…"
+          className={cn(
+            'w-full px-3 py-2 rounded-lg border text-sm resize-none',
+            'border-brand-border focus:outline-none focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent',
+            'transition-colors'
+          )}
+        />
+
+        <div className="flex flex-col sm:flex-row gap-2 justify-end mt-5">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-sm text-brand-muted hover:text-brand-accent transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => isPartial && confirm(true)}
+            disabled={!isPartial}
+            title={!isPartial && qtyValid ? 'Quantity equals the full remaining order' : undefined}
+            className={cn(
+              'px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+              'bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-40'
+            )}
+          >
+            More labels to be printed later
+          </button>
+          <button
+            onClick={() => isFullQty && confirm(false)}
+            disabled={!isFullQty}
+            title={!isFullQty && qtyValid ? 'Enter the full remaining quantity to complete the order' : undefined}
+            className={cn(
+              'px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+              'bg-green-600 text-white hover:bg-green-700 disabled:opacity-40'
+            )}
+          >
+            This completes the full order
           </button>
         </div>
       </div>

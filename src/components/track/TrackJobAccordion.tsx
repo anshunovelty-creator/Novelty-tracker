@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { cn, formatQty, formatShortDate } from '@/lib/utils';
 import { getProgressPercent, getVisibleStages } from '@/lib/constants/stages';
-import type { ClientStatusLog, DispatchSchedule, Job, JobStageTimestamp } from '@/lib/types';
+import type { ClientStatusLog, DispatchSchedule, Job, JobStageTimestamp, PrintRun } from '@/lib/types';
 import type { Stage } from '@/lib/constants/stages';
 import StagePipeline from './StagePipeline';
 import ProgressBar from './ProgressBar';
@@ -19,6 +19,7 @@ type TrackJobBundle = {
   statusLogs: ClientStatusLog[];
   stageTimestamps: JobStageTimestamp[];
   schedules: DispatchSchedule[];
+  printRuns: PrintRun[];
 };
 
 type Props = {
@@ -226,6 +227,7 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
                         statusLogs={bundle.statusLogs}
                         visibleStages={getVisibleStages(bundle.job.job_type)}
                         stageTimestamps={bundle.stageTimestamps}
+                        printRuns={bundle.printRuns}
                       />
 
                       {(bundle.job.dispatched_qty ?? 0) > 0 && (
@@ -323,6 +325,7 @@ function SingleJobDetail({ bundle }: { bundle: TrackJobBundle }) {
         statusLogs={bundle.statusLogs}
         visibleStages={getVisibleStages(bundle.job.job_type)}
         stageTimestamps={bundle.stageTimestamps}
+        printRuns={bundle.printRuns}
       />
 
       {(bundle.job.dispatched_qty ?? 0) > 0 && (

@@ -10,7 +10,7 @@ import { unstable_noStore as noStore } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/admin';
 import TrackJobAccordion from '@/components/track/TrackJobAccordion';
 import TrackAutoRefresh from '@/components/track/TrackAutoRefresh';
-import type { ClientStatusLog, DispatchSchedule, Job, JobStageTimestamp } from '@/lib/types';
+import type { ClientStatusLog, DispatchSchedule, Job, JobStageTimestamp, PrintRun } from '@/lib/types';
 
 type Params = {
   params: Promise<{ po: string }>;
@@ -58,7 +58,7 @@ export default async function TrackJobPage({ params, searchParams }: Params) {
 
   const jobBundles = await Promise.all(
     jobs.map(async (job: Job) => {
-      const [logsRes, timestampsRes, schedulesRes] = await Promise.all([
+      const [logsRes, timestampsRes, schedulesRes, printRunsRes] = await Promise.all([
         anonClient
           .from('client_status_log_view')
           .select('*')
@@ -75,6 +75,13 @@ export default async function TrackJobPage({ params, searchParams }: Params) {
               .eq('job_id', job.id)
               .order('release_number')
           : Promise.resolve({ data: [] }),
+        job.has_partial_runs
+          ? anonClient
+              .from('print_runs')
+              .select('*')
+              .eq('job_id', job.id)
+              .order('run_number')
+          : Promise.resolve({ data: [] }),
       ]);
 
       return {
@@ -82,6 +89,7 @@ export default async function TrackJobPage({ params, searchParams }: Params) {
         statusLogs: logsRes.data ?? [],
         stageTimestamps: timestampsRes.data ?? [],
         schedules: schedulesRes.data ?? [],
+        printRuns: printRunsRes.data ?? [],
       };
     })
   ) as Array<{
@@ -89,6 +97,7 @@ export default async function TrackJobPage({ params, searchParams }: Params) {
     statusLogs: ClientStatusLog[];
     stageTimestamps: JobStageTimestamp[];
     schedules: DispatchSchedule[];
+    printRuns: PrintRun[];
   }>;
 
   return (

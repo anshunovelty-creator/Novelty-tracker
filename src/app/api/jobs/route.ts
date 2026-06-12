@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { parseDepartment } from '@/lib/constants/departments';
+import { getVisibleStages } from '@/lib/constants/stages';
 import type { AddJobFormData } from '@/lib/types';
 
 // ── GET ───────────────────────────────────────────────────────
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
 
   let query = supabase
     .from('jobs')
-    .select('*')
+    .select('*, job_stage_timestamps(stage)')
     .eq('is_closed', closed)
     .order('delivery_date', { ascending: true, nullsFirst: false });
 
@@ -124,14 +125,25 @@ export async function POST(request: NextRequest) {
     // Don't fail the whole request for a log write failure — job is created
   }
 
-  // ── Write initial stage timestamp ──
+  // ── Write initial stage timestamps ──
+  // A job created at a mid-pipeline stage (e.g. Repeat at 'In Printing') has
+  // logically passed all earlier visible stages — stamp them all so the
+  // history shows ticks and prerequisite checks pass.
+  const visibleStages = getVisibleStages(job.job_type);
+  const initialIdx = visibleStages.indexOf(job.status);
+  const stagesToStamp = initialIdx >= 0
+    ? visibleStages.slice(0, initialIdx + 1)
+    : [job.status];
+
   await admin
     .from('job_stage_timestamps')
-    .insert({
-      job_id:       job.id,
-      stage:        job.status,
-      completed_at: new Date().toISOString(),
-    });
+    .insert(
+      stagesToStamp.map((stage) => ({
+        job_id:       job.id,
+        stage,
+        completed_at: new Date().toISOString(),
+      }))
+    );
 
   // ── Insert dispatch schedule rows (if scheduled release) ──
   if (body.is_scheduled_release && body.scheduled_releases?.length) {

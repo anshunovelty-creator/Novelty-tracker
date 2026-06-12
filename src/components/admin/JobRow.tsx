@@ -2,7 +2,7 @@
 // src/components/admin/JobRow.tsx
 
 import { useState } from 'react';
-import { cn, formatAdminDate, formatShortDate, formatQty, getMissingPrerequisite } from '@/lib/utils';
+import { cn, formatAdminDate, formatShortDate, formatQty } from '@/lib/utils';
 import { STATUS_COLORS, ROW_URGENCY_STYLES } from '@/lib/constants/statusColors';
 import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES } from '@/lib/constants/stages';
 import { canDeptSetStage } from '@/lib/constants/departments';
@@ -44,10 +44,14 @@ type ModalState =
 export default function JobRow({
   job, dept, isExpanded, onToggleExpand, onJobUpdated, onJobDeleted, onDuplicate,
 }: Props) {
-  const [pendingStage, setPendingStage] = useState<Stage | null>(null);
-  const [modal,        setModal]        = useState<ModalState>({ type: 'none' });
-  const [submitting,   setSubmitting]   = useState(false);
-  const [completedStages, setCompletedStages] = useState<Stage[]>([]);
+  const [pendingStage,   setPendingStage]   = useState<Stage | null>(null);
+  const [modal,          setModal]          = useState<ModalState>({ type: 'none' });
+  const [submitting,     setSubmitting]     = useState(false);
+  const [pendingPayload, setPendingPayload] = useState<{
+    new_status:      Stage;
+    remark?:         string;
+    qty_dispatched?: number;
+  } | null>(null);
 
   // ── Row visual class ────────────────────────────────────────
   const rowClass = cn(
@@ -70,21 +74,23 @@ export default function JobRow({
     if (newStage === job.status) return;
     setPendingStage(newStage);
 
-    // Check for missing prerequisite client-side first
-    const missing = getMissingPrerequisite(newStage, completedStages, job.job_type);
-    if (missing && newStage !== 'On Hold') {
-      setModal({ type: 'warning', targetStage: newStage, missingStage: missing });
+    // Modal-required stages always use their OWN modal — even when leaving Quality Check.
+    // (A Partial Dispatch from QC still needs the qty input, not the QC remark box.)
+    // Server enforces prerequisites; a 409 response triggers the warning after entry.
+    if (newStage === 'On Hold')          { setModal({ type: 'on_hold' });          return; }
+    if (newStage === 'Quality Check')    { setModal({ type: 'qc' });               return; }
+    if (newStage === 'Partial Dispatch') { setModal({ type: 'partial_dispatch' }); return; }
+    if (newStage === 'Dispatched')       { setModal({ type: 'full_dispatch' });    return; }
+    if (newStage === 'PO Closed')        { setModal({ type: 'close_po' });         return; }
+
+    // Advancing FROM Quality Check to a non-modal stage: capture an optional QC remark first
+    if (job.status === 'Quality Check') {
+      setModal({ type: 'qc' });
       return;
     }
 
-    // Route to appropriate modal if needed
-    if (newStage === 'On Hold')         { setModal({ type: 'on_hold' }); return; }
-    if (newStage === 'Quality Check')   { setModal({ type: 'qc' }); return; }
-    if (newStage === 'Partial Dispatch'){ setModal({ type: 'partial_dispatch' }); return; }
-    if (newStage === 'Dispatched')      { setModal({ type: 'full_dispatch' }); return; }
-    if (newStage === 'PO Closed')       { setModal({ type: 'close_po' }); return; }
-
-    // No modal needed — submit directly
+    // Submit directly — the server is the source of truth for prerequisites
+    // and responds 409 if the previous stage isn't complete.
     await submitStatusChange({ new_status: newStage });
   }
 
@@ -94,6 +100,7 @@ export default function JobRow({
     remark?:               string;
     qty_dispatched?:       number;
     override_prerequisite?: boolean;
+    override_remark?:       string;
   }) {
     setSubmitting(true);
     setModal({ type: 'none' });
@@ -107,10 +114,14 @@ export default function JobRow({
       const data = await res.json();
 
       if (res.status === 409 && data.error === 'PREREQUISITE_MISSING') {
-        // Server-side prereq check caught it (safety net)
+        setPendingPayload({
+          new_status:     payload.new_status,
+          remark:         payload.remark,
+          qty_dispatched: payload.qty_dispatched,
+        });
         setModal({
-          type:        'warning',
-          targetStage: payload.new_status,
+          type:         'warning',
+          targetStage:  payload.new_status,
           missingStage: data.missing_stage,
         });
         return;
@@ -124,6 +135,7 @@ export default function JobRow({
       onJobUpdated(data.job);
       toast.success(`Status updated to "${payload.new_status}"`);
       setPendingStage(null);
+      setPendingPayload(null);
     } catch {
       toast.error('Network error. Try again.');
     } finally {
@@ -137,20 +149,26 @@ export default function JobRow({
     : '—';
 
   // ── Dispatch progress ───────────────────────────────────────
-  const hasDispatch = (job.dispatched_qty ?? 0) > 0;
+  // Print-run jobs track quantity via total_qty_dispatched;
+  // classic jobs via dispatched_qty.
+  const effectiveDispatched = job.has_partial_runs
+    ? (job.total_qty_dispatched ?? 0)
+    : (job.dispatched_qty ?? 0);
   const dispatchPct = job.label_qty
-    ? Math.round(((job.dispatched_qty ?? 0) / job.label_qty) * 100)
+    ? Math.round((effectiveDispatched / job.label_qty) * 100)
     : 0;
 
   // ── Available stages in dropdown ────────────────────────────
-  const availableStages: Stage[] = [
-    ...PIPELINE_STAGES,
-    'On Hold',
-    ...(dept === 'Admin' ? ['PO Closed' as Stage] : []),
-  ].filter((s) => {
-    if (job.job_type === 'Repeat' && REPEAT_SKIPPED_STAGES.includes(s as any)) return false;
-    return true;
-  });
+  const _stages: Stage[] = [...PIPELINE_STAGES, 'On Hold'];
+  if (dept === 'Admin') _stages.push('PO Closed');
+  const availableStages = job.job_type === 'Repeat'
+    ? _stages.filter((s) => !REPEAT_SKIPPED_STAGES.includes(s as any))
+    : _stages;
+
+  // Completed stages — shown with ✓ in the dropdown
+  const completedSet = new Set(
+    (job.job_stage_timestamps ?? []).map((t) => t.stage)
+  );
 
   return (
     <>
@@ -180,6 +198,11 @@ export default function JobRow({
           {job.job_name && (
             <p className="text-xs text-brand-muted truncate max-w-[220px] mt-0.5">{job.job_name}</p>
           )}
+          {job.has_partial_runs && (
+            <span className="inline-block mt-1 text-[11px] font-medium px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
+              Partial Runs
+            </span>
+          )}
           {job.halt_remark && job.status === 'On Hold' && (
             <p className="text-xs text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mt-1 truncate max-w-[220px]">
               ⏸ {job.halt_remark}
@@ -195,7 +218,10 @@ export default function JobRow({
           {job.label_qty ? (
             <div>
               <p className="font-mono text-xs text-brand-accent">
-                {formatQty(job.dispatched_qty)} / {formatQty(job.label_qty)}
+                {formatQty(effectiveDispatched)} / {formatQty(job.label_qty)}
+                {job.has_partial_runs && (
+                  <span className="text-brand-muted"> dispatched</span>
+                )}
               </p>
               <div className="h-1.5 bg-brand-bg rounded-full mt-1.5 w-20">
                 <div
@@ -250,14 +276,15 @@ export default function JobRow({
             )}
           >
             {availableStages.map((stage) => {
-              const allowed = canDeptSetStage(dept, stage);
+              const allowed   = canDeptSetStage(dept, stage);
+              const completed = completedSet.has(stage);
               return (
                 <option
                   key={stage}
                   value={stage}
                   disabled={!allowed}
                 >
-                  {!allowed ? `🔒 ${stage}` : stage}
+                  {`${allowed ? '' : '🔒 '}${completed ? '✓ ' : ''}${stage}`}
                 </option>
               );
             })}
@@ -307,6 +334,7 @@ export default function JobRow({
               jobType={job.job_type}
               isScheduledRelease={job.is_scheduled_release}
               dept={dept}
+              refreshKey={job.updated_at}
             />
           </td>
         </tr>
@@ -315,15 +343,21 @@ export default function JobRow({
       {/* Modals */}
       {modal.type === 'warning' && (
         <SequentialWarningModal
-          targetStage={(modal as any).targetStage}
-          missingStage={(modal as any).missingStage}
-          onCancel={() => setModal({ type: 'none' })}
-          onOverride={() =>
+          targetStage={modal.targetStage}
+          missingStage={modal.missingStage}
+          isAdmin={dept === 'Admin'}
+          onCancel={() => { setModal({ type: 'none' }); setPendingPayload(null); setPendingStage(null); }}
+          onOverride={(overrideRemark) => {
+            // Re-submit the stored payload (preserves qty/remark) with the
+            // Admin override flag and justification remark.
+            const stored = pendingPayload ?? { new_status: modal.targetStage };
+            setPendingPayload(null);
             submitStatusChange({
-              new_status:            (modal as any).targetStage,
+              ...stored,
               override_prerequisite: true,
-            })
-          }
+              override_remark:       overrideRemark,
+            });
+          }}
         />
       )}
 
@@ -338,10 +372,17 @@ export default function JobRow({
 
       {modal.type === 'qc' && (
         <QCModal
-          onCancel={() => setModal({ type: 'none' })}
-          onConfirm={(remark) =>
-            submitStatusChange({ new_status: 'Quality Check', remark })
-          }
+          onCancel={() => { setModal({ type: 'none' }); setPendingStage(null); }}
+          onConfirm={(remark) => {
+            const target = (pendingStage ?? 'Quality Check') as Stage;
+            // Safety net: stages with their own modal must NEVER be submitted from
+            // the QC remark box — they have required inputs (qty etc.). Route instead.
+            if (target === 'Partial Dispatch') { setModal({ type: 'partial_dispatch' }); return; }
+            if (target === 'Dispatched')       { setModal({ type: 'full_dispatch' });    return; }
+            if (target === 'On Hold')          { setModal({ type: 'on_hold' });          return; }
+            if (target === 'PO Closed')        { setModal({ type: 'close_po' });         return; }
+            submitStatusChange({ new_status: target, remark });
+          }}
         />
       )}
 

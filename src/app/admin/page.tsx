@@ -17,9 +17,10 @@ export default async function AdminPage() {
   if (!dept) redirect('/login');
 
   // Fetch initial jobs (server-side for first paint)
+  // job_stage_timestamps(stage) join powers the ✓ marks in the status dropdown
   const { data: jobs } = await supabase
     .from('jobs')
-    .select('*')
+    .select('*, job_stage_timestamps(stage)')
     .eq('is_closed', false)
     .order('delivery_date', { ascending: true, nullsFirst: false });
 

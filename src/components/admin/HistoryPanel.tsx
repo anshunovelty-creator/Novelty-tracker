@@ -1,26 +1,31 @@
 'use client';
 // src/components/admin/HistoryPanel.tsx
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { cn, formatAdminDate, formatShortDate, formatQty } from '@/lib/utils';
 import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES } from '@/lib/constants/stages';
 import { DEPT_DISPLAY_NAME } from '@/lib/constants/departments';
-import type { JobDetail, JobStatusLog, StageComment, DispatchSchedule } from '@/lib/types';
+import type { JobDetail, JobStatusLog, StageComment, DispatchSchedule, PrintRun, PrintRunStage } from '@/lib/types';
 import type { Stage } from '@/lib/constants/stages';
 import type { Department } from '@/lib/constants/departments';
 import StageComments from './StageComments';
+import { PrintRunModal } from './modals';
+import toast from 'react-hot-toast';
 
 type Props = {
   jobId:               string;
   jobType:             'New' | 'Repeat' | 'Artwork Changed';
   isScheduledRelease:  boolean;
   dept:                Department;
+  refreshKey?:         string;   // pass job.updated_at — re-fetches after status changes
 };
 
-export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept }: Props) {
+export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept, refreshKey }: Props) {
   const [detail,   setDetail]   = useState<JobDetail | null>(null);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState<string | null>(null);
+  // Bumped by the print-runs section after a run changes, so job totals refresh
+  const [tick,     setTick]     = useState(0);
 
   useEffect(() => {
     async function load() {
@@ -37,7 +42,7 @@ export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept 
       }
     }
     load();
-  }, [jobId]);
+  }, [jobId, refreshKey, tick]);
 
   if (loading) {
     return (
@@ -191,6 +196,13 @@ export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept 
         </div>
       </div>
 
+      {/* Print runs (multi-cycle orders) */}
+      <PrintRunsSection
+        job={detail}
+        dept={dept}
+        onChanged={() => setTick((t) => t + 1)}
+      />
+
       {/* Scheduled release table */}
       {isScheduledRelease && detail.dispatch_schedules.length > 0 && (
         <ScheduledReleaseTable
@@ -205,6 +217,217 @@ export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept 
               .then((d) => { if (d.job) setDetail(d.job); })
               .finally(() => setLoading(false));
           }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Print Runs Section ────────────────────────────────────────
+// Shown when a job has print runs (multi-cycle orders).
+// Each run card shows qty + stage; the active run gets an advance
+// button gated by department. When all runs are dispatched and qty
+// remains, Production/Admin see "Start Next Print Run".
+
+const NEXT_RUN_STAGE: Record<PrintRunStage, PrintRunStage | null> = {
+  Printing:   'QC',
+  QC:         'Packing',
+  Packing:    'Dispatched',
+  Dispatched: null,
+};
+
+// Mirror of the API's department gates (Admin always allowed)
+const RUN_STAGE_DEPTS: Record<PrintRunStage, Department[]> = {
+  Printing:   ['Production'],
+  QC:         ['QC'],
+  Packing:    ['Dispatch'],
+  Dispatched: ['Dispatch'],
+};
+
+function PrintRunsSection({
+  job,
+  dept,
+  onChanged,
+}: {
+  job:       JobDetail;
+  dept:      Department;
+  onChanged: () => void;
+}) {
+  const [runs,        setRuns]        = useState<PrintRun[]>([]);
+  const [loaded,      setLoaded]      = useState(false);
+  const [advancingId, setAdvancingId] = useState<string | null>(null);
+  const [showModal,   setShowModal]   = useState(false);
+
+  const loadRuns = useCallback(async () => {
+    try {
+      const res  = await fetch(`/api/jobs/${job.id}/print-runs`);
+      const data = await res.json();
+      if (res.ok) setRuns(data.print_runs ?? []);
+    } finally {
+      setLoaded(true);
+    }
+  }, [job.id]);
+
+  useEffect(() => { loadRuns(); }, [loadRuns]);
+
+  if (!loaded || runs.length === 0) return null;
+
+  const totalQty       = job.label_qty ?? 0;
+  const dispatchedQty  = job.total_qty_dispatched ?? 0;
+  const remainingQty   = totalQty - dispatchedQty;
+  const allDispatched  = runs.every((r) => r.status === 'dispatched');
+  const awaitingNext   = job.has_partial_runs && allDispatched && remainingQty > 0;
+  const canStartNext   = awaitingNext && (dept === 'Production' || dept === 'Admin');
+
+  async function advanceRun(run: PrintRun) {
+    const nextStage = NEXT_RUN_STAGE[run.current_stage];
+    if (!nextStage) return;
+
+    setAdvancingId(run.id);
+    try {
+      const res  = await fetch(`/api/jobs/${job.id}/print-runs/${run.id}/stage`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ new_stage: nextStage }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? 'Failed to advance run');
+        return;
+      }
+      toast.success(`Run #${run.run_number} → ${nextStage}`);
+      await loadRuns();
+      onChanged();   // refresh job totals in the parent panel
+    } catch {
+      toast.error('Network error. Try again.');
+    } finally {
+      setAdvancingId(null);
+    }
+  }
+
+  async function startNextRun(payload: {
+    qty_this_run: number;
+    more_runs:    boolean;
+    notes:        string;
+  }) {
+    setShowModal(false);
+    try {
+      const res  = await fetch(`/api/jobs/${job.id}/print-runs`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? 'Failed to start print run');
+        return;
+      }
+      toast.success(`Run #${data.print_run.run_number} started — Printing`);
+      await loadRuns();
+      onChanged();
+    } catch {
+      toast.error('Network error. Try again.');
+    }
+  }
+
+  return (
+    <div>
+      <h4 className="text-xs font-medium text-brand-muted uppercase tracking-wide mb-3">
+        Print Runs
+      </h4>
+
+      <div className="space-y-2">
+        {runs.map((run) => {
+          const isDone    = run.status === 'dispatched';
+          const nextStage = NEXT_RUN_STAGE[run.current_stage];
+          const mayAdvance =
+            !isDone && nextStage !== null &&
+            (dept === 'Admin' || RUN_STAGE_DEPTS[nextStage].includes(dept));
+
+          return (
+            <div
+              key={run.id}
+              className={cn(
+                'flex items-center justify-between gap-3 rounded-lg border px-4 py-3',
+                isDone ? 'border-green-200 bg-green-50/50' : 'border-brand-border bg-white'
+              )}
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-brand-accent">
+                  Run #{run.run_number}
+                  <span className="ml-2 font-mono text-xs text-brand-muted">
+                    {formatQty(run.qty_this_run)} labels
+                  </span>
+                </p>
+                <p className="text-xs text-brand-muted mt-0.5">
+                  Stage: <strong className={isDone ? 'text-green-700' : 'text-brand-accent'}>
+                    {run.current_stage} {isDone ? '✅' : '🔄'}
+                  </strong>
+                  {run.dispatched_at && (
+                    <span className="ml-2 font-mono">{formatShortDate(run.dispatched_at)}</span>
+                  )}
+                </p>
+                {run.notes && (
+                  <p className="text-xs text-brand-muted mt-0.5 truncate">{run.notes}</p>
+                )}
+              </div>
+
+              {!isDone && nextStage && (
+                mayAdvance ? (
+                  <button
+                    onClick={() => advanceRun(run)}
+                    disabled={advancingId === run.id}
+                    className={cn(
+                      'shrink-0 text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors',
+                      nextStage === 'Dispatched'
+                        ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100'
+                        : 'bg-brand-bg border-brand-border text-brand-accent hover:bg-brand-border/40',
+                      'disabled:opacity-40'
+                    )}
+                  >
+                    {advancingId === run.id ? 'Saving…' : `→ ${nextStage}`}
+                  </button>
+                ) : (
+                  <span className="shrink-0 text-xs text-brand-muted">
+                    🔒 {RUN_STAGE_DEPTS[nextStage].join('/')}
+                  </span>
+                )
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Totals */}
+      <div className="bg-brand-bg border border-brand-border rounded-lg px-3 py-2 flex gap-6 text-xs font-mono mt-2">
+        <span>Total: <strong>{formatQty(totalQty)}</strong></span>
+        <span className="text-green-700">Dispatched: <strong>{formatQty(dispatchedQty)}</strong></span>
+        <span className="text-amber-700">Remaining: <strong>{formatQty(remainingQty)}</strong></span>
+      </div>
+
+      {/* Between runs */}
+      {awaitingNext && (
+        <div className="flex items-center justify-between gap-3 mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <p className="text-xs text-amber-700">
+            ⏳ Awaiting next print run — {formatQty(remainingQty)} labels remaining
+          </p>
+          {canStartNext && (
+            <button
+              onClick={() => setShowModal(true)}
+              className="shrink-0 text-xs px-3 py-1.5 rounded-lg bg-brand-accent text-white font-medium hover:bg-brand-accent/90 transition-colors"
+            >
+              Start Next Print Run
+            </button>
+          )}
+        </div>
+      )}
+
+      {showModal && (
+        <PrintRunModal
+          totalQty={totalQty}
+          alreadyDispatched={dispatchedQty}
+          onCancel={() => setShowModal(false)}
+          onConfirm={startNextRun}
         />
       )}
     </div>

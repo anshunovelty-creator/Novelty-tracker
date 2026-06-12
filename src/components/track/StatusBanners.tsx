@@ -41,8 +41,8 @@ export default function StatusBanners({ job }: Props) {
     );
   }
 
-  // 3. QC remark (only if filled)
-  if (job.status === 'Quality Check' && job.qc_remark) {
+  // 3. QC remark — show whenever a note exists, not just while in QC stage
+  if (!job.is_closed && job.qc_remark) {
     banners.push(
       <Banner key="qc" color="blue" icon="🔬">
         <strong>Quality Check Note</strong>

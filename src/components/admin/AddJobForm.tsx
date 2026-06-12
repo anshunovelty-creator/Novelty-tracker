@@ -1,11 +1,21 @@
 'use client';
 // src/components/admin/AddJobForm.tsx
 
-import React, { useState } from 'react';
-import { cn, formatQty } from '@/lib/utils';
+import React, { useState, useEffect, useRef } from 'react';
+import { cn, formatQty, formatShortDate } from '@/lib/utils';
 import type { Department } from '@/lib/constants/departments';
-import type { AddJobFormData, ScheduledReleaseInput } from '@/lib/types';
+import type { AddJobFormData, ScheduledReleaseInput, JobType } from '@/lib/types';
 import toast from 'react-hot-toast';
+
+// Shape returned by /api/jobs/pm-lookup
+type PmSuggestion = {
+  pm_code:    string;
+  party:      string;
+  job_name:   string | null;
+  job_type:   JobType;
+  label_qty:  number | null;
+  created_at: string;
+};
 
 type Props = {
   dept:          Department;
@@ -44,6 +54,59 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
   const [releases,   setReleases]   = useState<ScheduledReleaseInput[]>([
     { release_number: 1, planned_qty: 0, planned_date: '' },
   ]);
+
+  // ── PM code typeahead ──────────────────────────────────────
+  const [pmSuggestions,     setPmSuggestions]     = useState<PmSuggestion[]>([]);
+  const [showPmSuggestions, setShowPmSuggestions] = useState(false);
+  // Set after picking a suggestion so the effect doesn't immediately re-open
+  // the dropdown for the value it just wrote.
+  const suppressPmLookup = useRef(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (suppressPmLookup.current) {
+      suppressPmLookup.current = false;
+      return;
+    }
+    const code = form.pm_code?.trim() ?? '';
+    if (code.length < 2) {
+      setPmSuggestions([]);
+      setShowPmSuggestions(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res  = await fetch(`/api/jobs/pm-lookup?code=${encodeURIComponent(code)}`);
+        const data = await res.json();
+        if (res.ok) {
+          const matches: PmSuggestion[] = data.matches ?? [];
+          setPmSuggestions(matches);
+          setShowPmSuggestions(matches.length > 0);
+        }
+      } catch {
+        // lookup is best-effort — never block manual entry
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [form.pm_code, isOpen]);
+
+  function applyPmSuggestion(s: PmSuggestion) {
+    suppressPmLookup.current = true;
+    const today = new Date().toISOString().slice(0, 10);
+    setForm((prev) => ({
+      ...prev,
+      pm_code:  s.pm_code,
+      party:    s.party,
+      job_name: s.job_name ?? '',
+      // This PM code was produced before — that's the definition of a Repeat
+      // job (skips sample/shade card stages). Changeable in the dropdown.
+      job_type: 'Repeat',
+      po_date:  prev.po_date || today,
+    }));
+    setShowPmSuggestions(false);
+    setPmSuggestions([]);
+    toast.success('Autofilled from earlier job — type set to Repeat');
+  }
 
   function set<K extends keyof AddJobFormData>(key: K, value: AddJobFormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -145,12 +208,44 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
             />
           </Field>
           <Field label="PM Code">
-            <input
-              value={form.pm_code ?? ''}
-              onChange={(e) => set('pm_code', e.target.value)}
-              placeholder="e.g. PM-4521"
-              className={inputCls}
-            />
+            <div className="relative">
+              <input
+                value={form.pm_code ?? ''}
+                onChange={(e) => set('pm_code', e.target.value)}
+                onFocus={() => pmSuggestions.length > 0 && setShowPmSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowPmSuggestions(false), 150)}
+                placeholder="e.g. PM-4521"
+                autoComplete="off"
+                className={inputCls}
+              />
+              {showPmSuggestions && (
+                <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-brand-border rounded-lg shadow-lg overflow-hidden">
+                  <p className="px-3 py-1.5 text-xs text-brand-muted bg-brand-bg border-b border-brand-border">
+                    Earlier jobs — click to autofill
+                  </p>
+                  {pmSuggestions.map((s) => (
+                    <button
+                      key={s.pm_code}
+                      type="button"
+                      // onMouseDown fires before the input's onBlur closes the list
+                      onMouseDown={(e) => { e.preventDefault(); applyPmSuggestion(s); }}
+                      className="w-full text-left px-3 py-2 hover:bg-brand-bg transition-colors border-b border-brand-border/50 last:border-0"
+                    >
+                      <span className="block font-mono text-xs font-medium text-brand-accent">
+                        {s.pm_code}
+                      </span>
+                      <span className="block text-xs text-brand-muted truncate">
+                        {s.party}{s.job_name ? ` · ${s.job_name}` : ''}
+                      </span>
+                      <span className="block text-[11px] text-brand-muted/70 mt-0.5">
+                        Last order: {formatShortDate(s.created_at)}
+                        {s.label_qty ? ` · ${formatQty(s.label_qty)} labels` : ''}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </Field>
           <Field label="Party / Client *">
             <input
