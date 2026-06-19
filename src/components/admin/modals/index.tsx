@@ -98,7 +98,7 @@ export function SequentialWarningModal({
             <div className="flex justify-end mt-4">
               <button
                 onClick={onCancel}
-                className="px-4 py-2 text-sm font-medium bg-brand-accent text-white rounded-lg hover:bg-brand-accent/90 transition-colors"
+                className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 transition-colors"
               >
                 OK
               </button>
@@ -500,7 +500,7 @@ export function ClosePOModal({
           </button>
           <button
             onClick={onConfirm}
-            className="px-4 py-2 text-sm font-medium bg-brand-accent text-white rounded-lg hover:bg-brand-accent/90 transition-colors"
+            className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 transition-colors"
           >
             Close PO &amp; Archive
           </button>

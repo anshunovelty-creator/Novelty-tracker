@@ -125,8 +125,8 @@ function LoginForm() {
             type="submit"
             disabled={loading}
             className={cn(
-              'w-full bg-brand-accent text-white rounded-lg py-2.5 text-sm font-medium',
-              'hover:bg-brand-accent/90 transition-colors',
+              'w-full bg-brand-primary text-white rounded-lg py-2.5 text-sm font-medium',
+              'hover:bg-brand-primary/90 transition-colors',
               'disabled:opacity-50 disabled:cursor-not-allowed',
               'focus:outline-none focus:ring-2 focus:ring-brand-accent/30'
             )}

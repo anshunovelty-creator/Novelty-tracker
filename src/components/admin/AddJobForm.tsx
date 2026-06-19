@@ -174,7 +174,7 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
         onClick={() => setIsOpen(true)}
         className={cn(
           'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium',
-          'bg-brand-accent text-white hover:bg-brand-accent/90 transition-colors'
+          'bg-brand-primary text-white hover:bg-brand-primary/90 transition-colors'
         )}
       >
         <span className="text-lg leading-none">+</span>
@@ -345,7 +345,7 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
                   className={cn(
                     'w-8 h-8 rounded-full text-xs font-mono font-medium transition-colors',
                     form.urgent_priority === p
-                      ? 'bg-brand-accent text-white'
+                      ? 'bg-brand-primary text-white'
                       : 'bg-brand-bg border border-brand-border text-brand-muted hover:text-brand-accent'
                   )}
                 >
@@ -447,8 +447,8 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
             type="submit"
             disabled={loading}
             className={cn(
-              'px-5 py-2 rounded-lg text-sm font-medium bg-brand-accent text-white',
-              'hover:bg-brand-accent/90 transition-colors',
+              'px-5 py-2 rounded-lg text-sm font-medium bg-brand-primary text-white',
+              'hover:bg-brand-primary/90 transition-colors',
               'disabled:opacity-50 disabled:cursor-not-allowed'
             )}
           >

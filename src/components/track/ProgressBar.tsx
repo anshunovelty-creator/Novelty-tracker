@@ -19,7 +19,7 @@ export default function ProgressBar({ percent, status }: Props) {
   }[state.color];
 
   const fillColor = {
-    black:  'bg-brand-accent',
+    black:  'bg-brand-primary',
     orange: 'bg-amber-500',
     blue:   'bg-sky-500',
   }[state.color];

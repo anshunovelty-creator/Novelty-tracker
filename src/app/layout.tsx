@@ -46,7 +46,7 @@ export default function RootLayout({
             style: {
               fontFamily: 'var(--font-dm-sans)',
               fontSize: '0.875rem',
-              background: '#1a1a18',
+              background: '#0C2A20',
               color: '#ffffff',
               borderRadius: '8px',
             },

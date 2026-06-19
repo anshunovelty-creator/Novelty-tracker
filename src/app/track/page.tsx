@@ -46,8 +46,8 @@ export default function TrackPage() {
           type="submit"
           disabled={!po.trim()}
           className={cn(
-            'w-full bg-brand-accent text-white py-3 rounded-xl text-sm font-medium',
-            'hover:bg-brand-accent/90 transition-colors',
+            'w-full bg-brand-primary text-white py-3 rounded-xl text-sm font-medium',
+            'hover:bg-brand-primary/90 transition-colors',
             'disabled:opacity-40 disabled:cursor-not-allowed'
           )}
         >

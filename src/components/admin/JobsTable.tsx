@@ -105,8 +105,8 @@ export default function JobsTable({ initialJobs, dept }: Props) {
       {/* Table */}
       <div className="table-scroll-wrapper rounded-xl border border-brand-border bg-white mt-3 overflow-hidden">
         {loading && (
-          <div className="h-1 bg-brand-accent/20 relative overflow-hidden">
-            <div className="absolute inset-y-0 left-0 bg-brand-accent"
+          <div className="h-1 bg-brand-primary/20 relative overflow-hidden">
+            <div className="absolute inset-y-0 left-0 bg-brand-primary"
                  style={{ width: '40%', animation: 'slide 1.2s ease-in-out infinite' }} />
           </div>
         )}

@@ -74,7 +74,7 @@ export default function StageComments({ jobId, stage, dept, existingComments, on
         <button
           onClick={handleAdd}
           disabled={loading || !text.trim()}
-          className="px-3 py-1 text-xs font-medium bg-brand-accent text-white rounded disabled:opacity-40 transition-colors"
+          className="px-3 py-1 text-xs font-medium bg-brand-primary text-white rounded disabled:opacity-40 transition-colors"
         >
           {loading ? 'Adding…' : 'Add Note'}
         </button>

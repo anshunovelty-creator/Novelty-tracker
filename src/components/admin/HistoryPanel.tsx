@@ -414,7 +414,7 @@ function PrintRunsSection({
           {canStartNext && (
             <button
               onClick={() => setShowModal(true)}
-              className="shrink-0 text-xs px-3 py-1.5 rounded-lg bg-brand-accent text-white font-medium hover:bg-brand-accent/90 transition-colors"
+              className="shrink-0 text-xs px-3 py-1.5 rounded-lg bg-brand-primary text-white font-medium hover:bg-brand-primary/90 transition-colors"
             >
               Start Next Print Run
             </button>

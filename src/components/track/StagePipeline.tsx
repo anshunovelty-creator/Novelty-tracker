@@ -118,7 +118,7 @@ export default function StagePipeline({
                   </div>
                 ) : isCurrent ? (
                   <div className="relative">
-                    <div className="w-3 h-3 rounded-full bg-brand-accent dot-pulse" />
+                    <div className="w-3 h-3 rounded-full bg-brand-primary dot-pulse" />
                   </div>
                 ) : (
                   <div className="w-3 h-3 rounded-full border-2 border-brand-border bg-white" />
@@ -140,7 +140,7 @@ export default function StagePipeline({
                   </span>
 
                   {isCurrent && !isCompleted && (
-                    <span className="text-xs bg-brand-accent text-white px-1.5 py-0.5 rounded-full">
+                    <span className="text-xs bg-brand-primary text-white px-1.5 py-0.5 rounded-full">
                       In Progress
                     </span>
                   )}
@@ -220,7 +220,7 @@ export default function StagePipeline({
                         <span className="text-white text-[8px] leading-none">✓</span>
                       </div>
                     ) : (
-                      <div className="w-3 h-3 rounded-full bg-brand-accent dot-pulse" />
+                      <div className="w-3 h-3 rounded-full bg-brand-primary dot-pulse" />
                     )}
                   </div>
 
