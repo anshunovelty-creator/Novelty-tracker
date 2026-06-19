@@ -336,7 +336,7 @@ function ExpandPanel({ open, children }: { open: boolean; children: React.ReactN
     if (!el) return;
     const mm = gsap.matchMedia();
     mm.add('(prefers-reduced-motion: no-preference)', () => {
-      gsap.to(el, { height: open ? 'auto' : 0, opacity: open ? 1 : 0, duration: 0.4, ease: 'power2.inOut' });
+      gsap.to(el, { height: open ? 'auto' : 0, opacity: open ? 1 : 0, duration: 0.4, ease: 'power2.inOut', overwrite: 'auto' });
     });
     mm.add('(prefers-reduced-motion: reduce)', () => {
       gsap.set(el, { height: open ? 'auto' : 0, opacity: open ? 1 : 0 });
