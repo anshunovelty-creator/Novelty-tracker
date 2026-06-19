@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { useEffect, useRef, useState } from 'react';
+import { useGSAP } from '@gsap/react';
+import { gsap } from 'gsap';
+import { registerGsap } from '@/lib/gsap/register';
 import { useRouter } from 'next/navigation';
 import { cn, formatQty, formatShortDate } from '@/lib/utils';
 import { getProgressPercent, getVisibleStages } from '@/lib/constants/stages';
@@ -13,6 +15,8 @@ import DeliveryCountdown from './DeliveryCountdown';
 import StatusBanners from './StatusBanners';
 import DispatchSummaryCard from './DispatchSummaryCard';
 import ScheduledReleaseCard from './ScheduledReleaseCard';
+
+registerGsap();
 
 type TrackJobBundle = {
   job: Job;
@@ -32,7 +36,6 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
   const router = useRouter();
   const firstJobId = jobs[0]?.job.id;
   const hasInitialJob = Boolean(initialJobId && jobs.some((bundle) => bundle.job.id === initialJobId));
-  const [pendingJobId, setPendingJobId] = useState<string | undefined>(undefined);
 
   const [openJobId, setOpenJobId] = useState<string | undefined>(
     hasInitialJob
@@ -70,13 +73,9 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
           </a>
         </div>
 
-        <motion.div
-          layout
-          transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-          className="rounded-2xl border border-brand-accent/25 bg-white shadow-sm"
-        >
+        <div className="rounded-2xl border border-brand-accent/25 bg-white shadow-sm">
           <SingleJobDetail bundle={singleBundle} />
-        </motion.div>
+        </div>
       </div>
     );
   }
@@ -84,31 +83,14 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
   function handleSelect(jobId: string) {
     // Toggle close when clicking the same open row.
     if (openJobId === jobId) {
-      setPendingJobId(undefined);
       setOpenJobId(undefined);
       router.replace(`/track/${encodeURIComponent(poNumber)}`, { scroll: false });
       return;
     }
 
-    // If nothing is open, open immediately.
-    if (!openJobId) {
-      setPendingJobId(undefined);
-      setOpenJobId(jobId);
-      router.replace(`/track/${encodeURIComponent(poNumber)}?id=${jobId}`, { scroll: false });
-      return;
-    }
-
-    // Close current first, then open target in onExitComplete for smoother feel.
-    setPendingJobId(jobId);
-    setOpenJobId(undefined);
-  }
-
-  function handleExitComplete() {
-    if (!pendingJobId || openJobId) return;
-
-    setOpenJobId(pendingJobId);
-    router.replace(`/track/${encodeURIComponent(poNumber)}?id=${pendingJobId}`, { scroll: false });
-    setPendingJobId(undefined);
+    // Open the selected job directly (GSAP animates the previous one closed).
+    setOpenJobId(jobId);
+    router.replace(`/track/${encodeURIComponent(poNumber)}?id=${jobId}`, { scroll: false });
   }
 
   return (
@@ -127,10 +109,8 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
         {jobs.map((bundle) => {
           const isOpen = bundle.job.id === openJobId;
           return (
-            <motion.article
+            <article
               key={bundle.job.id}
-              layout
-              transition={{ type: 'spring', stiffness: 320, damping: 32, mass: 0.9 }}
               className={cn(
                 'overflow-hidden rounded-2xl border bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03)]',
                 isOpen ? 'border-brand-accent/30 ring-1 ring-brand-accent/10' : 'border-brand-border'
@@ -166,105 +146,94 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
                 </div>
               </button>
 
-              <AnimatePresence initial={false} mode="popLayout" onExitComplete={handleExitComplete}>
-                {isOpen && (
-                  <motion.div
-                    key={`${bundle.job.id}-details`}
-                    initial={{ height: 0, opacity: 0, y: -10, scale: 0.99 }}
-                    animate={{ height: 'auto', opacity: 1, y: 0, scale: 1 }}
-                    exit={{ height: 0, opacity: 0, y: -10, scale: 0.99 }}
-                    transition={{ type: 'spring', stiffness: 240, damping: 34, mass: 1.05 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="px-5 pb-5 space-y-5">
-                      <StatusBanners job={bundle.job} />
+              <ExpandPanel open={isOpen}>
+                <div className="px-5 pb-5 space-y-5">
+                  <StatusBanners job={bundle.job} />
 
-                      <div className="bg-white border border-brand-border rounded-2xl p-5 shadow-[0_1px_0_rgba(0,0,0,0.02)]">
-                        <div className="flex items-start justify-between gap-2 flex-wrap mb-3">
-                          <div>
-                            <p className="font-mono text-xs text-brand-muted mb-0.5">{bundle.job.po_number}</p>
-                            {bundle.job.pm_code && (
-                              <p className="font-mono text-xs text-brand-muted">{bundle.job.pm_code}</p>
-                            )}
-                            <h2 className="text-lg font-semibold text-brand-accent mt-1">
-                              {bundle.job.job_name ?? bundle.job.party}
-                            </h2>
-                            <p className="text-sm text-brand-muted">{bundle.job.party}</p>
-                          </div>
-                          <div className="flex flex-col items-end gap-1.5">
-                            <span className="text-xs px-2.5 py-1 rounded-full bg-brand-bg border border-brand-border text-brand-accent font-medium">
-                              {bundle.job.status}
-                            </span>
-                            <span className="text-xs text-brand-muted">{bundle.job.job_type}</span>
-                          </div>
-                        </div>
-
-                        <ProgressBar
-                          percent={getProgressPercent(
-                            bundle.stageTimestamps.map((t) => t.stage as Stage),
-                            bundle.job.job_type
-                          )}
-                          status={bundle.job.status}
-                        />
-
-                        <DeliveryCountdown deliveryDate={bundle.job.delivery_date} />
-
-                        {bundle.statusLogs[bundle.statusLogs.length - 1] && (
-                          <p className="text-xs text-brand-muted mt-3 pt-3 border-t border-brand-border">
-                            Last updated by{' '}
-                            <strong className="font-medium">
-                              {bundle.statusLogs[bundle.statusLogs.length - 1].department_display}
-                            </strong>
-                            {' · '}
-                            {formatShortDate(bundle.statusLogs[bundle.statusLogs.length - 1].changed_at)}
-                          </p>
+                  <div className="bg-white border border-brand-border rounded-2xl p-5 shadow-[0_1px_0_rgba(0,0,0,0.02)]">
+                    <div className="flex items-start justify-between gap-2 flex-wrap mb-3">
+                      <div>
+                        <p className="font-mono text-xs text-brand-muted mb-0.5">{bundle.job.po_number}</p>
+                        {bundle.job.pm_code && (
+                          <p className="font-mono text-xs text-brand-muted">{bundle.job.pm_code}</p>
                         )}
+                        <h2 className="text-lg font-semibold text-brand-accent mt-1">
+                          {bundle.job.job_name ?? bundle.job.party}
+                        </h2>
+                        <p className="text-sm text-brand-muted">{bundle.job.party}</p>
                       </div>
-
-                      <StagePipeline
-                        job={bundle.job}
-                        completedStages={bundle.stageTimestamps.map((t) => t.stage as Stage)}
-                        statusLogs={bundle.statusLogs}
-                        visibleStages={getVisibleStages(bundle.job.job_type)}
-                        stageTimestamps={bundle.stageTimestamps}
-                        printRuns={bundle.printRuns}
-                      />
-
-                      {(bundle.job.dispatched_qty ?? 0) > 0 && (
-                        <DispatchSummaryCard
-                          total={bundle.job.label_qty}
-                          dispatched={bundle.job.dispatched_qty}
-                          remaining={bundle.job.remaining_qty}
-                        />
-                      )}
-
-                      {bundle.job.is_scheduled_release && bundle.schedules.length > 0 && (
-                        <ScheduledReleaseCard schedules={bundle.schedules} />
-                      )}
-
-                      <div className="grid grid-cols-2 gap-3">
-                        {[
-                          { label: 'Total Ordered', value: formatQty(bundle.job.label_qty) },
-                          { label: 'PO Date', value: formatShortDate(bundle.job.po_date) },
-                          { label: 'Delivery Date', value: formatShortDate(bundle.job.delivery_date) },
-                          {
-                            label: 'Current Stage Since',
-                            value: bundle.statusLogs[bundle.statusLogs.length - 1]
-                              ? formatShortDate(bundle.statusLogs[bundle.statusLogs.length - 1].changed_at)
-                              : '—',
-                          },
-                        ].map((item) => (
-                          <div key={item.label} className="bg-white border border-brand-border rounded-xl p-3">
-                            <p className="text-xs text-brand-muted mb-0.5">{item.label}</p>
-                            <p className="text-sm font-medium text-brand-accent font-mono">{item.value}</p>
-                          </div>
-                        ))}
+                      <div className="flex flex-col items-end gap-1.5">
+                        <span className="text-xs px-2.5 py-1 rounded-full bg-brand-bg border border-brand-border text-brand-accent font-medium">
+                          {bundle.job.status}
+                        </span>
+                        <span className="text-xs text-brand-muted">{bundle.job.job_type}</span>
                       </div>
                     </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.article>
+
+                    <ProgressBar
+                      percent={getProgressPercent(
+                        bundle.stageTimestamps.map((t) => t.stage as Stage),
+                        bundle.job.job_type
+                      )}
+                      status={bundle.job.status}
+                    />
+
+                    <DeliveryCountdown deliveryDate={bundle.job.delivery_date} />
+
+                    {bundle.statusLogs[bundle.statusLogs.length - 1] && (
+                      <p className="text-xs text-brand-muted mt-3 pt-3 border-t border-brand-border">
+                        Last updated by{' '}
+                        <strong className="font-medium">
+                          {bundle.statusLogs[bundle.statusLogs.length - 1].department_display}
+                        </strong>
+                        {' · '}
+                        {formatShortDate(bundle.statusLogs[bundle.statusLogs.length - 1].changed_at)}
+                      </p>
+                    )}
+                  </div>
+
+                  <StagePipeline
+                    job={bundle.job}
+                    completedStages={bundle.stageTimestamps.map((t) => t.stage as Stage)}
+                    statusLogs={bundle.statusLogs}
+                    visibleStages={getVisibleStages(bundle.job.job_type)}
+                    stageTimestamps={bundle.stageTimestamps}
+                    printRuns={bundle.printRuns}
+                  />
+
+                  {(bundle.job.dispatched_qty ?? 0) > 0 && (
+                    <DispatchSummaryCard
+                      total={bundle.job.label_qty}
+                      dispatched={bundle.job.dispatched_qty}
+                      remaining={bundle.job.remaining_qty}
+                    />
+                  )}
+
+                  {bundle.job.is_scheduled_release && bundle.schedules.length > 0 && (
+                    <ScheduledReleaseCard schedules={bundle.schedules} />
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { label: 'Total Ordered', value: formatQty(bundle.job.label_qty) },
+                      { label: 'PO Date', value: formatShortDate(bundle.job.po_date) },
+                      { label: 'Delivery Date', value: formatShortDate(bundle.job.delivery_date) },
+                      {
+                        label: 'Current Stage Since',
+                        value: bundle.statusLogs[bundle.statusLogs.length - 1]
+                          ? formatShortDate(bundle.statusLogs[bundle.statusLogs.length - 1].changed_at)
+                          : '—',
+                      },
+                    ].map((item) => (
+                      <div key={item.label} className="bg-white border border-brand-border rounded-xl p-3">
+                        <p className="text-xs text-brand-muted mb-0.5">{item.label}</p>
+                        <p className="text-sm font-medium text-brand-accent font-mono">{item.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </ExpandPanel>
+            </article>
           );
         })}
       </div>
@@ -358,4 +327,21 @@ function SingleJobDetail({ bundle }: { bundle: TrackJobBundle }) {
       </div>
     </div>
   );
+}
+
+function ExpandPanel({ open, children }: { open: boolean; children: React.ReactNode }) {
+  const wrap = useRef<HTMLDivElement>(null);
+  useGSAP(() => {
+    const el = wrap.current;
+    if (!el) return;
+    const mm = gsap.matchMedia();
+    mm.add('(prefers-reduced-motion: no-preference)', () => {
+      gsap.to(el, { height: open ? 'auto' : 0, opacity: open ? 1 : 0, duration: 0.4, ease: 'power2.inOut' });
+    });
+    mm.add('(prefers-reduced-motion: reduce)', () => {
+      gsap.set(el, { height: open ? 'auto' : 0, opacity: open ? 1 : 0 });
+    });
+    return () => mm.revert();
+  }, { dependencies: [open], scope: wrap });
+  return <div ref={wrap} style={{ height: 0, opacity: 0, overflow: 'hidden' }}>{children}</div>;
 }
