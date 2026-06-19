@@ -41,14 +41,14 @@ export default async function TrackJobPage({ params, searchParams }: Params) {
     return (
       <div className="text-center py-16">
         <p className="text-2xl mb-2">🔍</p>
-        <h2 className="text-lg font-semibold text-brand-accent mb-2">No Matching Job Found</h2>
-        <p className="text-sm text-brand-muted">
+        <h2 className="text-lg font-semibold text-white mb-2">No Matching Job Found</h2>
+        <p className="text-sm text-green-200">
           No result found for <strong>{searchTerm}</strong>.
           Please check and try again.
         </p>
         <a
           href="/track"
-          className="inline-block mt-6 text-sm text-brand-accent underline"
+          className="inline-block mt-6 text-sm text-green-200 underline hover:text-white"
         >
           ← Search again
         </a>

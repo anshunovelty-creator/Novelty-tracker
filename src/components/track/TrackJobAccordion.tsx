@@ -65,10 +65,10 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
       <div className="space-y-5">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-brand-accent">Result for "{poNumber}"</h2>
-            <p className="text-sm text-brand-muted">Single product order. Details are shown directly below.</p>
+            <h2 className="text-lg font-semibold text-white">Result for "{poNumber}"</h2>
+            <p className="text-sm text-green-200">Single product order. Details are shown directly below.</p>
           </div>
-          <a href="/track" className="text-sm text-brand-muted hover:text-brand-accent shrink-0">
+          <a href="/track" className="text-sm text-green-200 hover:text-white shrink-0">
             ← Search again
           </a>
         </div>
@@ -97,10 +97,10 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-brand-accent">Matching Jobs — "{poNumber}"</h2>
-          <p className="text-sm text-brand-muted">Open one job at a time. Click any row to expand it smoothly.</p>
+          <h2 className="text-lg font-semibold text-white">Matching Jobs — "{poNumber}"</h2>
+          <p className="text-sm text-green-200">Open one job at a time. Click any row to expand it smoothly.</p>
         </div>
-        <a href="/track" className="text-sm text-brand-muted hover:text-brand-accent shrink-0">
+        <a href="/track" className="text-sm text-green-200 hover:text-white shrink-0">
           ← Search again
         </a>
       </div>

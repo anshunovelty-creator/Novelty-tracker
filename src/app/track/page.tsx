@@ -4,6 +4,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { Reveal } from '@/components/motion/Reveal';
 
 export default function TrackPage() {
   const router = useRouter();
@@ -18,16 +19,19 @@ export default function TrackPage() {
 
   return (
     <div className="flex flex-col items-center pt-8">
-      <h1 className="text-2xl font-semibold text-brand-accent tracking-tight mb-2 text-center">
-        Track Your Order
-      </h1>
-      <p className="text-brand-muted text-sm text-center mb-8">
-        Enter your Purchase Order number or Job Name to see the current status.
-      </p>
+      <Reveal className="text-center">
+        <h1 className="text-3xl font-semibold text-white tracking-tight mb-2 text-center">
+          Track Your Order
+        </h1>
+        <p className="text-green-200 text-sm text-center mb-8">
+          Enter your Purchase Order number or Job Name to see the current status.
+        </p>
+      </Reveal>
 
+      <Reveal delay={0.1} className="w-full max-w-md">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-md space-y-3"
+        className="space-y-3"
       >
         <input
           type="text"
@@ -54,8 +58,9 @@ export default function TrackPage() {
           Track Order →
         </button>
       </form>
+      </Reveal>
 
-      <p className="mt-8 text-xs text-brand-muted text-center">
+      <p className="mt-8 text-xs text-green-200 text-center">
         Can't find your order? Contact us at{' '}
         <a href="mailto:orders@noveltylabels.com" className="underline">
           orders@noveltylabels.com
