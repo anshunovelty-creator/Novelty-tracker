@@ -3,11 +3,17 @@
 // useSearchParams() requires a Suspense boundary for static prerendering —
 // hence the LoginForm/LoginPage split.
 
-import React, { useState, Suspense } from 'react';
+import React, { useState, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useGSAP } from '@gsap/react';
+import { gsap } from 'gsap';
+import { registerGsap } from '@/lib/gsap/register';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
-import { Logo } from '@/components/brand/Logo';
+import { AuroraBackground } from '@/components/motion/AuroraBackground';
+import { LogoReveal } from '@/components/motion/LogoReveal';
+import { Stagger } from '@/components/motion/Stagger';
+registerGsap();
 
 export default function LoginPage() {
   return (
@@ -26,6 +32,8 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState<string | null>(null);
+
+  const cardRef = useRef<HTMLDivElement>(null);
 
   const supabase = createClient();
 
@@ -46,14 +54,35 @@ function LoginForm() {
     router.refresh();
   }
 
+  // Card lift on mount
+  useGSAP(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const mm = gsap.matchMedia();
+    mm.add('(prefers-reduced-motion: no-preference)', () =>
+      gsap.fromTo(el, { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6, ease: 'power3.out' }));
+    mm.add('(prefers-reduced-motion: reduce)', () => gsap.set(el, { opacity: 1, y: 0 }));
+    return () => mm.revert();
+  }, { scope: cardRef });
+
+  // Error shake
+  useGSAP(() => {
+    if (!error) return;
+    const mm = gsap.matchMedia();
+    mm.add('(prefers-reduced-motion: no-preference)', () =>
+      gsap.fromTo(cardRef.current, { x: -6 }, { x: 0, ease: 'elastic.out(1,0.4)', duration: 0.5 }));
+    return () => mm.revert();
+  }, { dependencies: [error], scope: cardRef });
+
   return (
-    <div className="min-h-screen bg-brand-bg flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen bg-brand-bg flex items-center justify-center px-4 relative overflow-hidden">
+      <AuroraBackground />
+      <div ref={cardRef} className="w-full max-w-sm relative" style={{ opacity: 0 }}>
 
         {/* Header */}
         <div className="mb-8">
           <div className="mb-6">
-            <Logo width={172} height={54} priority />
+            <LogoReveal width={172} height={54} />
           </div>
           <h1 className="text-2xl font-semibold text-brand-accent tracking-tight">
             Staff Portal
@@ -65,55 +94,57 @@ function LoginForm() {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-brand-accent mb-1.5"
-            >
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className={cn(
-                'w-full px-3 py-2.5 rounded-lg border text-sm',
-                'bg-white border-brand-border text-brand-accent',
-                'placeholder:text-brand-muted',
-                'focus:outline-none focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent',
-                'transition-colors'
-              )}
-              placeholder="you@noveltylabels.com"
-            />
-          </div>
+          <Stagger className="space-y-4">
+            <div>
+              <label
+                htmlFor="email"
+                className="block text-sm font-medium text-brand-accent mb-1.5"
+              >
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className={cn(
+                  'w-full px-3 py-2.5 rounded-lg border text-sm',
+                  'bg-white border-brand-border text-brand-accent',
+                  'placeholder:text-brand-muted',
+                  'focus:outline-none focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent',
+                  'transition-colors'
+                )}
+                placeholder="you@noveltylabels.com"
+              />
+            </div>
 
-          <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-brand-accent mb-1.5"
-            >
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className={cn(
-                'w-full px-3 py-2.5 rounded-lg border text-sm',
-                'bg-white border-brand-border text-brand-accent',
-                'placeholder:text-brand-muted',
-                'focus:outline-none focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent',
-                'transition-colors'
-              )}
-              placeholder="••••••••"
-            />
-          </div>
+            <div>
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-brand-accent mb-1.5"
+              >
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={cn(
+                  'w-full px-3 py-2.5 rounded-lg border text-sm',
+                  'bg-white border-brand-border text-brand-accent',
+                  'placeholder:text-brand-muted',
+                  'focus:outline-none focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent',
+                  'transition-colors'
+                )}
+                placeholder="••••••••"
+              />
+            </div>
+          </Stagger>
 
           {error && (
             <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
