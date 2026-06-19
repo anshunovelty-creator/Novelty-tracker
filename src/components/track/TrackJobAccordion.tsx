@@ -15,6 +15,7 @@ import DeliveryCountdown from './DeliveryCountdown';
 import StatusBanners from './StatusBanners';
 import DispatchSummaryCard from './DispatchSummaryCard';
 import ScheduledReleaseCard from './ScheduledReleaseCard';
+import { Reveal } from '@/components/motion/Reveal';
 
 registerGsap();
 
@@ -150,47 +151,47 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
                 <div className="px-5 pb-5 space-y-5">
                   <StatusBanners job={bundle.job} />
 
-                  <div className="bg-white border border-brand-border rounded-2xl p-5 shadow-[0_1px_0_rgba(0,0,0,0.02)]">
-                    <div className="flex items-start justify-between gap-2 flex-wrap mb-3">
-                      <div>
-                        <p className="font-mono text-xs text-brand-muted mb-0.5">{bundle.job.po_number}</p>
-                        {bundle.job.pm_code && (
-                          <p className="font-mono text-xs text-brand-muted">{bundle.job.pm_code}</p>
+                  <Reveal onScroll>
+                    <div className="bg-white border border-brand-border rounded-2xl p-5 shadow-[0_1px_0_rgba(0,0,0,0.02)]">
+                      <div className="flex items-start justify-between gap-2 flex-wrap mb-3">
+                        <div>
+                          <p className="font-mono text-xs text-brand-muted mb-0.5">{bundle.job.po_number}</p>
+                          {bundle.job.pm_code && (
+                            <p className="font-mono text-xs text-brand-muted">{bundle.job.pm_code}</p>
+                          )}
+                          <h2 className="text-lg font-semibold text-brand-accent mt-1">
+                            {bundle.job.job_name ?? bundle.job.party}
+                          </h2>
+                          <p className="text-sm text-brand-muted">{bundle.job.party}</p>
+                        </div>
+                        <div className="flex flex-col items-end gap-1.5">
+                          <StatusPill status={bundle.job.status} />
+                          <span className="text-xs text-brand-muted">{bundle.job.job_type}</span>
+                        </div>
+                      </div>
+
+                      <ProgressBar
+                        percent={getProgressPercent(
+                          bundle.stageTimestamps.map((t) => t.stage as Stage),
+                          bundle.job.job_type
                         )}
-                        <h2 className="text-lg font-semibold text-brand-accent mt-1">
-                          {bundle.job.job_name ?? bundle.job.party}
-                        </h2>
-                        <p className="text-sm text-brand-muted">{bundle.job.party}</p>
-                      </div>
-                      <div className="flex flex-col items-end gap-1.5">
-                        <span className="text-xs px-2.5 py-1 rounded-full bg-brand-bg border border-brand-border text-brand-accent font-medium">
-                          {bundle.job.status}
-                        </span>
-                        <span className="text-xs text-brand-muted">{bundle.job.job_type}</span>
-                      </div>
-                    </div>
+                        status={bundle.job.status}
+                      />
 
-                    <ProgressBar
-                      percent={getProgressPercent(
-                        bundle.stageTimestamps.map((t) => t.stage as Stage),
-                        bundle.job.job_type
+                      <DeliveryCountdown deliveryDate={bundle.job.delivery_date} />
+
+                      {bundle.statusLogs[bundle.statusLogs.length - 1] && (
+                        <p className="text-xs text-brand-muted mt-3 pt-3 border-t border-brand-border">
+                          Last updated by{' '}
+                          <strong className="font-medium">
+                            {bundle.statusLogs[bundle.statusLogs.length - 1].department_display}
+                          </strong>
+                          {' · '}
+                          {formatShortDate(bundle.statusLogs[bundle.statusLogs.length - 1].changed_at)}
+                        </p>
                       )}
-                      status={bundle.job.status}
-                    />
-
-                    <DeliveryCountdown deliveryDate={bundle.job.delivery_date} />
-
-                    {bundle.statusLogs[bundle.statusLogs.length - 1] && (
-                      <p className="text-xs text-brand-muted mt-3 pt-3 border-t border-brand-border">
-                        Last updated by{' '}
-                        <strong className="font-medium">
-                          {bundle.statusLogs[bundle.statusLogs.length - 1].department_display}
-                        </strong>
-                        {' · '}
-                        {formatShortDate(bundle.statusLogs[bundle.statusLogs.length - 1].changed_at)}
-                      </p>
-                    )}
-                  </div>
+                    </div>
+                  </Reveal>
 
                   <StagePipeline
                     job={bundle.job}
@@ -202,35 +203,41 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
                   />
 
                   {(bundle.job.dispatched_qty ?? 0) > 0 && (
-                    <DispatchSummaryCard
-                      total={bundle.job.label_qty}
-                      dispatched={bundle.job.dispatched_qty}
-                      remaining={bundle.job.remaining_qty}
-                    />
+                    <Reveal onScroll>
+                      <DispatchSummaryCard
+                        total={bundle.job.label_qty}
+                        dispatched={bundle.job.dispatched_qty}
+                        remaining={bundle.job.remaining_qty}
+                      />
+                    </Reveal>
                   )}
 
                   {bundle.job.is_scheduled_release && bundle.schedules.length > 0 && (
-                    <ScheduledReleaseCard schedules={bundle.schedules} />
+                    <Reveal onScroll>
+                      <ScheduledReleaseCard schedules={bundle.schedules} />
+                    </Reveal>
                   )}
 
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      { label: 'Total Ordered', value: formatQty(bundle.job.label_qty) },
-                      { label: 'PO Date', value: formatShortDate(bundle.job.po_date) },
-                      { label: 'Delivery Date', value: formatShortDate(bundle.job.delivery_date) },
-                      {
-                        label: 'Current Stage Since',
-                        value: bundle.statusLogs[bundle.statusLogs.length - 1]
-                          ? formatShortDate(bundle.statusLogs[bundle.statusLogs.length - 1].changed_at)
-                          : '—',
-                      },
-                    ].map((item) => (
-                      <div key={item.label} className="bg-white border border-brand-border rounded-xl p-3">
-                        <p className="text-xs text-brand-muted mb-0.5">{item.label}</p>
-                        <p className="text-sm font-medium text-brand-accent font-mono">{item.value}</p>
-                      </div>
-                    ))}
-                  </div>
+                  <Reveal onScroll>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        { label: 'Total Ordered', value: formatQty(bundle.job.label_qty) },
+                        { label: 'PO Date', value: formatShortDate(bundle.job.po_date) },
+                        { label: 'Delivery Date', value: formatShortDate(bundle.job.delivery_date) },
+                        {
+                          label: 'Current Stage Since',
+                          value: bundle.statusLogs[bundle.statusLogs.length - 1]
+                            ? formatShortDate(bundle.statusLogs[bundle.statusLogs.length - 1].changed_at)
+                            : '—',
+                        },
+                      ].map((item) => (
+                        <div key={item.label} className="bg-white border border-brand-border rounded-xl p-3">
+                          <p className="text-xs text-brand-muted mb-0.5">{item.label}</p>
+                          <p className="text-sm font-medium text-brand-accent font-mono">{item.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </Reveal>
                 </div>
               </ExpandPanel>
             </article>
@@ -248,45 +255,45 @@ function SingleJobDetail({ bundle }: { bundle: TrackJobBundle }) {
     <div className="space-y-5 p-5">
       <StatusBanners job={bundle.job} />
 
-      <div className="bg-white border border-brand-border rounded-2xl p-5 shadow-[0_1px_0_rgba(0,0,0,0.02)]">
-        <div className="flex items-start justify-between gap-2 flex-wrap mb-3">
-          <div>
-            <p className="font-mono text-xs text-brand-muted mb-0.5">{bundle.job.po_number}</p>
-            {bundle.job.pm_code && (
-              <p className="font-mono text-xs text-brand-muted">{bundle.job.pm_code}</p>
+      <Reveal onScroll>
+        <div className="bg-white border border-brand-border rounded-2xl p-5 shadow-[0_1px_0_rgba(0,0,0,0.02)]">
+          <div className="flex items-start justify-between gap-2 flex-wrap mb-3">
+            <div>
+              <p className="font-mono text-xs text-brand-muted mb-0.5">{bundle.job.po_number}</p>
+              {bundle.job.pm_code && (
+                <p className="font-mono text-xs text-brand-muted">{bundle.job.pm_code}</p>
+              )}
+              <h2 className="text-lg font-semibold text-brand-accent mt-1">
+                {bundle.job.job_name ?? bundle.job.party}
+              </h2>
+              <p className="text-sm text-brand-muted">{bundle.job.party}</p>
+            </div>
+            <div className="flex flex-col items-end gap-1.5">
+              <StatusPill status={bundle.job.status} />
+              <span className="text-xs text-brand-muted">{bundle.job.job_type}</span>
+            </div>
+          </div>
+
+          <ProgressBar
+            percent={getProgressPercent(
+              bundle.stageTimestamps.map((t) => t.stage as Stage),
+              bundle.job.job_type
             )}
-            <h2 className="text-lg font-semibold text-brand-accent mt-1">
-              {bundle.job.job_name ?? bundle.job.party}
-            </h2>
-            <p className="text-sm text-brand-muted">{bundle.job.party}</p>
-          </div>
-          <div className="flex flex-col items-end gap-1.5">
-            <span className="text-xs px-2.5 py-1 rounded-full bg-brand-bg border border-brand-border text-brand-accent font-medium">
-              {bundle.job.status}
-            </span>
-            <span className="text-xs text-brand-muted">{bundle.job.job_type}</span>
-          </div>
-        </div>
+            status={bundle.job.status}
+          />
 
-        <ProgressBar
-          percent={getProgressPercent(
-            bundle.stageTimestamps.map((t) => t.stage as Stage),
-            bundle.job.job_type
+          <DeliveryCountdown deliveryDate={bundle.job.delivery_date} />
+
+          {latestLog && (
+            <p className="text-xs text-brand-muted mt-3 pt-3 border-t border-brand-border">
+              Last updated by{' '}
+              <strong className="font-medium">{latestLog.department_display}</strong>
+              {' · '}
+              {formatShortDate(latestLog.changed_at)}
+            </p>
           )}
-          status={bundle.job.status}
-        />
-
-        <DeliveryCountdown deliveryDate={bundle.job.delivery_date} />
-
-        {latestLog && (
-          <p className="text-xs text-brand-muted mt-3 pt-3 border-t border-brand-border">
-            Last updated by{' '}
-            <strong className="font-medium">{latestLog.department_display}</strong>
-            {' · '}
-            {formatShortDate(latestLog.changed_at)}
-          </p>
-        )}
-      </div>
+        </div>
+      </Reveal>
 
       <StagePipeline
         job={bundle.job}
@@ -298,34 +305,68 @@ function SingleJobDetail({ bundle }: { bundle: TrackJobBundle }) {
       />
 
       {(bundle.job.dispatched_qty ?? 0) > 0 && (
-        <DispatchSummaryCard
-          total={bundle.job.label_qty}
-          dispatched={bundle.job.dispatched_qty}
-          remaining={bundle.job.remaining_qty}
-        />
+        <Reveal onScroll>
+          <DispatchSummaryCard
+            total={bundle.job.label_qty}
+            dispatched={bundle.job.dispatched_qty}
+            remaining={bundle.job.remaining_qty}
+          />
+        </Reveal>
       )}
 
       {bundle.job.is_scheduled_release && bundle.schedules.length > 0 && (
-        <ScheduledReleaseCard schedules={bundle.schedules} />
+        <Reveal onScroll>
+          <ScheduledReleaseCard schedules={bundle.schedules} />
+        </Reveal>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
-        {[
-          { label: 'Total Ordered', value: formatQty(bundle.job.label_qty) },
-          { label: 'PO Date', value: formatShortDate(bundle.job.po_date) },
-          { label: 'Delivery Date', value: formatShortDate(bundle.job.delivery_date) },
-          {
-            label: 'Current Stage Since',
-            value: latestLog ? formatShortDate(latestLog.changed_at) : '—',
-          },
-        ].map((item) => (
-          <div key={item.label} className="bg-white border border-brand-border rounded-xl p-3">
-            <p className="text-xs text-brand-muted mb-0.5">{item.label}</p>
-            <p className="text-sm font-medium text-brand-accent font-mono">{item.value}</p>
-          </div>
-        ))}
-      </div>
+      <Reveal onScroll>
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            { label: 'Total Ordered', value: formatQty(bundle.job.label_qty) },
+            { label: 'PO Date', value: formatShortDate(bundle.job.po_date) },
+            { label: 'Delivery Date', value: formatShortDate(bundle.job.delivery_date) },
+            {
+              label: 'Current Stage Since',
+              value: latestLog ? formatShortDate(latestLog.changed_at) : '—',
+            },
+          ].map((item) => (
+            <div key={item.label} className="bg-white border border-brand-border rounded-xl p-3">
+              <p className="text-xs text-brand-muted mb-0.5">{item.label}</p>
+              <p className="text-sm font-medium text-brand-accent font-mono">{item.value}</p>
+            </div>
+          ))}
+        </div>
+      </Reveal>
     </div>
+  );
+}
+
+/** One-shot scale-pop flourish for Dispatched / PO Closed status pills. */
+function StatusPill({ status }: { status: string }) {
+  const pillRef = useRef<HTMLSpanElement>(null);
+  const isSpecial = status === 'Dispatched' || status === 'PO Closed';
+
+  useGSAP(() => {
+    const el = pillRef.current;
+    if (!el || !isSpecial) return;
+    const mm = gsap.matchMedia();
+    mm.add('(prefers-reduced-motion: no-preference)', () => {
+      gsap.fromTo(el, { scale: 0.85 }, { scale: 1, ease: 'back.out(2)', duration: 0.5 });
+    });
+    mm.add('(prefers-reduced-motion: reduce)', () => {
+      gsap.set(el, { scale: 1 });
+    });
+    return () => mm.revert();
+  }, { scope: pillRef });
+
+  return (
+    <span
+      ref={pillRef}
+      className="text-xs px-2.5 py-1 rounded-full bg-brand-bg border border-brand-border text-brand-accent font-medium"
+    >
+      {status}
+    </span>
   );
 }
 

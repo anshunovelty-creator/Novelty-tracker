@@ -1,10 +1,16 @@
 'use client';
 // src/components/track/StagePipeline.tsx
 
+import { useRef } from 'react';
+import { useGSAP } from '@gsap/react';
+import { gsap } from 'gsap';
+import { registerGsap } from '@/lib/gsap/register';
 import { cn, formatClientDate, formatQty } from '@/lib/utils';
 import { REPEAT_SKIPPED_STAGES } from '@/lib/constants/stages';
 import type { JobStageTimestamp, PrintRun } from '@/lib/types';
 import type { Stage } from '@/lib/constants/stages';
+
+registerGsap();
 
 type StatusLog = {
   id:                 string;
@@ -41,6 +47,23 @@ export default function StagePipeline({
   stageTimestamps,
   printRuns = [],
 }: Props) {
+  const root = useRef<HTMLDivElement>(null);
+
+  useGSAP(() => {
+    const el = root.current;
+    if (!el) return;
+    const nodes = el.querySelectorAll('[data-stage-node]');
+    const lines = el.querySelectorAll('[data-stage-line]');
+    const mm = gsap.matchMedia();
+    mm.add('(prefers-reduced-motion: no-preference)', () => {
+      const tl = gsap.timeline();
+      tl.fromTo(nodes, { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.35, stagger: 0.08, ease: 'back.out(1.7)' });
+      tl.fromTo(lines, { scaleY: 0, transformOrigin: 'top center' }, { scaleY: 1, duration: 0.25, stagger: 0.08 }, '<0.1');
+    });
+    mm.add('(prefers-reduced-motion: reduce)', () => { gsap.set([nodes, lines], { clearProps: 'all' }); });
+    return () => mm.revert();
+  }, { scope: root });
+
   // Build a map: stage → most recent log entry
   const logMap = new Map<string, StatusLog>();
   for (const log of statusLogs) {
@@ -79,7 +102,7 @@ export default function StagePipeline({
   }
 
   return (
-    <div className="bg-white border border-brand-border rounded-2xl p-5">
+    <div ref={root} className="bg-white border border-brand-border rounded-2xl p-5">
       <h3 className="text-sm font-semibold text-brand-accent mb-4">Order Progress</h3>
 
       <div className="space-y-0">
@@ -107,21 +130,25 @@ export default function StagePipeline({
               <div className="relative flex flex-col items-center shrink-0 pt-0.5">
                 {/* Dot */}
                 {isSkipped ? (
-                  <div className="w-3 h-3 rounded-full border-2 border-dashed border-brand-muted" />
+                  <div data-stage-node className="w-3 h-3 rounded-full border-2 border-dashed border-brand-muted" />
                 ) : isCompleted && isOnHold ? (
-                  <div className="w-3 h-3 rounded-full bg-amber-500" />
+                  <div data-stage-node className="w-3 h-3 rounded-full bg-amber-500" />
                 ) : isCompleted && isQC ? (
-                  <div className="w-3 h-3 rounded-full bg-sky-500" />
+                  <div data-stage-node className="w-3 h-3 rounded-full bg-sky-500" />
                 ) : isCompleted ? (
-                  <div className="w-3 h-3 rounded-full bg-green-500 flex items-center justify-center">
+                  <div data-stage-node className="w-3 h-3 rounded-full bg-green-500 flex items-center justify-center">
                     <span className="text-white text-[8px] leading-none">✓</span>
                   </div>
                 ) : isCurrent ? (
                   <div className="relative">
-                    <div className="w-3 h-3 rounded-full bg-brand-primary dot-pulse" />
+                    <div data-stage-node className="w-3 h-3 rounded-full bg-brand-primary dot-pulse" />
                   </div>
                 ) : (
-                  <div className="w-3 h-3 rounded-full border-2 border-brand-border bg-white" />
+                  <div data-stage-node className="w-3 h-3 rounded-full border-2 border-brand-border bg-white" />
+                )}
+                {/* Vertical connector line between consecutive stage nodes */}
+                {idx < allDisplayStages.length - 1 && (
+                  <div data-stage-line className="w-px flex-1 min-h-[1rem] bg-brand-border/40 mt-1" />
                 )}
               </div>
 
