@@ -5,14 +5,18 @@
 
 /* ── CSS custom properties (mirror tailwind.config.ts brand tokens) ── */
 :root {
-  --color-bg:      #f7f7f5;
-  --color-surface: #ffffff;
-  --color-border:  #e5e5e2;
-  --color-accent:  #1a1a18;
-  --color-muted:   #a8a8a0;
-  --color-green:   #16a34a;
-  --color-amber:   #b45309;
-  --color-red:     #b91c1c;
+  --color-bg:            #F5F7F4;
+  --color-surface:       #FFFFFF;
+  --color-border:        #E4EAE6;
+  --color-ink:           #0C2A20;
+  --color-accent:        #0C2A20; /* = ink */
+  --color-primary:       #10553F;
+  --color-primary-hover: #0C4232;
+  --color-header:        #10553F;
+  --color-muted:         #6A7A72;
+  --color-success:       #1B7A4E;
+  --color-warning:       #C2740C;
+  --color-danger:        #C0392B;
 
   --font-sans: var(--font-dm-sans), system-ui, sans-serif;
   --font-mono: var(--font-dm-mono), ui-monospace, monospace;

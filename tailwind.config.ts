@@ -12,15 +12,29 @@ const config: Config = {
       // ── Brand colors from spec ──────────────────────────────
       colors: {
         brand: {
-          bg:       '#f7f7f5',   // off-white page background
-          surface:  '#ffffff',   // cards
-          border:   '#e5e5e2',   // dividers
-          accent:   '#1a1a18',   // near-black — primary action color
-          header:   '#1a1a18',   // nav/header background
-          muted:    '#a8a8a0',   // secondary text
-          green:    '#16a34a',   // completed, success
-          amber:    '#b45309',   // warnings, remaining qty
-          red:      '#b91c1c',   // error, urgent priority 1
+          bg:              '#F5F7F4', // warm near-white page bg
+          surface:         '#FFFFFF', // cards
+          border:          '#E4EAE6', // dividers (greenish)
+          ink:             '#0C2A20', // primary text (dark green-black)
+          accent:          '#0C2A20', // = ink. Kept so existing text-/border-/ring-brand-accent stay readable.
+          primary:         '#10553F', // brand fills / actions (green-700, the seed)
+          'primary-hover': '#0C4232', // button/link hover
+          header:          '#10553F', // header/nav bg (was near-black)
+          muted:           '#6A7A72', // secondary text (green-gray)
+          success:         '#1B7A4E',
+          warning:         '#C2740C',
+          danger:          '#C0392B',
+          hold:            '#5B6B63',
+          pending:         '#94A39B',
+          // legacy semantic names still referenced in code:
+          green:           '#1B7A4E',
+          amber:           '#C2740C',
+          red:             '#C0392B',
+        },
+        green: {
+          50:  '#F0F6F3', 100: '#DCEDE5', 200: '#B9DBCB', 300: '#8AC2A9',
+          400: '#4FA582', 500: '#2C8763', 600: '#1A6B4B', 700: '#10553F',
+          800: '#0C4232', 900: '#082F24', 950: '#05201A',
         },
       },
 
