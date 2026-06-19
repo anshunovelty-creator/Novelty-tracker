@@ -7,6 +7,7 @@ import React, { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
+import { Logo } from '@/components/brand/Logo';
 
 export default function LoginPage() {
   return (
@@ -51,8 +52,8 @@ function LoginForm() {
 
         {/* Header */}
         <div className="mb-8">
-          <div className="w-10 h-10 bg-brand-accent rounded-lg mb-6 flex items-center justify-center">
-            <span className="text-white text-lg font-bold">N</span>
+          <div className="mb-6">
+            <Logo width={172} height={54} priority />
           </div>
           <h1 className="text-2xl font-semibold text-brand-accent tracking-tight">
             Staff Portal

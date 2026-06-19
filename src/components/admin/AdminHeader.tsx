@@ -4,6 +4,7 @@
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import type { Department } from '@/lib/constants/departments';
+import { Logo } from '@/components/brand/Logo';
 
 type Props = {
   dept:        Department;
@@ -26,16 +27,7 @@ export default function AdminHeader({ dept, displayName }: Props) {
 
         {/* Brand */}
         <div className="flex items-center gap-3">
-          <div className="w-7 h-7 bg-white/10 rounded-md flex items-center justify-center">
-            <span className="text-white text-xs font-bold">N</span>
-          </div>
-          <span className="text-white font-semibold text-sm tracking-tight hidden sm:block">
-            Novelty Labels
-          </span>
-          <span className="text-white/30 hidden sm:block">·</span>
-          <span className="text-white/60 text-sm hidden sm:block">
-            Job Tracker
-          </span>
+          <Logo onDark width={120} height={30} priority />
         </div>
 
         {/* Right side */}
