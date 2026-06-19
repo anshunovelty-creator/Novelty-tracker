@@ -17,6 +17,12 @@
   --color-success:       #1B7A4E;
   --color-warning:       #C2740C;
   --color-danger:        #C0392B;
+  --color-hold:          #5B6B63;
+  --color-pending:       #94A39B;
+  /* legacy aliases (mirror brand.green/amber/red) */
+  --color-green:         #1B7A4E;
+  --color-amber:         #C2740C;
+  --color-red:           #C0392B;
 
   --font-sans: var(--font-dm-sans), system-ui, sans-serif;
   --font-mono: var(--font-dm-mono), ui-monospace, monospace;
