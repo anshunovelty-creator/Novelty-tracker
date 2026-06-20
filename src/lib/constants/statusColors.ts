@@ -13,30 +13,44 @@ type ColorConfig = {
 };
 
 export const STATUS_COLORS: Record<Stage, ColorConfig> = {
-  'PO Received':             { bg: 'bg-gray-100',    text: 'text-gray-700' },
-  'Artwork Received':        { bg: 'bg-purple-100',  text: 'text-purple-700' },
-  'Prepress / Design Check': { bg: 'bg-blue-100',    text: 'text-blue-700' },
-  'Sample Printing':         { bg: 'bg-amber-100',   text: 'text-amber-700' },
-  'Shade Card Sent':         { bg: 'bg-orange-100',  text: 'text-orange-700' },
-  'Shade Card Approved':     { bg: 'bg-green-100',   text: 'text-green-700' },
-  'In Printing':             { bg: 'bg-green-100',   text: 'text-green-700' },
-  'Slitting':                { bg: 'bg-blue-100',    text: 'text-blue-700' },
-  'Quality Check':           { bg: 'bg-sky-100',     text: 'text-sky-700' },
-  'Packing':                 { bg: 'bg-purple-100',  text: 'text-purple-700' },
-  'Ready to Dispatch':       { bg: 'bg-yellow-100',  text: 'text-yellow-800' },
-  'Partial Dispatch':        { bg: 'bg-amber-100',   text: 'text-amber-700' },
-  'Dispatched':              { bg: 'bg-green-100',   text: 'text-green-700' },
-  'On Hold':                 { bg: 'bg-orange-100',  text: 'text-orange-700' },
-  'PO Closed':               { bg: 'bg-green-100',   text: 'text-green-700' },
+  'PO Received':             { bg: 'bg-white/10',     text: 'text-white/80' },
+  'Artwork Received':        { bg: 'bg-purple-400/15', text: 'text-purple-200' },
+  'Prepress / Design Check': { bg: 'bg-sky-400/15',    text: 'text-sky-200' },
+  'Sample Printing':         { bg: 'bg-amber-400/15',  text: 'text-amber-200' },
+  'Shade Card Sent':         { bg: 'bg-orange-400/15', text: 'text-orange-200' },
+  'Shade Card Approved':     { bg: 'bg-emerald-400/15', text: 'text-emerald-200' },
+  'In Printing':             { bg: 'bg-emerald-400/15', text: 'text-emerald-200' },
+  'Slitting':                { bg: 'bg-sky-400/15',    text: 'text-sky-200' },
+  'Quality Check':           { bg: 'bg-sky-400/18',    text: 'text-sky-200' },
+  'Packing':                 { bg: 'bg-purple-400/15', text: 'text-purple-200' },
+  'Ready to Dispatch':       { bg: 'bg-yellow-400/15', text: 'text-yellow-100' },
+  'Partial Dispatch':        { bg: 'bg-amber-400/15',  text: 'text-amber-200' },
+  'Dispatched':              { bg: 'bg-emerald-400/18', text: 'text-emerald-200' },
+  'On Hold':                 { bg: 'bg-amber-400/18',  text: 'text-amber-100' },
+  'PO Closed':               { bg: 'bg-emerald-400/18', text: 'text-emerald-200' },
 };
 
 // Row background tints for admin panel
 // These override based on urgency / special status (On Hold > urgent)
 export const ROW_URGENCY_STYLES = {
-  onHold:   'border-l-4 border-l-amber-400  bg-amber-50/60',
-  urgent1:  'border-l-4 border-l-red-500    bg-red-50/50',
-  urgent2:  'border-l-4 border-l-orange-400 bg-orange-50/50',
-  urgent3:  'border-l-4 border-l-yellow-400 bg-yellow-50/40',
-  qc:       'border-l-4 border-l-sky-400    bg-sky-50/40',
+  onHold:   'border-l-4 border-l-amber-400/80  bg-amber-400/[0.07]',
+  urgent1:  'border-l-4 border-l-red-400/90    bg-red-400/[0.08]',
+  urgent2:  'border-l-4 border-l-orange-400/80 bg-orange-400/[0.07]',
+  urgent3:  'border-l-4 border-l-yellow-400/70 bg-yellow-400/[0.05]',
+  qc:       'border-l-4 border-l-sky-400/80    bg-sky-400/[0.06]',
   normal:   '',
 } as const;
+
+// Job-type badge (dark glass)
+export const JOB_TYPE_BADGE: Record<'New' | 'Repeat' | 'Artwork Changed', string> = {
+  'New':             'bg-sky-400/15 text-sky-200',
+  'Repeat':          'bg-white/10 text-white/70',
+  'Artwork Changed': 'bg-purple-400/15 text-purple-200',
+};
+
+// Urgent priority badge (dark glass) — keyed by urgent_priority (1,2,else)
+export function urgentBadgeClass(priority: number | null): string {
+  if (priority === 1) return 'bg-red-400/15 text-red-200';
+  if (priority === 2) return 'bg-orange-400/15 text-orange-200';
+  return 'bg-yellow-400/15 text-yellow-100';
+}
