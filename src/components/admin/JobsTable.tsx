@@ -8,6 +8,7 @@ import type { Department } from '@/lib/constants/departments';
 import JobRow from './JobRow';
 import FilterBar from './FilterBar';
 import AddJobForm from './AddJobForm';
+import { SkeletonRows } from '@/components/ui/Skeleton';
 
 type Props = {
   initialJobs: Job[];
@@ -75,10 +76,10 @@ export default function JobsTable({ initialJobs, dept }: Props) {
     <div>
       {/* Toolbar + Add Job Form */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-4">
-        <h2 className="text-base font-semibold text-brand-accent pt-2">
+        <h2 className="text-base font-semibold text-[var(--glass-ink)] pt-2">
           Active Jobs
           {jobs.length > 0 && (
-            <span className="ml-2 text-brand-muted font-normal text-sm">({jobs.length})</span>
+            <span className="ml-2 text-[var(--glass-muted)] font-normal text-sm">({jobs.length})</span>
           )}
         </h2>
         <AddJobForm
@@ -103,7 +104,7 @@ export default function JobsTable({ initialJobs, dept }: Props) {
       />
 
       {/* Table */}
-      <div className="table-scroll-wrapper rounded-xl border border-brand-border bg-white mt-3 overflow-hidden">
+      <div className="table-scroll-wrapper rounded-xl glass mt-3 overflow-hidden">
         {loading && (
           <div className="h-1 bg-brand-primary/20 relative overflow-hidden">
             <div className="absolute inset-y-0 left-0 bg-brand-primary"
@@ -113,18 +114,20 @@ export default function JobsTable({ initialJobs, dept }: Props) {
 
         <table className="w-full min-w-[900px] border-collapse text-sm">
           <thead>
-            <tr className="border-b border-brand-border">
+            <tr className="border-b border-white/12">
               {['PO / PM', 'Party / Job', 'Dispatch', 'Delivery', 'Type', 'Status', 'Last Updated', 'Actions'].map((col) => (
-                <th key={col} className="px-4 py-3 text-left text-xs font-medium text-brand-muted uppercase tracking-wide whitespace-nowrap">
+                <th key={col} className="px-4 py-3 text-left text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide whitespace-nowrap">
                   {col}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {jobs.length === 0 ? (
+            {loading && jobs.length === 0 ? (
+              <SkeletonRows rows={5} cols={8} />
+            ) : jobs.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-brand-muted text-sm">
+                <td colSpan={8} className="px-4 py-12 text-center text-[var(--glass-muted)] text-sm">
                   {search || statusFilter || urgentOnly
                     ? 'No jobs match your filters.'
                     : 'No active jobs. Add one above.'}

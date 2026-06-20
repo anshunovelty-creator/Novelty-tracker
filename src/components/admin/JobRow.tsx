@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { cn, formatAdminDate, formatShortDate, formatQty } from '@/lib/utils';
-import { STATUS_COLORS, ROW_URGENCY_STYLES } from '@/lib/constants/statusColors';
+import { STATUS_COLORS, ROW_URGENCY_STYLES, JOB_TYPE_BADGE, urgentBadgeClass } from '@/lib/constants/statusColors';
 import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES } from '@/lib/constants/stages';
 import { canDeptSetStage } from '@/lib/constants/departments';
 import type { Job } from '@/lib/types';
@@ -55,7 +55,7 @@ export default function JobRow({
 
   // ── Row visual class ────────────────────────────────────────
   const rowClass = cn(
-    'border-b border-brand-border transition-colors',
+    'border-b border-white/8 transition-colors',
     job.status === 'On Hold'
       ? ROW_URGENCY_STYLES.onHold
       : job.status === 'Quality Check'
@@ -175,16 +175,14 @@ export default function JobRow({
       <tr className={rowClass}>
         {/* PO / PM */}
         <td className="px-4 py-3 min-w-[130px]">
-          <p className="font-mono text-xs font-medium text-brand-accent">{job.po_number}</p>
+          <p className="font-mono text-xs font-medium text-[var(--glass-ink)]">{job.po_number}</p>
           {job.pm_code && (
-            <p className="font-mono text-xs text-brand-muted mt-0.5">{job.pm_code}</p>
+            <p className="font-mono text-xs text-[var(--glass-muted)] mt-0.5">{job.pm_code}</p>
           )}
           {job.urgent && (
             <span className={cn(
               'inline-flex items-center gap-1 mt-1 text-xs font-medium px-1.5 py-0.5 rounded',
-              job.urgent_priority === 1 ? 'bg-red-100 text-red-700' :
-              job.urgent_priority === 2 ? 'bg-orange-100 text-orange-700' :
-              'bg-yellow-100 text-yellow-700'
+              urgentBadgeClass(job.urgent_priority)
             )}>
               <span className="dot-pulse inline-block w-1.5 h-1.5 rounded-full bg-current" />
               P{job.urgent_priority}
@@ -194,22 +192,22 @@ export default function JobRow({
 
         {/* Party / Job name + notes */}
         <td className="px-4 py-3 min-w-[200px]">
-          <p className="font-medium text-brand-accent text-sm truncate max-w-[220px]">{job.party}</p>
+          <p className="font-medium text-[var(--glass-ink)] text-sm truncate max-w-[220px]">{job.party}</p>
           {job.job_name && (
-            <p className="text-xs text-brand-muted truncate max-w-[220px] mt-0.5">{job.job_name}</p>
+            <p className="text-xs text-[var(--glass-muted)] truncate max-w-[220px] mt-0.5">{job.job_name}</p>
           )}
           {job.has_partial_runs && (
-            <span className="inline-block mt-1 text-[11px] font-medium px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
+            <span className="inline-block mt-1 text-[11px] font-medium px-1.5 py-0.5 rounded bg-purple-400/15 text-purple-200">
               Partial Runs
             </span>
           )}
           {job.halt_remark && job.status === 'On Hold' && (
-            <p className="text-xs text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mt-1 truncate max-w-[220px]">
+            <p className="text-xs text-amber-200 bg-amber-400/10 rounded px-1.5 py-0.5 mt-1 truncate max-w-[220px]">
               ⏸ {job.halt_remark}
             </p>
           )}
           {job.notes && (
-            <p className="text-xs text-brand-muted mt-0.5 truncate max-w-[220px]">{job.notes}</p>
+            <p className="text-xs text-[var(--glass-muted)] mt-0.5 truncate max-w-[220px]">{job.notes}</p>
           )}
         </td>
 
@@ -217,24 +215,24 @@ export default function JobRow({
         <td className="px-4 py-3 min-w-[120px]">
           {job.label_qty ? (
             <div>
-              <p className="font-mono text-xs text-brand-accent">
+              <p className="font-mono text-xs text-[var(--glass-ink)]">
                 {formatQty(effectiveDispatched)} / {formatQty(job.label_qty)}
                 {job.has_partial_runs && (
-                  <span className="text-brand-muted"> dispatched</span>
+                  <span className="text-[var(--glass-muted)]"> dispatched</span>
                 )}
               </p>
-              <div className="h-1.5 bg-brand-bg rounded-full mt-1.5 w-20">
+              <div className="h-1.5 bg-white/10 rounded-full mt-1.5 w-20">
                 <div
-                  className="h-full bg-green-500 rounded-full transition-all"
+                  className="h-full bg-emerald-400 rounded-full transition-all"
                   style={{ width: `${dispatchPct}%` }}
                 />
               </div>
               {job.is_scheduled_release && (
-                <p className="text-xs text-blue-600 mt-1">Scheduled</p>
+                <p className="text-xs text-sky-200 mt-1">Scheduled</p>
               )}
             </div>
           ) : (
-            <span className="text-brand-muted text-xs">—</span>
+            <span className="text-[var(--glass-muted)] text-xs">—</span>
           )}
         </td>
 
@@ -252,9 +250,7 @@ export default function JobRow({
         <td className="px-4 py-3">
           <span className={cn(
             'text-xs px-2 py-0.5 rounded font-medium',
-            job.job_type === 'New'             ? 'bg-blue-100 text-blue-700' :
-            job.job_type === 'Repeat'          ? 'bg-gray-100 text-gray-600' :
-            'bg-purple-100 text-purple-700'
+            JOB_TYPE_BADGE[job.job_type]
           )}>
             {job.job_type}
           </span>
@@ -272,7 +268,8 @@ export default function JobRow({
               'transition-colors cursor-pointer',
               STATUS_COLORS[job.status]?.bg ?? 'bg-gray-100',
               STATUS_COLORS[job.status]?.text ?? 'text-gray-700',
-              'border-transparent'
+              'border-transparent',
+              '[&>option]:bg-[#0A1F18] [&>option]:text-[var(--glass-ink)]'
             )}
           >
             {availableStages.map((stage) => {
@@ -293,7 +290,7 @@ export default function JobRow({
 
         {/* Last updated */}
         <td className="px-4 py-3 min-w-[140px]">
-          <p className="text-xs text-brand-muted font-mono">{lastUpdatedLine}</p>
+          <p className="text-xs text-[var(--glass-muted)] font-mono">{lastUpdatedLine}</p>
         </td>
 
         {/* Actions */}
@@ -301,7 +298,7 @@ export default function JobRow({
           <div className="flex items-center gap-2">
             <button
               onClick={onToggleExpand}
-              className="text-brand-muted hover:text-brand-accent text-xs transition-colors px-2 py-1 rounded border border-brand-border"
+              className="text-[var(--glass-muted)] hover:text-[var(--glass-ink)] text-xs transition-colors px-2 py-1 rounded border border-white/15"
             >
               {isExpanded ? '▲ Less' : '▼ More'}
             </button>
@@ -328,7 +325,7 @@ export default function JobRow({
       {/* Expanded history panel */}
       {isExpanded && (
         <tr>
-          <td colSpan={8} className="px-4 py-0 bg-brand-bg">
+          <td colSpan={8} className="px-4 py-0 bg-black/15">
             <HistoryPanel
               jobId={job.id}
               jobType={job.job_type}
