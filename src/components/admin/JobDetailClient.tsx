@@ -7,7 +7,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { cn, formatAdminDate, formatShortDate, formatQty } from '@/lib/utils';
-import { STATUS_COLORS } from '@/lib/constants/statusColors';
+import { STATUS_COLORS, JOB_TYPE_BADGE, urgentBadgeClass } from '@/lib/constants/statusColors';
 import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES } from '@/lib/constants/stages';
 import { canDeptSetStage } from '@/lib/constants/departments';
 import type { Job } from '@/lib/types';
@@ -153,7 +153,7 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
       {/* Back link */}
       <Link
         href="/admin"
-        className="inline-flex items-center gap-1.5 text-sm text-brand-muted hover:text-brand-accent transition-colors"
+        className="inline-flex items-center gap-1.5 text-sm text-[var(--glass-muted)] hover:text-[var(--glass-ink)] transition-colors"
       >
         ← Back to Dashboard
       </Link>
@@ -161,25 +161,23 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
       {/* Page header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-semibold text-brand-accent font-mono tracking-tight">
+          <h1 className="text-xl font-semibold text-[var(--glass-ink)] font-mono tracking-tight">
             {job.po_number}
           </h1>
           {job.pm_code && (
-            <p className="text-sm text-brand-muted font-mono mt-0.5">{job.pm_code}</p>
+            <p className="text-sm text-[var(--glass-muted)] font-mono mt-0.5">{job.pm_code}</p>
           )}
         </div>
         <div className="flex items-center gap-2">
           {job.has_partial_runs && (
-            <span className="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-full bg-purple-100 text-purple-700">
+            <span className="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-full bg-purple-400/15 text-purple-200">
               Partial Runs
             </span>
           )}
           {job.urgent && (
             <span className={cn(
               'inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full',
-              job.urgent_priority === 1 ? 'bg-red-100 text-red-700' :
-              job.urgent_priority === 2 ? 'bg-orange-100 text-orange-700' :
-              'bg-yellow-100 text-yellow-700'
+              urgentBadgeClass(job.urgent_priority)
             )}>
               <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
               URGENT · P{job.urgent_priority}
@@ -189,47 +187,45 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
       </div>
 
       {/* Job info card */}
-      <div className="rounded-xl border border-brand-border bg-white p-6">
+      <div className="glass rounded-xl p-6">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-8 gap-y-5">
 
           <InfoField label="Party">
-            <p className="text-sm font-semibold text-brand-accent">{job.party}</p>
+            <p className="text-sm font-semibold text-[var(--glass-ink)]">{job.party}</p>
           </InfoField>
 
           <InfoField label="Job Name">
-            <p className="text-sm text-brand-accent">{job.job_name ?? '—'}</p>
+            <p className="text-sm text-[var(--glass-ink)]">{job.job_name ?? '—'}</p>
           </InfoField>
 
           <InfoField label="Type">
             <span className={cn(
               'text-xs px-2 py-0.5 rounded font-medium',
-              job.job_type === 'New'    ? 'bg-blue-100 text-blue-700' :
-              job.job_type === 'Repeat' ? 'bg-gray-100 text-gray-600' :
-                                         'bg-purple-100 text-purple-700'
+              JOB_TYPE_BADGE[job.job_type]
             )}>
               {job.job_type}
             </span>
           </InfoField>
 
           <InfoField label="Label Qty">
-            <p className="text-sm font-mono text-brand-accent">{formatQty(job.label_qty)}</p>
+            <p className="text-sm font-mono text-[var(--glass-ink)]">{formatQty(job.label_qty)}</p>
           </InfoField>
 
           <InfoField label="Dispatched">
             {job.label_qty ? (
               <div>
-                <p className="text-sm font-mono text-brand-accent">
+                <p className="text-sm font-mono text-[var(--glass-ink)]">
                   {formatQty(effectiveDispatched)} / {formatQty(job.label_qty)}
                 </p>
-                <div className="h-1.5 bg-brand-bg rounded-full mt-1.5 w-24">
+                <div className="h-1.5 bg-white/10 rounded-full mt-1.5 w-24">
                   <div
-                    className="h-full bg-green-500 rounded-full transition-all"
+                    className="h-full bg-emerald-400 rounded-full transition-all"
                     style={{ width: `${dispatchPct}%` }}
                   />
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-brand-muted">—</p>
+              <p className="text-sm text-[var(--glass-muted)]">—</p>
             )}
           </InfoField>
 
@@ -243,11 +239,11 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
           </InfoField>
 
           <InfoField label="PO Date">
-            <p className="text-sm font-mono text-brand-accent">{formatShortDate(job.po_date)}</p>
+            <p className="text-sm font-mono text-[var(--glass-ink)]">{formatShortDate(job.po_date)}</p>
           </InfoField>
 
           <InfoField label="Created">
-            <p className="text-sm font-mono text-brand-muted">{formatAdminDate(job.created_at)}</p>
+            <p className="text-sm font-mono text-[var(--glass-muted)]">{formatAdminDate(job.created_at)}</p>
           </InfoField>
 
           <InfoField label="Status">
@@ -261,6 +257,7 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
                 'transition-colors cursor-pointer border-transparent',
                 STATUS_COLORS[job.status]?.bg   ?? 'bg-gray-100',
                 STATUS_COLORS[job.status]?.text  ?? 'text-gray-700',
+                '[&>option]:bg-[#0A1F18] [&>option]:text-[var(--glass-ink)]',
                 submitting && 'opacity-60 cursor-not-allowed'
               )}
             >
@@ -278,7 +275,7 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
 
           {job.is_scheduled_release && (
             <InfoField label="Release">
-              <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">
+              <span className="text-xs px-2 py-0.5 rounded bg-sky-400/15 text-sky-200 font-medium">
                 Scheduled
               </span>
             </InfoField>
@@ -287,16 +284,16 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
 
         {/* Notes */}
         {job.notes && (
-          <div className="mt-5 pt-5 border-t border-brand-border">
-            <p className="text-xs font-medium text-brand-muted uppercase tracking-wide mb-1">Notes</p>
-            <p className="text-sm text-brand-accent">{job.notes}</p>
+          <div className="mt-5 pt-5 border-t border-white/10">
+            <p className="text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1">Notes</p>
+            <p className="text-sm text-[var(--glass-ink)]">{job.notes}</p>
           </div>
         )}
 
         {/* Halt remark */}
         {job.status === 'On Hold' && job.halt_remark && (
           <div className="mt-4">
-            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <p className="text-xs text-amber-200 bg-amber-400/10 border border-amber-300/25 rounded-lg px-3 py-2">
               ⏸ On hold: {job.halt_remark}
             </p>
           </div>
@@ -305,7 +302,7 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
         {/* QC remark */}
         {job.qc_remark && (
           <div className="mt-4">
-            <p className="text-xs text-sky-700 bg-sky-50 border border-sky-200 rounded-lg px-3 py-2">
+            <p className="text-xs text-sky-200 bg-sky-400/10 border border-sky-300/25 rounded-lg px-3 py-2">
               QC note: {job.qc_remark}
             </p>
           </div>
@@ -313,7 +310,7 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
       </div>
 
       {/* Stage history + comments + dispatch schedules */}
-      <div className="rounded-xl border border-brand-border bg-white px-6 pb-2">
+      <div className="glass rounded-xl px-6 pb-2">
         <HistoryPanel
           jobId={job.id}
           jobType={job.job_type}
@@ -414,7 +411,7 @@ function InfoField({
 }) {
   return (
     <div>
-      <p className="text-xs font-medium text-brand-muted uppercase tracking-wide mb-1">
+      <p className="text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1">
         {label}
       </p>
       {children}
