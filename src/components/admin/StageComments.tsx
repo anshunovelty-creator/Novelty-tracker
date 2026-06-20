@@ -49,7 +49,7 @@ export default function StageComments({ jobId, stage, dept, existingComments, on
     return (
       <button
         onClick={() => setAdding(true)}
-        className="text-xs text-brand-muted hover:text-brand-accent transition-colors mt-1"
+        className="text-xs text-[var(--glass-muted)] hover:text-[var(--glass-ink)] transition-colors mt-1"
       >
         + Add internal note
       </button>
@@ -65,9 +65,10 @@ export default function StageComments({ jobId, stage, dept, existingComments, on
         rows={2}
         autoFocus
         className={cn(
-          'w-full px-2 py-1.5 rounded-lg border text-xs resize-none',
-          'border-brand-border focus:outline-none focus:ring-1 focus:ring-brand-accent/20 focus:border-brand-accent',
-          'transition-colors'
+          'w-full px-2 py-1.5 rounded-lg text-xs resize-none bg-[var(--glass-bg)] border border-[var(--glass-border)]',
+          'text-[var(--glass-ink)] placeholder:text-[var(--glass-muted)] backdrop-blur-md',
+          'focus:outline-none focus:border-emerald-300/70 focus:bg-white/[0.14]',
+          'focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)] transition-all'
         )}
       />
       <div className="flex gap-2">
@@ -80,7 +81,7 @@ export default function StageComments({ jobId, stage, dept, existingComments, on
         </button>
         <button
           onClick={() => { setAdding(false); setText(''); }}
-          className="px-3 py-1 text-xs text-brand-muted hover:text-brand-accent transition-colors"
+          className="px-3 py-1 text-xs text-[var(--glass-muted)] hover:text-[var(--glass-ink)] transition-colors"
         >
           Cancel
         </button>

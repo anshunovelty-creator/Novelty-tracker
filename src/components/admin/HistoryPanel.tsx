@@ -10,6 +10,7 @@ import type { Stage } from '@/lib/constants/stages';
 import type { Department } from '@/lib/constants/departments';
 import StageComments from './StageComments';
 import { PrintRunModal } from './modals';
+import { SkeletonText } from '@/components/ui/Skeleton';
 import toast from 'react-hot-toast';
 
 type Props = {
@@ -45,11 +46,7 @@ export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept,
   }, [jobId, refreshKey, tick]);
 
   if (loading) {
-    return (
-      <div className="py-6 text-sm text-brand-muted text-center">
-        Loading history…
-      </div>
-    );
+    return <SkeletonText lines={6} className="py-6" />;
   }
 
   if (error || !detail) {
@@ -86,7 +83,7 @@ export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept,
 
       {/* Stage history */}
       <div>
-        <h4 className="text-xs font-medium text-brand-muted uppercase tracking-wide mb-3">
+        <h4 className="text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-3">
           Stage History
         </h4>
         <div className="space-y-0">
@@ -101,18 +98,18 @@ export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept,
               <div
                 key={stage}
                 className={cn(
-                  'flex items-start gap-3 py-2.5 border-b border-brand-border/50 last:border-0',
+                  'flex items-start gap-3 py-2.5 border-b border-white/8 last:border-0',
                   isSkipped && 'opacity-40'
                 )}
               >
                 {/* Status dot */}
                 <div className="mt-0.5 shrink-0">
                   {isSkipped ? (
-                    <div className="w-2 h-2 rounded-full border border-dashed border-brand-muted" />
+                    <div className="w-2 h-2 rounded-full border border-dashed border-white/30" />
                   ) : completedAt ? (
                     <div className="w-2 h-2 rounded-full bg-green-500" />
                   ) : (
-                    <div className="w-2 h-2 rounded-full bg-brand-border" />
+                    <div className="w-2 h-2 rounded-full bg-white/20" />
                   )}
                 </div>
 
@@ -121,18 +118,18 @@ export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept,
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={cn(
                       'text-sm font-medium',
-                      completedAt ? 'text-brand-accent' : 'text-brand-muted',
+                      completedAt ? 'text-[var(--glass-ink)]' : 'text-[var(--glass-muted)]',
                       isSkipped && 'line-through'
                     )}>
                       {stage}
                     </span>
                     {isSkipped && (
-                      <span className="text-xs text-brand-muted italic">N/A — Repeat</span>
+                      <span className="text-xs text-[var(--glass-muted)] italic">N/A — Repeat</span>
                     )}
                   </div>
 
                   {latestLog && (
-                    <p className="text-xs text-brand-muted font-mono mt-0.5">
+                    <p className="text-xs text-[var(--glass-muted)] font-mono mt-0.5">
                       {DEPT_DISPLAY_NAME[latestLog.changed_by_dept as Department] ?? latestLog.changed_by_dept}
                       {' · '}
                       {formatAdminDate(latestLog.changed_at)}
@@ -141,14 +138,14 @@ export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept,
 
                   {/* Halt remark */}
                   {stage === 'On Hold' && latestLog?.remark && (
-                    <p className="text-xs text-amber-700 mt-1">
+                    <p className="text-xs text-amber-200 mt-1">
                       Reason: {latestLog.remark}
                     </p>
                   )}
 
                   {/* QC remark */}
                   {stage === 'Quality Check' && latestLog?.remark && (
-                    <p className="text-xs text-sky-700 mt-1">
+                    <p className="text-xs text-sky-200 mt-1">
                       QC note: {latestLog.remark}
                     </p>
                   )}
@@ -157,7 +154,7 @@ export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept,
                   {comments.length > 0 && (
                     <div className="mt-1 space-y-1">
                       {comments.map((c) => (
-                        <p key={c.id} className="text-xs text-brand-muted bg-brand-bg rounded px-2 py-1">
+                        <p key={c.id} className="text-xs text-[var(--glass-muted)] bg-white/[0.06] rounded px-2 py-1">
                           <span className="font-medium">{c.created_by}:</span> {c.comment}
                           <span className="ml-2 opacity-50">{formatAdminDate(c.created_at)}</span>
                         </p>
@@ -186,7 +183,7 @@ export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept,
 
                 {/* Timestamp */}
                 {completedAt && !isSkipped && (
-                  <p className="text-xs font-mono text-brand-muted shrink-0">
+                  <p className="text-xs font-mono text-[var(--glass-muted)] shrink-0">
                     {formatShortDate(completedAt)}
                   </p>
                 )}
@@ -332,7 +329,7 @@ function PrintRunsSection({
 
   return (
     <div>
-      <h4 className="text-xs font-medium text-brand-muted uppercase tracking-wide mb-3">
+      <h4 className="text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-3">
         Print Runs
       </h4>
 
@@ -349,18 +346,18 @@ function PrintRunsSection({
               key={run.id}
               className={cn(
                 'flex items-center justify-between gap-3 rounded-lg border px-4 py-3',
-                isDone ? 'border-green-200 bg-green-50/50' : 'border-brand-border bg-white'
+                isDone ? 'border-emerald-300/25 bg-emerald-400/10' : 'glass'
               )}
             >
               <div className="min-w-0">
-                <p className="text-sm font-medium text-brand-accent">
+                <p className="text-sm font-medium text-[var(--glass-ink)]">
                   Run #{run.run_number}
-                  <span className="ml-2 font-mono text-xs text-brand-muted">
+                  <span className="ml-2 font-mono text-xs text-[var(--glass-muted)]">
                     {formatQty(run.qty_this_run)} labels
                   </span>
                 </p>
-                <p className="text-xs text-brand-muted mt-0.5">
-                  Stage: <strong className={isDone ? 'text-green-700' : 'text-brand-accent'}>
+                <p className="text-xs text-[var(--glass-muted)] mt-0.5">
+                  Stage: <strong className={isDone ? 'text-emerald-200' : 'text-[var(--glass-ink)]'}>
                     {run.current_stage} {isDone ? '✅' : '🔄'}
                   </strong>
                   {run.dispatched_at && (
@@ -368,7 +365,7 @@ function PrintRunsSection({
                   )}
                 </p>
                 {run.notes && (
-                  <p className="text-xs text-brand-muted mt-0.5 truncate">{run.notes}</p>
+                  <p className="text-xs text-[var(--glass-muted)] mt-0.5 truncate">{run.notes}</p>
                 )}
               </div>
 
@@ -380,15 +377,15 @@ function PrintRunsSection({
                     className={cn(
                       'shrink-0 text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors',
                       nextStage === 'Dispatched'
-                        ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100'
-                        : 'bg-brand-bg border-brand-border text-brand-accent hover:bg-brand-border/40',
+                        ? 'bg-emerald-400/15 border-emerald-300/30 text-emerald-200 hover:bg-emerald-400/25'
+                        : 'bg-white/[0.06] border-white/10 text-[var(--glass-ink)] hover:bg-white/10',
                       'disabled:opacity-40'
                     )}
                   >
                     {advancingId === run.id ? 'Saving…' : `→ ${nextStage}`}
                   </button>
                 ) : (
-                  <span className="shrink-0 text-xs text-brand-muted">
+                  <span className="shrink-0 text-xs text-[var(--glass-muted)]">
                     🔒 {RUN_STAGE_DEPTS[nextStage].join('/')}
                   </span>
                 )
@@ -399,16 +396,16 @@ function PrintRunsSection({
       </div>
 
       {/* Totals */}
-      <div className="bg-brand-bg border border-brand-border rounded-lg px-3 py-2 flex gap-6 text-xs font-mono mt-2">
+      <div className="bg-white/[0.06] border border-white/10 rounded-lg px-3 py-2 flex gap-6 text-xs font-mono mt-2">
         <span>Total: <strong>{formatQty(totalQty)}</strong></span>
-        <span className="text-green-700">Dispatched: <strong>{formatQty(dispatchedQty)}</strong></span>
-        <span className="text-amber-700">Remaining: <strong>{formatQty(remainingQty)}</strong></span>
+        <span className="text-emerald-200">Dispatched: <strong>{formatQty(dispatchedQty)}</strong></span>
+        <span className="text-amber-200">Remaining: <strong>{formatQty(remainingQty)}</strong></span>
       </div>
 
       {/* Between runs */}
       {awaitingNext && (
-        <div className="flex items-center justify-between gap-3 mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          <p className="text-xs text-amber-700">
+        <div className="flex items-center justify-between gap-3 mt-2 bg-amber-400/10 border border-amber-300/25 rounded-lg px-3 py-2">
+          <p className="text-xs text-amber-200">
             ⏳ Awaiting next print run — {formatQty(remainingQty)} labels remaining
           </p>
           {canStartNext && (
@@ -482,40 +479,40 @@ function ScheduledReleaseTable({
 
   return (
     <div>
-      <h4 className="text-xs font-medium text-brand-muted uppercase tracking-wide mb-3">
+      <h4 className="text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-3">
         Release Schedule
       </h4>
 
-      <div className="rounded-lg border border-brand-border overflow-hidden">
+      <div className="rounded-lg border border-white/10 overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-brand-bg border-b border-brand-border">
-              <th className="px-3 py-2 text-left text-xs text-brand-muted">Release</th>
-              <th className="px-3 py-2 text-left text-xs text-brand-muted">Planned Qty</th>
-              <th className="px-3 py-2 text-left text-xs text-brand-muted">Planned Date</th>
-              <th className="px-3 py-2 text-left text-xs text-brand-muted">Status</th>
-              <th className="px-3 py-2 text-left text-xs text-brand-muted">Actual Date</th>
-              {canDispatch && <th className="px-3 py-2 text-left text-xs text-brand-muted">Action</th>}
+            <tr className="bg-white/[0.06] border-b border-white/10">
+              <th className="px-3 py-2 text-left text-xs text-[var(--glass-muted)]">Release</th>
+              <th className="px-3 py-2 text-left text-xs text-[var(--glass-muted)]">Planned Qty</th>
+              <th className="px-3 py-2 text-left text-xs text-[var(--glass-muted)]">Planned Date</th>
+              <th className="px-3 py-2 text-left text-xs text-[var(--glass-muted)]">Status</th>
+              <th className="px-3 py-2 text-left text-xs text-[var(--glass-muted)]">Actual Date</th>
+              {canDispatch && <th className="px-3 py-2 text-left text-xs text-[var(--glass-muted)]">Action</th>}
             </tr>
           </thead>
           <tbody>
             {schedules.map((s) => (
-              <tr key={s.id} className="border-b border-brand-border/50 last:border-0">
+              <tr key={s.id} className="border-b border-white/8 last:border-0">
                 <td className="px-3 py-2 font-mono text-xs">R{s.release_number}</td>
                 <td className="px-3 py-2 font-mono text-xs">{formatQty(s.planned_qty)}</td>
                 <td className="px-3 py-2 text-xs">{formatShortDate(s.planned_date)}</td>
                 <td className="px-3 py-2">
                   <span className={cn(
                     'text-xs px-1.5 py-0.5 rounded font-medium',
-                    s.status === 'Dispatched' ? 'bg-green-100 text-green-700' :
-                    s.status === 'In Progress' ? 'bg-blue-100 text-blue-700' :
-                    'bg-gray-100 text-gray-600'
+                    s.status === 'Dispatched' ? 'bg-emerald-400/15 text-emerald-200' :
+                    s.status === 'In Progress' ? 'bg-sky-400/15 text-sky-200' :
+                    'bg-white/10 text-white/70'
                   )}>
                     {s.status === 'Dispatched' ? '✓ Dispatched' :
                      s.status === 'In Progress' ? 'In Progress' : '⏳ Pending'}
                   </span>
                 </td>
-                <td className="px-3 py-2 font-mono text-xs text-brand-muted">
+                <td className="px-3 py-2 font-mono text-xs text-[var(--glass-muted)]">
                   {s.actual_date ? formatShortDate(s.actual_date) : '—'}
                 </td>
                 {canDispatch && (
@@ -526,14 +523,14 @@ function ScheduledReleaseTable({
                         disabled={dispatchingId === s.id}
                         className={cn(
                           'text-xs px-2 py-1 rounded border font-medium transition-colors',
-                          'bg-green-50 border-green-200 text-green-700 hover:bg-green-100',
+                          'bg-emerald-400/15 border-emerald-300/30 text-emerald-200 hover:bg-emerald-400/25',
                           'disabled:opacity-40'
                         )}
                       >
                         {dispatchingId === s.id ? 'Saving…' : 'Dispatch'}
                       </button>
                     ) : (
-                      <span className="text-xs text-brand-muted">—</span>
+                      <span className="text-xs text-[var(--glass-muted)]">—</span>
                     )}
                   </td>
                 )}
@@ -543,10 +540,10 @@ function ScheduledReleaseTable({
         </table>
 
         {/* Totals row */}
-        <div className="bg-brand-bg border-t border-brand-border px-3 py-2 flex gap-6 text-xs font-mono">
+        <div className="bg-white/[0.06] border-t border-white/10 px-3 py-2 flex gap-6 text-xs font-mono">
           <span>Total: <strong>{formatQty(totalQty)}</strong></span>
-          <span className="text-green-700">Released: <strong>{formatQty(releasedQty)}</strong></span>
-          <span className="text-amber-700">Remaining: <strong>{formatQty(remainingQty)}</strong></span>
+          <span className="text-emerald-200">Released: <strong>{formatQty(releasedQty)}</strong></span>
+          <span className="text-amber-200">Remaining: <strong>{formatQty(remainingQty)}</strong></span>
         </div>
       </div>
     </div>
