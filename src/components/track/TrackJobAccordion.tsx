@@ -66,7 +66,7 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
       <div className="space-y-5">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-white">Result for "{poNumber}"</h2>
+            <h2 className="text-lg font-semibold text-white">Result for &ldquo;{poNumber}&rdquo;</h2>
             <p className="text-sm text-green-200">Single product order. Details are shown directly below.</p>
           </div>
           <a href="/track" className="text-sm text-green-200 hover:text-white shrink-0">
@@ -98,7 +98,7 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-white">Matching Jobs — "{poNumber}"</h2>
+          <h2 className="text-lg font-semibold text-white">Matching Jobs — &ldquo;{poNumber}&rdquo;</h2>
           <p className="text-sm text-green-200">Open one job at a time. Click any row to expand it smoothly.</p>
         </div>
         <a href="/track" className="text-sm text-green-200 hover:text-white shrink-0">

@@ -50,8 +50,8 @@ export function SequentialWarningModal({
               Stage Not Yet Completed
             </h3>
             <p className="text-sm text-brand-muted mt-1">
-              You're moving to <strong className="text-brand-accent">{targetStage}</strong>, but
-              the previous stage <strong className="text-brand-accent">{missingStage}</strong> hasn't
+              You&apos;re moving to <strong className="text-brand-accent">{targetStage}</strong>, but
+              the previous stage <strong className="text-brand-accent">{missingStage}</strong> hasn&apos;t
               been marked complete yet.
             </p>
           </div>

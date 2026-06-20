@@ -61,7 +61,7 @@ export default function TrackPage() {
       </Reveal>
 
       <p className="mt-8 text-xs text-green-200 text-center">
-        Can't find your order? Contact us at{' '}
+        Can&apos;t find your order? Contact us at{' '}
         <a href="mailto:orders@noveltylabels.com" className="underline">
           orders@noveltylabels.com
         </a>
