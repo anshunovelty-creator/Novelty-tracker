@@ -5,6 +5,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { cn, formatQty, formatShortDate } from '@/lib/utils';
 import type { Department } from '@/lib/constants/departments';
 import type { AddJobFormData, ScheduledReleaseInput, JobType } from '@/lib/types';
+import { LoadingButton } from '@/components/ui/Loading';
 import toast from 'react-hot-toast';
 
 // Shape returned by /api/jobs/pm-lookup
@@ -184,12 +185,12 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
   }
 
   return (
-    <div className="bg-white border border-brand-border rounded-xl p-6 mb-4">
+    <div className="glass rounded-xl p-6 mb-4">
       <div className="flex items-center justify-between mb-5">
-        <h2 className="text-base font-semibold text-brand-accent">Add New Job</h2>
+        <h2 className="text-base font-semibold text-[var(--glass-ink)]">Add New Job</h2>
         <button
           onClick={() => setIsOpen(false)}
-          className="text-brand-muted hover:text-brand-accent text-sm"
+          className="text-[var(--glass-muted)] hover:text-[var(--glass-ink)] text-sm"
         >
           Cancel
         </button>
@@ -219,8 +220,8 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
                 className={inputCls}
               />
               {showPmSuggestions && (
-                <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-brand-border rounded-lg shadow-lg overflow-hidden">
-                  <p className="px-3 py-1.5 text-xs text-brand-muted bg-brand-bg border-b border-brand-border">
+                <div className="absolute z-20 top-full left-0 right-0 mt-1 glass-strong glass rounded-lg shadow-lg overflow-hidden">
+                  <p className="px-3 py-1.5 text-xs text-[var(--glass-muted)] bg-white/[0.06] border-b border-white/10">
                     Earlier jobs — click to autofill
                   </p>
                   {pmSuggestions.map((s) => (
@@ -229,15 +230,15 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
                       type="button"
                       // onMouseDown fires before the input's onBlur closes the list
                       onMouseDown={(e) => { e.preventDefault(); applyPmSuggestion(s); }}
-                      className="w-full text-left px-3 py-2 hover:bg-brand-bg transition-colors border-b border-brand-border/50 last:border-0"
+                      className="w-full text-left px-3 py-2 hover:bg-white/[0.08] transition-colors border-b border-white/10 last:border-0"
                     >
-                      <span className="block font-mono text-xs font-medium text-brand-accent">
+                      <span className="block font-mono text-xs font-medium text-[var(--glass-ink)]">
                         {s.pm_code}
                       </span>
-                      <span className="block text-xs text-brand-muted truncate">
+                      <span className="block text-xs text-[var(--glass-muted)] truncate">
                         {s.party}{s.job_name ? ` · ${s.job_name}` : ''}
                       </span>
-                      <span className="block text-[11px] text-brand-muted/70 mt-0.5">
+                      <span className="block text-[11px] text-[var(--glass-muted)] mt-0.5">
                         Last order: {formatShortDate(s.created_at)}
                         {s.label_qty ? ` · ${formatQty(s.label_qty)} labels` : ''}
                       </span>
@@ -329,14 +330,14 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
               type="checkbox"
               checked={form.urgent}
               onChange={(e) => set('urgent', e.target.checked)}
-              className="w-4 h-4 accent-brand-accent"
+              className="w-4 h-4 accent-emerald-400"
             />
-            <span className="text-sm font-medium text-brand-accent">Urgent</span>
+            <span className="text-sm font-medium text-[var(--glass-ink)]">Urgent</span>
           </label>
 
           {form.urgent && (
             <div className="flex items-center gap-2">
-              <span className="text-sm text-brand-muted">Priority:</span>
+              <span className="text-sm text-[var(--glass-muted)]">Priority:</span>
               {[1, 2, 3, 4, 5].map((p) => (
                 <button
                   key={p}
@@ -346,7 +347,7 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
                     'w-8 h-8 rounded-full text-xs font-mono font-medium transition-colors',
                     form.urgent_priority === p
                       ? 'bg-brand-primary text-white'
-                      : 'bg-brand-bg border border-brand-border text-brand-muted hover:text-brand-accent'
+                      : 'bg-white/[0.06] border border-white/10 text-[var(--glass-muted)] hover:text-[var(--glass-ink)]'
                   )}
                 >
                   {p}
@@ -368,18 +369,18 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
         </Field>
 
         {/* Row 6: Scheduled release toggle */}
-        <div className="border border-brand-border rounded-lg p-4 space-y-4">
+        <div className="border border-white/10 rounded-lg p-4 space-y-4">
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
               checked={form.is_scheduled_release}
               onChange={(e) => set('is_scheduled_release', e.target.checked)}
-              className="w-4 h-4 accent-brand-accent"
+              className="w-4 h-4 accent-emerald-400"
             />
-            <span className="text-sm font-medium text-brand-accent">
+            <span className="text-sm font-medium text-[var(--glass-ink)]">
               Scheduled Release Order
             </span>
-            <span className="text-xs text-brand-muted">
+            <span className="text-xs text-[var(--glass-muted)]">
               (dispatched in planned phases)
             </span>
           </label>
@@ -389,7 +390,7 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
               {releases.map((release, idx) => (
                 <div key={idx} className="grid grid-cols-12 gap-2 items-end">
                   <div className="col-span-1 text-center">
-                    <span className="text-xs text-brand-muted font-mono">R{release.release_number}</span>
+                    <span className="text-xs text-[var(--glass-muted)] font-mono">R{release.release_number}</span>
                   </div>
                   <div className="col-span-4">
                     <input
@@ -414,7 +415,7 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
                       <button
                         type="button"
                         onClick={() => removeRelease(idx)}
-                        className="text-brand-muted hover:text-red-500 text-lg leading-none transition-colors"
+                        className="text-[var(--glass-muted)] hover:text-red-300 text-lg leading-none transition-colors"
                       >
                         ×
                       </button>
@@ -426,7 +427,7 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
               <button
                 type="button"
                 onClick={addRelease}
-                className="text-sm text-brand-muted hover:text-brand-accent transition-colors"
+                className="text-sm text-[var(--glass-muted)] hover:text-[var(--glass-ink)] transition-colors"
               >
                 + Add release
               </button>
@@ -439,21 +440,18 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
           <button
             type="button"
             onClick={() => setIsOpen(false)}
-            className="px-4 py-2 text-sm text-brand-muted hover:text-brand-accent transition-colors"
+            className="px-4 py-2 text-sm text-[var(--glass-muted)] hover:text-[var(--glass-ink)] transition-colors"
           >
             Cancel
           </button>
-          <button
+          <LoadingButton
             type="submit"
-            disabled={loading}
-            className={cn(
-              'px-5 py-2 rounded-lg text-sm font-medium bg-brand-primary text-white',
-              'hover:bg-brand-primary/90 transition-colors',
-              'disabled:opacity-50 disabled:cursor-not-allowed'
-            )}
+            loading={loading}
+            loadingStages={['Saving job…', 'Creating timeline…', 'Almost done…']}
+            className="px-5 py-2 rounded-lg text-sm font-medium bg-brand-primary text-white hover:bg-brand-primary/90 transition-colors disabled:opacity-50"
           >
-            {loading ? 'Adding…' : 'Add Job'}
-          </button>
+            Add Job
+          </LoadingButton>
         </div>
       </form>
     </div>
@@ -463,17 +461,17 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
 // ── Helpers ──────────────────────────────────────────────────
 
 const inputCls = cn(
-  'w-full px-3 py-2 rounded-lg border text-sm',
-  'bg-white border-brand-border text-brand-accent',
-  'placeholder:text-brand-muted',
-  'focus:outline-none focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent',
-  'transition-colors'
+  'w-full px-3.5 py-2.5 rounded-xl text-sm bg-[var(--glass-bg)] border border-[var(--glass-border)]',
+  'text-[var(--glass-ink)] placeholder:text-[var(--glass-muted)] backdrop-blur-md',
+  'focus:outline-none focus:border-emerald-300/70 focus:bg-white/[0.14]',
+  'focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)] transition-all',
+  '[&>option]:bg-[#0A1F18] [&>option]:text-[var(--glass-ink)]',
 );
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-brand-muted mb-1.5 uppercase tracking-wide">
+      <label className="block text-xs font-medium text-[var(--glass-muted)] mb-1.5 uppercase tracking-wide">
         {label}
       </label>
       {children}
