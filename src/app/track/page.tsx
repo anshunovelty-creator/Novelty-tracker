@@ -5,6 +5,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Reveal } from '@/components/motion/Reveal';
+import { Field } from '@/components/ui/Field';
 
 export default function TrackPage() {
   const router = useRouter();
@@ -23,7 +24,7 @@ export default function TrackPage() {
         <h1 className="text-3xl font-semibold text-white tracking-tight mb-2 text-center">
           Track Your Order
         </h1>
-        <p className="text-green-200 text-sm text-center mb-8">
+        <p className="text-[var(--glass-muted)] text-sm text-center mb-8">
           Enter your Purchase Order number or Job Name to see the current status.
         </p>
       </Reveal>
@@ -33,19 +34,8 @@ export default function TrackPage() {
         onSubmit={handleSubmit}
         className="space-y-3"
       >
-        <input
-          type="text"
-          value={po}
-          onChange={(e) => setPo(e.target.value)}
-          placeholder="Enter PO Number or Job Name"
-          className={cn(
-            'w-full px-4 py-3 rounded-xl border text-base',
-            'bg-white border-brand-border text-brand-accent',
-            'placeholder:text-brand-muted',
-            'focus:outline-none focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent',
-            'transition-colors font-mono tracking-wide'
-          )}
-        />
+        <Field label="PO Number or Job Name" value={po} onChange={(e) => setPo(e.target.value)}
+               className="font-mono tracking-wide" />
         <button
           type="submit"
           disabled={!po.trim()}
@@ -60,7 +50,7 @@ export default function TrackPage() {
       </form>
       </Reveal>
 
-      <p className="mt-8 text-xs text-green-200 text-center">
+      <p className="mt-8 text-xs text-[var(--glass-muted)] text-center">
         Can&apos;t find your order? Contact us at{' '}
         <a href="mailto:orders@noveltylabels.com" className="underline">
           orders@noveltylabels.com
