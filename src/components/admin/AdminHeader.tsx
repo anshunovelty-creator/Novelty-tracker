@@ -32,12 +32,12 @@ export default function AdminHeader({ dept, displayName }: Props) {
 
         {/* Right side */}
         <div className="flex items-center gap-4">
-          <span className="text-white/60 text-xs font-mono">
+          <span className="text-white/75 text-xs font-mono">
             {displayName}
           </span>
           <button
             onClick={handleLogout}
-            className="text-white/50 hover:text-white text-xs transition-colors px-2 py-1"
+            className="text-white/70 hover:text-white text-xs transition-colors px-2 py-1"
           >
             Sign out
           </button>
