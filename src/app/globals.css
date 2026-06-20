@@ -117,3 +117,63 @@ button,
     overflow-y: auto;
   }
 }
+
+/* ── Premium glass-mesh theme ───────────────────────────────── */
+:root {
+  --glass-bg:         rgba(255, 255, 255, 0.07);
+  --glass-bg-strong:  rgba(255, 255, 255, 0.12);
+  --glass-border:     rgba(255, 255, 255, 0.14);
+  --glass-ink:        #EAFFF5;
+  --glass-muted:      #9FBCB0;
+}
+
+/* Frosted panel surface */
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+.glass-strong { background: var(--glass-bg-strong); }
+
+/* Deep-green gradient-mesh page background */
+.mesh-bg {
+  background:
+    radial-gradient(55% 55% at 10% 12%,  rgba(46,200,140,.55), transparent 60%),
+    radial-gradient(50% 50% at 92% 18%,  rgba(20,120,90,.60),  transparent 60%),
+    radial-gradient(70% 70% at 78% 105%, rgba(12,66,50,.90),   transparent 60%),
+    linear-gradient(135deg, #0F4A37, #0A1F18);
+}
+
+/* Drifting mesh blobs (layered over .mesh-bg) */
+@keyframes mesh-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(20px, -16px) scale(1.12); }
+}
+.mesh-blob { animation: mesh-drift 13s ease-in-out infinite; }
+
+/* Shimmer for skeleton loaders */
+@keyframes shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg,
+    rgba(255,255,255,.07) 25%, rgba(255,255,255,.20) 37%, rgba(255,255,255,.07) 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+  border-radius: 8px;
+}
+
+/* Cycling-status fade */
+@keyframes cyc-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.cyc-fade { animation: cyc-fade .3s ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton  { animation: none; background: rgba(255,255,255,.12); }
+  .mesh-blob { animation: none; }
+  .cyc-fade  { animation: none; }
+}

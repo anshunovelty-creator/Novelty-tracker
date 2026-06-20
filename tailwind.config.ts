@@ -26,6 +26,10 @@ const config: Config = {
           danger:          '#C0392B',
           hold:            '#5B6B63',
           pending:         '#94A39B',
+          // dark-glass theme (light text on the mesh):
+          'glass-ink':     '#EAFFF5', // primary text on glass (AA on mesh)
+          'glass-muted':   '#9FBCB0', // secondary text on glass (AA on mesh)
+          'glass-line':    'rgba(255,255,255,0.14)',
           // legacy semantic names still referenced in code:
           green:           '#1B7A4E',
           amber:           '#C2740C',
