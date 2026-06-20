@@ -10,8 +10,8 @@ type Props = {
 
 export default function ScheduledReleaseCard({ schedules }: Props) {
   return (
-    <div className="bg-white border border-brand-border rounded-2xl p-5">
-      <h3 className="text-sm font-semibold text-brand-accent mb-4">Release Schedule</h3>
+    <div className="glass rounded-2xl p-5">
+      <h3 className="text-sm font-semibold text-[var(--glass-ink)] mb-4">Release Schedule</h3>
 
       <div className="space-y-2">
         {schedules.map((s) => {
@@ -22,7 +22,7 @@ export default function ScheduledReleaseCard({ schedules }: Props) {
             <div
               key={s.id}
               className={cn(
-                'flex items-center justify-between py-2.5 border-b border-brand-border/40 last:border-0'
+                'flex items-center justify-between py-2.5 border-b border-white/10 last:border-0'
               )}
             >
               <div className="flex items-center gap-2.5">
@@ -31,10 +31,10 @@ export default function ScheduledReleaseCard({ schedules }: Props) {
                   {isDispatched ? '✅' : isPending ? '⏳' : '🔵'}
                 </span>
                 <div>
-                  <p className="text-sm font-medium text-brand-accent">
+                  <p className="text-sm font-medium text-[var(--glass-ink)]">
                     Release {s.release_number}
                   </p>
-                  <p className="text-xs text-brand-muted font-mono">
+                  <p className="text-xs text-[var(--glass-muted)] font-mono">
                     {formatQty(isDispatched ? (s.actual_qty ?? s.planned_qty) : s.planned_qty)} labels
                     {isDispatched && s.actual_date
                       ? ` · dispatched ${formatShortDate(s.actual_date)}`
@@ -45,9 +45,9 @@ export default function ScheduledReleaseCard({ schedules }: Props) {
 
               <span className={cn(
                 'text-xs font-medium px-2 py-0.5 rounded-full',
-                isDispatched ? 'bg-green-100 text-green-700' :
-                isPending    ? 'bg-gray-100 text-gray-500'   :
-                'bg-blue-100 text-blue-700'
+                isDispatched ? 'bg-emerald-400/15 text-emerald-200' :
+                isPending    ? 'bg-white/10 text-white/70'         :
+                'bg-sky-400/15 text-sky-200'
               )}>
                 {isDispatched ? 'Dispatched' : isPending ? 'Planned' : 'In Progress'}
               </span>

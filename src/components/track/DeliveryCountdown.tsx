@@ -15,10 +15,10 @@ export default function DeliveryCountdown({ deliveryDate }: Props) {
   const countdown = getDeliveryCountdown(deliveryDate);
 
   const colorClass = {
-    green: 'text-green-700',
-    amber: 'text-amber-700 font-semibold',
-    red:   'text-red-700 font-semibold',
-    muted: 'text-brand-muted',
+    green: 'text-emerald-200',
+    amber: 'text-amber-200 font-semibold',
+    red:   'text-red-200 font-semibold',
+    muted: 'text-[var(--glass-muted)]',
   }[countdown.color];
 
   // Compute diff so we can animate the numeric portion via CountUp.

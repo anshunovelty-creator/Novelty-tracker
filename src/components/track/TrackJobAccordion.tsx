@@ -67,14 +67,14 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-white">Result for &ldquo;{poNumber}&rdquo;</h2>
-            <p className="text-sm text-green-200">Single product order. Details are shown directly below.</p>
+            <p className="text-sm text-[var(--glass-muted)]">Single product order. Details are shown directly below.</p>
           </div>
-          <a href="/track" className="text-sm text-green-200 hover:text-white shrink-0">
+          <a href="/track" className="text-sm text-[var(--glass-muted)] hover:text-white shrink-0">
             ← Search again
           </a>
         </div>
 
-        <div className="rounded-2xl border border-brand-accent/25 bg-white shadow-sm">
+        <div className="rounded-2xl glass shadow-sm">
           <SingleJobDetail bundle={singleBundle} />
         </div>
       </div>
@@ -99,9 +99,9 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-white">Matching Jobs — &ldquo;{poNumber}&rdquo;</h2>
-          <p className="text-sm text-green-200">Open one job at a time. Click any row to expand it smoothly.</p>
+          <p className="text-sm text-[var(--glass-muted)]">Open one job at a time. Click any row to expand it smoothly.</p>
         </div>
-        <a href="/track" className="text-sm text-green-200 hover:text-white shrink-0">
+        <a href="/track" className="text-sm text-[var(--glass-muted)] hover:text-white shrink-0">
           ← Search again
         </a>
       </div>
@@ -113,8 +113,8 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
             <article
               key={bundle.job.id}
               className={cn(
-                'overflow-hidden rounded-2xl border bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03)]',
-                isOpen ? 'border-brand-accent/30 ring-1 ring-brand-accent/10' : 'border-brand-border'
+                'overflow-hidden rounded-2xl border glass shadow-[0_8px_30px_rgba(0,0,0,0.18)]',
+                isOpen ? 'border-emerald-300/30 ring-1 ring-emerald-300/20' : 'border-white/12'
               )}
             >
               <button
@@ -122,25 +122,25 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
                 onClick={() => handleSelect(bundle.job.id)}
                 className={cn(
                   'w-full text-left px-5 py-4 flex items-start justify-between gap-4 transition-all duration-300',
-                  isOpen ? 'bg-gradient-to-r from-brand-bg/40 to-white' : 'hover:bg-brand-bg/20 hover:shadow-[0_1px_0_rgba(0,0,0,0.02)]'
+                  isOpen ? 'bg-white/[0.08]' : 'hover:bg-white/[0.06] hover:shadow-[0_8px_30px_rgba(0,0,0,0.18)]'
                 )}
               >
                 <div className="min-w-0">
-                  <p className="font-mono text-xs text-brand-muted mb-0.5">{bundle.job.po_number}</p>
+                  <p className="font-mono text-xs text-[var(--glass-muted)] mb-0.5">{bundle.job.po_number}</p>
                   {bundle.job.pm_code && (
-                    <p className="font-mono text-xs text-brand-muted mb-1">{bundle.job.pm_code}</p>
+                    <p className="font-mono text-xs text-[var(--glass-muted)] mb-1">{bundle.job.pm_code}</p>
                   )}
-                  <h3 className="text-base font-semibold text-brand-accent truncate">
+                  <h3 className="text-base font-semibold text-[var(--glass-ink)] truncate">
                     {bundle.job.job_name ?? bundle.job.party}
                   </h3>
-                  <p className="text-sm text-brand-muted truncate">{bundle.job.party}</p>
+                  <p className="text-sm text-[var(--glass-muted)] truncate">{bundle.job.party}</p>
                 </div>
 
                 <div className="flex flex-col items-end gap-2 shrink-0">
-                  <span className="text-xs px-2.5 py-1 rounded-full bg-brand-bg border border-brand-border text-brand-accent font-medium">
+                  <span className="text-xs px-2.5 py-1 rounded-full bg-white/10 border border-white/15 text-[var(--glass-ink)] font-medium">
                     {bundle.job.status}
                   </span>
-                  <span className="text-xs text-brand-muted">{bundle.job.job_type}</span>
+                  <span className="text-xs text-[var(--glass-muted)]">{bundle.job.job_type}</span>
                   <span className={cn('text-xs font-medium transition-transform duration-300', isOpen && 'rotate-180')}>
                     ▾
                   </span>
@@ -152,21 +152,21 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
                   <StatusBanners job={bundle.job} />
 
                   <Reveal onScroll>
-                    <div className="bg-white border border-brand-border rounded-2xl p-5 shadow-[0_1px_0_rgba(0,0,0,0.02)]">
+                    <div className="glass rounded-2xl p-5 shadow-[0_8px_30px_rgba(0,0,0,0.18)]">
                       <div className="flex items-start justify-between gap-2 flex-wrap mb-3">
                         <div>
-                          <p className="font-mono text-xs text-brand-muted mb-0.5">{bundle.job.po_number}</p>
+                          <p className="font-mono text-xs text-[var(--glass-muted)] mb-0.5">{bundle.job.po_number}</p>
                           {bundle.job.pm_code && (
-                            <p className="font-mono text-xs text-brand-muted">{bundle.job.pm_code}</p>
+                            <p className="font-mono text-xs text-[var(--glass-muted)]">{bundle.job.pm_code}</p>
                           )}
-                          <h2 className="text-lg font-semibold text-brand-accent mt-1">
+                          <h2 className="text-lg font-semibold text-[var(--glass-ink)] mt-1">
                             {bundle.job.job_name ?? bundle.job.party}
                           </h2>
-                          <p className="text-sm text-brand-muted">{bundle.job.party}</p>
+                          <p className="text-sm text-[var(--glass-muted)]">{bundle.job.party}</p>
                         </div>
                         <div className="flex flex-col items-end gap-1.5">
                           <StatusPill status={bundle.job.status} />
-                          <span className="text-xs text-brand-muted">{bundle.job.job_type}</span>
+                          <span className="text-xs text-[var(--glass-muted)]">{bundle.job.job_type}</span>
                         </div>
                       </div>
 
@@ -181,7 +181,7 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
                       <DeliveryCountdown deliveryDate={bundle.job.delivery_date} />
 
                       {bundle.statusLogs[bundle.statusLogs.length - 1] && (
-                        <p className="text-xs text-brand-muted mt-3 pt-3 border-t border-brand-border">
+                        <p className="text-xs text-[var(--glass-muted)] mt-3 pt-3 border-t border-white/10">
                           Last updated by{' '}
                           <strong className="font-medium">
                             {bundle.statusLogs[bundle.statusLogs.length - 1].department_display}
@@ -231,9 +231,9 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
                             : '—',
                         },
                       ].map((item) => (
-                        <div key={item.label} className="bg-white border border-brand-border rounded-xl p-3">
-                          <p className="text-xs text-brand-muted mb-0.5">{item.label}</p>
-                          <p className="text-sm font-medium text-brand-accent font-mono">{item.value}</p>
+                        <div key={item.label} className="glass rounded-xl p-3">
+                          <p className="text-xs text-[var(--glass-muted)] mb-0.5">{item.label}</p>
+                          <p className="text-sm font-medium text-[var(--glass-ink)] font-mono">{item.value}</p>
                         </div>
                       ))}
                     </div>
@@ -256,21 +256,21 @@ function SingleJobDetail({ bundle }: { bundle: TrackJobBundle }) {
       <StatusBanners job={bundle.job} />
 
       <Reveal onScroll>
-        <div className="bg-white border border-brand-border rounded-2xl p-5 shadow-[0_1px_0_rgba(0,0,0,0.02)]">
+        <div className="glass rounded-2xl p-5 shadow-[0_8px_30px_rgba(0,0,0,0.18)]">
           <div className="flex items-start justify-between gap-2 flex-wrap mb-3">
             <div>
-              <p className="font-mono text-xs text-brand-muted mb-0.5">{bundle.job.po_number}</p>
+              <p className="font-mono text-xs text-[var(--glass-muted)] mb-0.5">{bundle.job.po_number}</p>
               {bundle.job.pm_code && (
-                <p className="font-mono text-xs text-brand-muted">{bundle.job.pm_code}</p>
+                <p className="font-mono text-xs text-[var(--glass-muted)]">{bundle.job.pm_code}</p>
               )}
-              <h2 className="text-lg font-semibold text-brand-accent mt-1">
+              <h2 className="text-lg font-semibold text-[var(--glass-ink)] mt-1">
                 {bundle.job.job_name ?? bundle.job.party}
               </h2>
-              <p className="text-sm text-brand-muted">{bundle.job.party}</p>
+              <p className="text-sm text-[var(--glass-muted)]">{bundle.job.party}</p>
             </div>
             <div className="flex flex-col items-end gap-1.5">
               <StatusPill status={bundle.job.status} />
-              <span className="text-xs text-brand-muted">{bundle.job.job_type}</span>
+              <span className="text-xs text-[var(--glass-muted)]">{bundle.job.job_type}</span>
             </div>
           </div>
 
@@ -285,7 +285,7 @@ function SingleJobDetail({ bundle }: { bundle: TrackJobBundle }) {
           <DeliveryCountdown deliveryDate={bundle.job.delivery_date} />
 
           {latestLog && (
-            <p className="text-xs text-brand-muted mt-3 pt-3 border-t border-brand-border">
+            <p className="text-xs text-[var(--glass-muted)] mt-3 pt-3 border-t border-white/10">
               Last updated by{' '}
               <strong className="font-medium">{latestLog.department_display}</strong>
               {' · '}
@@ -331,9 +331,9 @@ function SingleJobDetail({ bundle }: { bundle: TrackJobBundle }) {
               value: latestLog ? formatShortDate(latestLog.changed_at) : '—',
             },
           ].map((item) => (
-            <div key={item.label} className="bg-white border border-brand-border rounded-xl p-3">
-              <p className="text-xs text-brand-muted mb-0.5">{item.label}</p>
-              <p className="text-sm font-medium text-brand-accent font-mono">{item.value}</p>
+            <div key={item.label} className="glass rounded-xl p-3">
+              <p className="text-xs text-[var(--glass-muted)] mb-0.5">{item.label}</p>
+              <p className="text-sm font-medium text-[var(--glass-ink)] font-mono">{item.value}</p>
             </div>
           ))}
         </div>
@@ -363,7 +363,7 @@ function StatusPill({ status }: { status: string }) {
   return (
     <span
       ref={pillRef}
-      className="text-xs px-2.5 py-1 rounded-full bg-brand-bg border border-brand-border text-brand-accent font-medium"
+      className="text-xs px-2.5 py-1 rounded-full bg-white/10 border border-white/15 text-[var(--glass-ink)] font-medium"
     >
       {status}
     </span>
