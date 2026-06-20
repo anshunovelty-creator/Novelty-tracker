@@ -13,29 +13,29 @@ export default function DashboardSummaryCard({ summary }: Props) {
     {
       label:  'Active Jobs',
       value:  summary?.total_active ?? '—',
-      color:  'text-brand-accent',
+      color:  'text-[var(--glass-ink)]',
     },
     {
       label:  'On Hold',
       value:  summary?.on_hold_count ?? '—',
-      color:  'text-amber-600',
+      color:  'text-amber-200',
     },
     {
       label:  'Due This Week',
       value:  summary?.due_this_week ?? '—',
-      color:  'text-blue-600',
+      color:  'text-sky-200',
     },
     {
       label:  'Dispatched This Month',
       value:  summary?.dispatched_this_month ?? '—',
-      color:  'text-green-600',
+      color:  'text-emerald-200',
     },
     {
       label:  'On-Time Delivery',
       value:  summary?.on_time_delivery_rate != null
                 ? `${summary.on_time_delivery_rate}%`
                 : '—',
-      color:  'text-brand-accent',
+      color:  'text-[var(--glass-ink)]',
       sub:    'this month',
     },
   ];
@@ -45,14 +45,14 @@ export default function DashboardSummaryCard({ summary }: Props) {
       {stats.map((stat) => (
         <div
           key={stat.label}
-          className="bg-white rounded-xl border border-brand-border px-4 py-4"
+          className="glass rounded-xl px-4 py-4"
         >
-          <p className="text-xs text-brand-muted font-medium mb-1">{stat.label}</p>
+          <p className="text-xs text-[var(--glass-muted)] font-medium mb-1">{stat.label}</p>
           <p className={cn('text-2xl font-semibold font-mono tabular-nums', stat.color)}>
             {stat.value}
           </p>
           {stat.sub && (
-            <p className="text-xs text-brand-muted mt-0.5">{stat.sub}</p>
+            <p className="text-xs text-[var(--glass-muted)] mt-0.5">{stat.sub}</p>
           )}
         </div>
       ))}
