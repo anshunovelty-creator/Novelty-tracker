@@ -8,12 +8,20 @@ import { cn, formatQty } from '@/lib/utils';
 import type { Stage } from '@/lib/constants/stages';
 import type { Job } from '@/lib/types';
 
+// Shared glass input style for all modal text fields
+const inputCls = cn(
+  'w-full px-3.5 py-2.5 rounded-xl text-sm bg-[var(--glass-bg)] border border-[var(--glass-border)]',
+  'text-[var(--glass-ink)] placeholder:text-[var(--glass-muted)] backdrop-blur-md',
+  'focus:outline-none focus:border-emerald-300/70 focus:bg-white/[0.14]',
+  'focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)] transition-all',
+);
+
 // ── Shared modal wrapper ──────────────────────────────────────
 
 function ModalBackdrop({ children }: { children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="modal-panel bg-white shadow-2xl w-full">
+      <div className="modal-panel glass-strong glass shadow-2xl text-[var(--glass-ink)] w-full">
         {children}
       </div>
     </div>
@@ -67,11 +75,7 @@ export function SequentialWarningModal({
               onChange={(e) => setRemark(e.target.value)}
               rows={2}
               placeholder="e.g. Stage was completed offline — updating system to match…"
-              className={cn(
-                'w-full px-3 py-2 rounded-lg border text-sm resize-none',
-                'border-brand-border focus:outline-none focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent',
-                'transition-colors'
-              )}
+              className={cn(inputCls, 'resize-none')}
             />
             <div className="flex gap-3 justify-end mt-4">
               <button
@@ -139,11 +143,7 @@ export function OnHoldModal({
           onChange={(e) => setRemark(e.target.value)}
           rows={3}
           placeholder="e.g. Awaiting shade card approval from client…"
-          className={cn(
-            'w-full px-3 py-2 rounded-lg border text-sm resize-none',
-            'border-brand-border focus:outline-none focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent',
-            'transition-colors'
-          )}
+          className={cn(inputCls, 'resize-none')}
         />
 
         <div className="flex gap-3 justify-end mt-4">
@@ -192,11 +192,7 @@ export function QCModal({
           onChange={(e) => setRemark(e.target.value)}
           rows={3}
           placeholder="e.g. Minor colour variation within acceptable range…"
-          className={cn(
-            'w-full px-3 py-2 rounded-lg border text-sm resize-none',
-            'border-brand-border focus:outline-none focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent',
-            'transition-colors'
-          )}
+          className={cn(inputCls, 'resize-none')}
         />
 
         <div className="flex gap-3 justify-end mt-4">
@@ -251,11 +247,7 @@ export function PartialDispatchModal({
           value={qty}
           onChange={(e) => setQty(e.target.value ? Number(e.target.value) : '')}
           placeholder={`Max: ${remaining.toLocaleString('en-IN')}`}
-          className={cn(
-            'w-full px-3 py-2 rounded-lg border text-sm font-mono',
-            'border-brand-border focus:outline-none focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent',
-            'transition-colors'
-          )}
+          className={cn(inputCls, 'font-mono')}
         />
         {typeof qty === 'number' && qty > remaining && (
           <p className="text-xs text-red-600 mt-1">Cannot exceed remaining quantity.</p>
@@ -386,11 +378,7 @@ export function PrintRunModal({
           value={qty}
           onChange={(e) => setQty(e.target.value ? Number(e.target.value) : '')}
           placeholder={`Max: ${remainingBefore.toLocaleString('en-IN')}`}
-          className={cn(
-            'w-full px-3 py-2 rounded-lg border text-sm font-mono',
-            'border-brand-border focus:outline-none focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent',
-            'transition-colors'
-          )}
+          className={cn(inputCls, 'font-mono')}
         />
         {qtyNum > remainingBefore && (
           <p className="text-xs text-red-600 mt-1">Cannot exceed remaining quantity.</p>
@@ -412,11 +400,7 @@ export function PrintRunModal({
           onChange={(e) => setNotes(e.target.value)}
           rows={2}
           placeholder="e.g. Client requested early partial delivery…"
-          className={cn(
-            'w-full px-3 py-2 rounded-lg border text-sm resize-none',
-            'border-brand-border focus:outline-none focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent',
-            'transition-colors'
-          )}
+          className={cn(inputCls, 'resize-none')}
         />
 
         <div className="flex flex-col sm:flex-row gap-2 justify-end mt-5">
