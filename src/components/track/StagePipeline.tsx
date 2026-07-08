@@ -7,7 +7,7 @@ import { gsap } from 'gsap';
 import { registerGsap } from '@/lib/gsap/register';
 import { cn, formatClientDate, formatQty } from '@/lib/utils';
 import { REPEAT_SKIPPED_STAGES } from '@/lib/constants/stages';
-import type { JobStageTimestamp, PrintRun } from '@/lib/types';
+import type { JobStageTimestamp } from '@/lib/types';
 import type { Stage } from '@/lib/constants/stages';
 
 registerGsap();
@@ -36,7 +36,6 @@ type Props = {
   statusLogs:      StatusLog[];
   visibleStages:   Stage[];
   stageTimestamps: JobStageTimestamp[];
-  printRuns?:      PrintRun[];
 };
 
 export default function StagePipeline({
@@ -45,7 +44,6 @@ export default function StagePipeline({
   statusLogs,
   visibleStages,
   stageTimestamps,
-  printRuns = [],
 }: Props) {
   const root = useRef<HTMLDivElement>(null);
 
@@ -224,66 +222,6 @@ export default function StagePipeline({
         })}
       </div>
 
-      {/* Print runs — multi-cycle orders show each run as its own timeline entry */}
-      {job.has_partial_runs && printRuns.length > 0 && (
-        <div className="mt-5 pt-4 border-t border-white/10">
-          <h4 className="text-sm font-semibold text-[var(--glass-ink)] mb-3">Production Cycles</h4>
-
-          <div className="space-y-0">
-            {printRuns.map((run, idx) => {
-              const isDelivered = run.status === 'dispatched';
-              return (
-                <div
-                  key={run.id}
-                  className={cn(
-                    'flex items-start gap-3 py-3',
-                    idx < printRuns.length - 1 && 'border-b border-white/10'
-                  )}
-                >
-                  {/* Dot */}
-                  <div className="shrink-0 pt-0.5">
-                    {isDelivered ? (
-                      <div className="w-3 h-3 rounded-full bg-green-500 flex items-center justify-center">
-                        <span className="text-white text-[8px] leading-none">✓</span>
-                      </div>
-                    ) : (
-                      <div className="w-3 h-3 rounded-full bg-emerald-400 dot-pulse" />
-                    )}
-                  </div>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0 flex items-start justify-between gap-3 flex-wrap">
-                    <span className={cn(
-                      'text-sm font-medium',
-                      isDelivered ? 'text-emerald-200' : 'text-[var(--glass-ink)]'
-                    )}>
-                      Run {run.run_number}: {formatQty(run.qty_this_run)} labels —{' '}
-                      {isDelivered ? 'Delivered ✅' : `In Production (${run.current_stage}) 🔄`}
-                    </span>
-                    {run.dispatched_at && (
-                      <p className="text-xs font-mono text-emerald-200 whitespace-nowrap">
-                        {formatClientDate(run.dispatched_at)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Bottom summary */}
-          {job.label_qty ? (
-            <p className="text-sm text-[var(--glass-ink)] bg-white/10 rounded-lg px-3 py-2 mt-2">
-              <strong className="font-mono">{formatQty(job.total_qty_dispatched ?? 0)}</strong> of{' '}
-              <strong className="font-mono">{formatQty(job.label_qty)}</strong> delivered.{' '}
-              <strong className="font-mono text-amber-200">
-                {formatQty(job.label_qty - (job.total_qty_dispatched ?? 0))}
-              </strong>{' '}
-              remaining.
-            </p>
-          ) : null}
-        </div>
-      )}
     </div>
   );
 }

@@ -5,7 +5,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { cn, formatAdminDate, formatShortDate, formatQty } from '@/lib/utils';
 import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES } from '@/lib/constants/stages';
 import { DEPT_DISPLAY_NAME } from '@/lib/constants/departments';
-import type { JobDetail, JobStatusLog, StageComment, DispatchSchedule, PrintRun, PrintRunStage } from '@/lib/types';
+import { nextRunStage, RUN_STAGE_DEPTS, RUN_STAGE_LABELS } from '@/lib/constants/runStages';
+import type { JobDetail, JobStatusLog, StageComment, DispatchSchedule, PrintRun } from '@/lib/types';
 import type { Stage } from '@/lib/constants/stages';
 import type { Department } from '@/lib/constants/departments';
 import StageComments from './StageComments';
@@ -25,7 +26,7 @@ export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept,
   const [detail,   setDetail]   = useState<JobDetail | null>(null);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState<string | null>(null);
-  // Bumped by the print-runs section after a run changes, so job totals refresh
+  // Bumped by the releases section after a run/schedule changes, so job totals refresh
   const [tick,     setTick]     = useState(0);
 
   useEffect(() => {
@@ -193,67 +194,43 @@ export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept,
         </div>
       </div>
 
-      {/* Print runs (multi-cycle orders) */}
-      <PrintRunsSection
+      {/* Releases & production runs — one unified section */}
+      <ReleasesSection
         job={detail}
+        isScheduledRelease={isScheduledRelease || detail.is_scheduled_release}
         dept={dept}
         onChanged={() => setTick((t) => t + 1)}
       />
-
-      {/* Scheduled release table */}
-      {isScheduledRelease && detail.dispatch_schedules.length > 0 && (
-        <ScheduledReleaseTable
-          schedules={detail.dispatch_schedules}
-          dept={dept}
-          onRefresh={() => {
-            // Re-fetch full job detail after a release dispatch
-            setDetail(null);
-            setLoading(true);
-            fetch(`/api/jobs/${jobId}`)
-              .then((r) => r.json())
-              .then((d) => { if (d.job) setDetail(d.job); })
-              .finally(() => setLoading(false));
-          }}
-        />
-      )}
     </div>
   );
 }
 
-// ── Print Runs Section ────────────────────────────────────────
-// Shown when a job has print runs (multi-cycle orders).
-// Each run card shows qty + stage; the active run gets an advance
-// button gated by department. When all runs are dispatched and qty
-// remains, Production/Admin see "Start Next Print Run".
+// ── Releases & Production Runs ────────────────────────────────
+// ONE list for everything that ships. Each row is a release moving
+// through a single lifecycle:
+//   Planned (schedule only) → In Production (run advancing through the
+//   per-run pipeline) → Dispatched
+// Scheduled-release jobs: Admin adds the next release whenever its date
+// becomes known; Production starts it; the stage chain does the rest.
+// Non-scheduled multi-run jobs keep the Start Next Print Run flow —
+// their runs are simply rows without a planned date.
 
-const NEXT_RUN_STAGE: Record<PrintRunStage, PrintRunStage | null> = {
-  Printing:   'QC',
-  QC:         'Packing',
-  Packing:    'Dispatched',
-  Dispatched: null,
-};
-
-// Mirror of the API's department gates (Admin always allowed)
-const RUN_STAGE_DEPTS: Record<PrintRunStage, Department[]> = {
-  Printing:   ['Production'],
-  QC:         ['QC'],
-  Packing:    ['Dispatch'],
-  Dispatched: ['Dispatch'],
-};
-
-function PrintRunsSection({
+function ReleasesSection({
   job,
+  isScheduledRelease,
   dept,
   onChanged,
 }: {
-  job:       JobDetail;
-  dept:      Department;
-  onChanged: () => void;
+  job:                JobDetail;
+  isScheduledRelease: boolean;
+  dept:               Department;
+  onChanged:          () => void;
 }) {
   const [runs,        setRuns]        = useState<PrintRun[]>([]);
   const [loaded,      setLoaded]      = useState(false);
-  const [advancingId, setAdvancingId] = useState<string | null>(null);
+  const [busyId,      setBusyId]      = useState<string | null>(null);
   const [showModal,   setShowModal]   = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
 
   const loadRuns = useCallback(async () => {
     try {
@@ -267,20 +244,34 @@ function PrintRunsSection({
 
   useEffect(() => { loadRuns(); }, [loadRuns]);
 
-  if (!loaded || runs.length === 0) return null;
+  const schedules = job.dispatch_schedules ?? [];
 
-  const totalQty       = job.label_qty ?? 0;
-  const dispatchedQty  = job.total_qty_dispatched ?? 0;
-  const remainingQty   = totalQty - dispatchedQty;
-  const allDispatched  = runs.every((r) => r.status === 'dispatched');
-  const awaitingNext   = job.has_partial_runs && allDispatched && remainingQty > 0;
-  const canStartNext   = awaitingNext && (dept === 'Production' || dept === 'Admin');
+  if (!loaded || (!isScheduledRelease && runs.length === 0)) return null;
+
+  const totalQty      = job.label_qty ?? 0;
+  const dispatchedQty = job.total_qty_dispatched ?? 0;
+  const remainingQty  = totalQty - dispatchedQty;
+  const activeRun     = runs.find((r) => r.status === 'in_progress') ?? null;
+  const runBySchedule = new Map(
+    runs.filter((r) => r.schedule_id).map((r) => [r.schedule_id as string, r])
+  );
+  const orphanRuns = runs.filter((r) => !r.schedule_id);
+  const hasPendingSchedule = schedules.some((s) => s.status === 'Pending');
+
+  // Non-scheduled multi-run jobs: existing "Start Next Print Run" flow
+  const awaitingNext =
+    !isScheduledRelease && job.has_partial_runs && !activeRun && remainingQty > 0;
+  const canStartNext = awaitingNext && (dept === 'Production' || dept === 'Admin');
+
+  // Scheduled jobs with nothing planned and quantity left
+  const awaitingSchedule =
+    isScheduledRelease && !hasPendingSchedule && !activeRun && remainingQty > 0;
 
   async function advanceRun(run: PrintRun) {
-    const nextStage = NEXT_RUN_STAGE[run.current_stage];
+    const nextStage = nextRunStage(run.current_stage);
     if (!nextStage) return;
 
-    setAdvancingId(run.id);
+    setBusyId(run.id);
     try {
       const res  = await fetch(`/api/jobs/${job.id}/print-runs/${run.id}/stage`, {
         method:  'POST',
@@ -292,13 +283,36 @@ function PrintRunsSection({
         toast.error(data.error ?? 'Failed to advance run');
         return;
       }
-      toast.success(`Run #${run.run_number} → ${nextStage}`);
+      toast.success(`Run #${run.run_number} → ${RUN_STAGE_LABELS[nextStage]}`);
       await loadRuns();
-      onChanged();   // refresh job totals in the parent panel
+      onChanged();   // refresh job totals + schedules in the parent panel
     } catch {
       toast.error('Network error. Try again.');
     } finally {
-      setAdvancingId(null);
+      setBusyId(null);
+    }
+  }
+
+  async function startRunForSchedule(schedule: DispatchSchedule) {
+    setBusyId(schedule.id);
+    try {
+      const res  = await fetch(`/api/jobs/${job.id}/print-runs`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ schedule_id: schedule.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? 'Failed to start production');
+        return;
+      }
+      toast.success(`Release ${schedule.release_number} → production (Run #${data.print_run.run_number})`);
+      await loadRuns();
+      onChanged();
+    } catch {
+      toast.error('Network error. Try again.');
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -327,20 +341,154 @@ function PrintRunsSection({
     }
   }
 
+  // Admin escape hatch: force-dispatch a release without a production run
+  async function overrideDispatch(schedule: DispatchSchedule) {
+    const qty = window.prompt(
+      `OVERRIDE — mark Release ${schedule.release_number} dispatched without a production run.\n` +
+      `Planned qty: ${schedule.planned_qty.toLocaleString('en-IN')}\n\nEnter actual qty dispatched:`,
+      String(schedule.planned_qty)
+    );
+    if (!qty || isNaN(Number(qty))) return;
+
+    setBusyId(schedule.id);
+    try {
+      const res = await fetch(`/api/dispatch-schedules/${schedule.id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ actual_qty: Number(qty) }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? 'Failed to dispatch release');
+        return;
+      }
+      toast.success(`Release ${schedule.release_number} dispatched (override)`);
+      onChanged();
+    } catch {
+      toast.error('Network error. Try again.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <div>
-      <h4 className="text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-3">
-        Print Runs
-      </h4>
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide">
+          {isScheduledRelease ? 'Releases' : 'Print Runs'}
+        </h4>
+        {isScheduledRelease && dept === 'Admin' && !showAddForm && (
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="text-xs px-2.5 py-1 rounded-lg bg-brand-primary text-white font-medium hover:bg-brand-primary/90 transition-colors"
+          >
+            + Add Next Release
+          </button>
+        )}
+      </div>
+
+      {showAddForm && (
+        <AddReleaseForm
+          jobId={job.id}
+          onDone={(added) => {
+            setShowAddForm(false);
+            if (added) onChanged();
+          }}
+        />
+      )}
 
       <div className="space-y-2">
-        {runs.map((run) => {
-          const isDone    = run.status === 'dispatched';
-          const nextStage = NEXT_RUN_STAGE[run.current_stage];
-          const mayAdvance =
-            !isDone && nextStage !== null &&
-            (dept === 'Admin' || RUN_STAGE_DEPTS[nextStage].includes(dept));
+        {/* Scheduled releases — Planned → In Production → Dispatched */}
+        {schedules.map((s) => {
+          const run          = runBySchedule.get(s.id) ?? null;
+          const isDispatched = s.status === 'Dispatched';
 
+          return (
+            <div
+              key={s.id}
+              className={cn(
+                'rounded-lg border px-4 py-3',
+                isDispatched ? 'border-emerald-300/25 bg-emerald-400/10' : 'glass'
+              )}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-[var(--glass-ink)]">
+                    Release {s.release_number}
+                    {run && (
+                      <span className="ml-1.5 text-xs text-[var(--glass-muted)]">· Run #{run.run_number}</span>
+                    )}
+                    <span className="ml-2 font-mono text-xs text-[var(--glass-muted)]">
+                      {formatQty(isDispatched ? (s.actual_qty ?? s.planned_qty) : s.planned_qty)} labels
+                    </span>
+                  </p>
+                  <p className="text-xs text-[var(--glass-muted)] mt-0.5">
+                    {isDispatched ? (
+                      <>
+                        Dispatched ✅
+                        {s.actual_date && (
+                          <span className="font-mono ml-1.5">{formatShortDate(s.actual_date)}</span>
+                        )}
+                      </>
+                    ) : run ? (
+                      <>
+                        Stage:{' '}
+                        <strong className="text-[var(--glass-ink)]">
+                          {RUN_STAGE_LABELS[run.current_stage]} 🔄
+                        </strong>
+                      </>
+                    ) : (
+                      <>
+                        Planned for <span className="font-mono">{formatShortDate(s.planned_date)}</span> ⏳
+                      </>
+                    )}
+                  </p>
+                  {s.notes && (
+                    <p className="text-xs text-[var(--glass-muted)] mt-0.5 truncate">{s.notes}</p>
+                  )}
+                </div>
+
+                {/* Exactly one obvious next action per row */}
+                {!isDispatched && (
+                  run ? (
+                    <RunAdvanceControl
+                      run={run}
+                      dept={dept}
+                      busy={busyId === run.id}
+                      onAdvance={() => advanceRun(run)}
+                    />
+                  ) : (
+                    <div className="shrink-0 flex items-center gap-2">
+                      {(dept === 'Production' || dept === 'Admin') && (
+                        <button
+                          onClick={() => startRunForSchedule(s)}
+                          disabled={busyId === s.id}
+                          className="text-xs px-3 py-1.5 rounded-lg bg-brand-primary text-white font-medium hover:bg-brand-primary/90 transition-colors disabled:opacity-40"
+                        >
+                          {busyId === s.id ? 'Starting…' : 'Start Production'}
+                        </button>
+                      )}
+                      {dept === 'Admin' && (
+                        <button
+                          onClick={() => overrideDispatch(s)}
+                          disabled={busyId === s.id}
+                          title="Force-dispatch without a production run"
+                          className="text-xs px-2 py-1.5 rounded-lg border border-white/10 text-[var(--glass-muted)] hover:bg-white/10 transition-colors disabled:opacity-40"
+                        >
+                          Override
+                        </button>
+                      )}
+                    </div>
+                  )
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Runs without a schedule (non-scheduled multi-run jobs / legacy) */}
+        {orphanRuns.map((run) => {
+          const isDone = run.status === 'dispatched';
           return (
             <div
               key={run.id}
@@ -358,7 +506,7 @@ function PrintRunsSection({
                 </p>
                 <p className="text-xs text-[var(--glass-muted)] mt-0.5">
                   Stage: <strong className={isDone ? 'text-emerald-200' : 'text-[var(--glass-ink)]'}>
-                    {run.current_stage} {isDone ? '✅' : '🔄'}
+                    {RUN_STAGE_LABELS[run.current_stage]} {isDone ? '✅' : '🔄'}
                   </strong>
                   {run.dispatched_at && (
                     <span className="ml-2 font-mono">{formatShortDate(run.dispatched_at)}</span>
@@ -369,26 +517,13 @@ function PrintRunsSection({
                 )}
               </div>
 
-              {!isDone && nextStage && (
-                mayAdvance ? (
-                  <button
-                    onClick={() => advanceRun(run)}
-                    disabled={advancingId === run.id}
-                    className={cn(
-                      'shrink-0 text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors',
-                      nextStage === 'Dispatched'
-                        ? 'bg-emerald-400/15 border-emerald-300/30 text-emerald-200 hover:bg-emerald-400/25'
-                        : 'bg-white/[0.06] border-white/10 text-[var(--glass-ink)] hover:bg-white/10',
-                      'disabled:opacity-40'
-                    )}
-                  >
-                    {advancingId === run.id ? 'Saving…' : `→ ${nextStage}`}
-                  </button>
-                ) : (
-                  <span className="shrink-0 text-xs text-[var(--glass-muted)]">
-                    🔒 {RUN_STAGE_DEPTS[nextStage].join('/')}
-                  </span>
-                )
+              {!isDone && (
+                <RunAdvanceControl
+                  run={run}
+                  dept={dept}
+                  busy={busyId === run.id}
+                  onAdvance={() => advanceRun(run)}
+                />
               )}
             </div>
           );
@@ -402,7 +537,17 @@ function PrintRunsSection({
         <span className="text-amber-200">Remaining: <strong>{formatQty(remainingQty)}</strong></span>
       </div>
 
-      {/* Between runs */}
+      {/* Scheduled job, next release not yet known */}
+      {awaitingSchedule && (
+        <div className="mt-2 bg-amber-400/10 border border-amber-300/25 rounded-lg px-3 py-2">
+          <p className="text-xs text-amber-200">
+            ⏳ Next release not scheduled yet — {formatQty(remainingQty)} labels remaining.
+            {dept === 'Admin' && ' Add it above as soon as the date is known.'}
+          </p>
+        </div>
+      )}
+
+      {/* Non-scheduled job, between runs */}
       {awaitingNext && (
         <div className="flex items-center justify-between gap-3 mt-2 bg-amber-400/10 border border-amber-300/25 rounded-lg px-3 py-2">
           <p className="text-xs text-amber-200">
@@ -431,120 +576,136 @@ function PrintRunsSection({
   );
 }
 
-// ── Scheduled Release Table ───────────────────────────────────
+// ── Run advance control ───────────────────────────────────────
+// The single action button for an in-production run: advance to the
+// next per-run stage if the viewer's department owns it, otherwise a
+// lock showing whose turn it is.
 
-function ScheduledReleaseTable({
-  schedules,
+function RunAdvanceControl({
+  run,
   dept,
-  onRefresh,
+  busy,
+  onAdvance,
 }: {
-  schedules:  DispatchSchedule[];
-  dept:       Department;
-  onRefresh:  () => void;
+  run:       PrintRun;
+  dept:      Department;
+  busy:      boolean;
+  onAdvance: () => void;
 }) {
-  const [dispatchingId, setDispatchingId] = useState<string | null>(null);
+  const nextStage = nextRunStage(run.current_stage);
+  if (!nextStage) return null;
 
-  const totalQty    = schedules.reduce((sum, s) => sum + s.planned_qty, 0);
-  const releasedQty = schedules
-    .filter((s) => s.status === 'Dispatched')
-    .reduce((sum, s) => sum + (s.actual_qty ?? s.planned_qty), 0);
-  const remainingQty = totalQty - releasedQty;
+  const mayAdvance = dept === 'Admin' || RUN_STAGE_DEPTS[nextStage].includes(dept);
 
-  const canDispatch = dept === 'Dispatch' || dept === 'Admin';
+  return mayAdvance ? (
+    <button
+      onClick={onAdvance}
+      disabled={busy}
+      className={cn(
+        'shrink-0 text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors',
+        nextStage === 'Dispatched'
+          ? 'bg-emerald-400/15 border-emerald-300/30 text-emerald-200 hover:bg-emerald-400/25'
+          : 'bg-white/[0.06] border-white/10 text-[var(--glass-ink)] hover:bg-white/10',
+        'disabled:opacity-40'
+      )}
+    >
+      {busy ? 'Saving…' : `→ ${RUN_STAGE_LABELS[nextStage]}`}
+    </button>
+  ) : (
+    <span className="shrink-0 text-xs text-[var(--glass-muted)]">
+      🔒 {RUN_STAGE_DEPTS[nextStage].join('/')}
+    </span>
+  );
+}
 
-  async function handleDispatchRelease(schedule: DispatchSchedule) {
-    const qty = window.prompt(
-      `Dispatch Release ${schedule.release_number}\nPlanned qty: ${schedule.planned_qty.toLocaleString('en-IN')}\n\nEnter actual qty dispatched:`,
-      String(schedule.planned_qty)
-    );
-    if (!qty || isNaN(Number(qty))) return;
+// ── Add Next Release form ─────────────────────────────────────
+// Admin-only inline form: the client confirmed the next release, record
+// its date + quantity so Production can start it when the time comes.
 
-    setDispatchingId(schedule.id);
+function AddReleaseForm({
+  jobId,
+  onDone,
+}: {
+  jobId:  string;
+  onDone: (added: boolean) => void;
+}) {
+  const [date,   setDate]   = useState('');
+  const [qty,    setQty]    = useState('');
+  const [notes,  setNotes]  = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    const plannedQty = Number(qty);
+    if (!date || !plannedQty || plannedQty <= 0) {
+      toast.error('Release date and a positive quantity are required');
+      return;
+    }
+    setSaving(true);
     try {
-      const res = await fetch(`/api/dispatch-schedules/${schedule.id}`, {
-        method:  'PATCH',
+      const res  = await fetch(`/api/jobs/${jobId}/schedules`, {
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ actual_qty: Number(qty) }),
+        body:    JSON.stringify({ planned_date: date, planned_qty: plannedQty, notes }),
       });
-      if (res.ok) {
-        onRefresh();
-      } else {
-        const data = await res.json();
-        alert(data.error ?? 'Failed to dispatch release');
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? 'Failed to add release');
+        return;
       }
+      toast.success(`Release ${data.schedule.release_number} scheduled`);
+      onDone(true);
+    } catch {
+      toast.error('Network error. Try again.');
     } finally {
-      setDispatchingId(null);
+      setSaving(false);
     }
   }
 
   return (
-    <div>
-      <h4 className="text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-3">
-        Release Schedule
-      </h4>
-
-      <div className="rounded-lg border border-white/10 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-white/[0.06] border-b border-white/10">
-              <th className="px-3 py-2 text-left text-xs text-[var(--glass-muted)]">Release</th>
-              <th className="px-3 py-2 text-left text-xs text-[var(--glass-muted)]">Planned Qty</th>
-              <th className="px-3 py-2 text-left text-xs text-[var(--glass-muted)]">Planned Date</th>
-              <th className="px-3 py-2 text-left text-xs text-[var(--glass-muted)]">Status</th>
-              <th className="px-3 py-2 text-left text-xs text-[var(--glass-muted)]">Actual Date</th>
-              {canDispatch && <th className="px-3 py-2 text-left text-xs text-[var(--glass-muted)]">Action</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {schedules.map((s) => (
-              <tr key={s.id} className="border-b border-white/8 last:border-0">
-                <td className="px-3 py-2 font-mono text-xs">R{s.release_number}</td>
-                <td className="px-3 py-2 font-mono text-xs">{formatQty(s.planned_qty)}</td>
-                <td className="px-3 py-2 text-xs">{formatShortDate(s.planned_date)}</td>
-                <td className="px-3 py-2">
-                  <span className={cn(
-                    'text-xs px-1.5 py-0.5 rounded font-medium',
-                    s.status === 'Dispatched' ? 'bg-emerald-400/15 text-emerald-200' :
-                    s.status === 'In Progress' ? 'bg-sky-400/15 text-sky-200' :
-                    'bg-white/10 text-white/70'
-                  )}>
-                    {s.status === 'Dispatched' ? '✓ Dispatched' :
-                     s.status === 'In Progress' ? 'In Progress' : '⏳ Pending'}
-                  </span>
-                </td>
-                <td className="px-3 py-2 font-mono text-xs text-[var(--glass-muted)]">
-                  {s.actual_date ? formatShortDate(s.actual_date) : '—'}
-                </td>
-                {canDispatch && (
-                  <td className="px-3 py-2">
-                    {s.status !== 'Dispatched' ? (
-                      <button
-                        onClick={() => handleDispatchRelease(s)}
-                        disabled={dispatchingId === s.id}
-                        className={cn(
-                          'text-xs px-2 py-1 rounded border font-medium transition-colors',
-                          'bg-emerald-400/15 border-emerald-300/30 text-emerald-200 hover:bg-emerald-400/25',
-                          'disabled:opacity-40'
-                        )}
-                      >
-                        {dispatchingId === s.id ? 'Saving…' : 'Dispatch'}
-                      </button>
-                    ) : (
-                      <span className="text-xs text-[var(--glass-muted)]">—</span>
-                    )}
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {/* Totals row */}
-        <div className="bg-white/[0.06] border-t border-white/10 px-3 py-2 flex gap-6 text-xs font-mono">
-          <span>Total: <strong>{formatQty(totalQty)}</strong></span>
-          <span className="text-emerald-200">Released: <strong>{formatQty(releasedQty)}</strong></span>
-          <span className="text-amber-200">Remaining: <strong>{formatQty(remainingQty)}</strong></span>
-        </div>
+    <div className="glass rounded-lg px-4 py-3 mb-2 flex flex-wrap items-end gap-3">
+      <label className="text-xs text-[var(--glass-muted)]">
+        Release date
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="block mt-1 bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1.5 text-sm text-[var(--glass-ink)]"
+        />
+      </label>
+      <label className="text-xs text-[var(--glass-muted)]">
+        Quantity
+        <input
+          type="number"
+          min={1}
+          value={qty}
+          onChange={(e) => setQty(e.target.value)}
+          placeholder="e.g. 20000"
+          className="block mt-1 w-28 bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1.5 text-sm text-[var(--glass-ink)]"
+        />
+      </label>
+      <label className="text-xs text-[var(--glass-muted)] flex-1 min-w-[140px]">
+        Notes (optional)
+        <input
+          type="text"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          className="block mt-1 w-full bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1.5 text-sm text-[var(--glass-ink)]"
+        />
+      </label>
+      <div className="flex gap-2">
+        <button
+          onClick={submit}
+          disabled={saving}
+          className="text-xs px-3 py-1.5 rounded-lg bg-brand-primary text-white font-medium hover:bg-brand-primary/90 transition-colors disabled:opacity-40"
+        >
+          {saving ? 'Saving…' : 'Add Release'}
+        </button>
+        <button
+          onClick={() => onDone(false)}
+          className="text-xs px-2.5 py-1.5 rounded-lg border border-white/10 text-[var(--glass-muted)] hover:bg-white/10 transition-colors"
+        >
+          Cancel
+        </button>
       </div>
     </div>
   );

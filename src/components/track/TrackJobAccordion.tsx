@@ -7,14 +7,14 @@ import { registerGsap } from '@/lib/gsap/register';
 import { useRouter } from 'next/navigation';
 import { cn, formatQty, formatShortDate } from '@/lib/utils';
 import { getProgressPercent, getVisibleStages } from '@/lib/constants/stages';
-import type { ClientStatusLog, DispatchSchedule, Job, JobStageTimestamp, PrintRun } from '@/lib/types';
+import type { ClientStatusLog, DispatchSchedule, Job, JobStageTimestamp, PrintRun, RunStageTimestamp } from '@/lib/types';
 import type { Stage } from '@/lib/constants/stages';
 import StagePipeline from './StagePipeline';
 import ProgressBar from './ProgressBar';
 import DeliveryCountdown from './DeliveryCountdown';
 import StatusBanners from './StatusBanners';
 import DispatchSummaryCard from './DispatchSummaryCard';
-import ScheduledReleaseCard from './ScheduledReleaseCard';
+import ProductionRunsCard from './ProductionRunsCard';
 import { Reveal } from '@/components/motion/Reveal';
 
 registerGsap();
@@ -25,6 +25,7 @@ type TrackJobBundle = {
   stageTimestamps: JobStageTimestamp[];
   schedules: DispatchSchedule[];
   printRuns: PrintRun[];
+  runStageTimestamps: RunStageTimestamp[];
 };
 
 type Props = {
@@ -199,7 +200,6 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
                     statusLogs={bundle.statusLogs}
                     visibleStages={getVisibleStages(bundle.job.job_type)}
                     stageTimestamps={bundle.stageTimestamps}
-                    printRuns={bundle.printRuns}
                   />
 
                   {(bundle.job.dispatched_qty ?? 0) > 0 && (
@@ -212,9 +212,15 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
                     </Reveal>
                   )}
 
-                  {bundle.job.is_scheduled_release && bundle.schedules.length > 0 && (
+                  {(bundle.printRuns.length > 0 || bundle.job.is_scheduled_release) && (
                     <Reveal onScroll>
-                      <ScheduledReleaseCard schedules={bundle.schedules} />
+                      <ProductionRunsCard
+                        job={bundle.job}
+                        printRuns={bundle.printRuns}
+                        schedules={bundle.schedules}
+                        stageTimestamps={bundle.runStageTimestamps}
+                        commonStages={bundle.stageTimestamps}
+                      />
                     </Reveal>
                   )}
 
@@ -301,7 +307,6 @@ function SingleJobDetail({ bundle }: { bundle: TrackJobBundle }) {
         statusLogs={bundle.statusLogs}
         visibleStages={getVisibleStages(bundle.job.job_type)}
         stageTimestamps={bundle.stageTimestamps}
-        printRuns={bundle.printRuns}
       />
 
       {(bundle.job.dispatched_qty ?? 0) > 0 && (
@@ -314,9 +319,15 @@ function SingleJobDetail({ bundle }: { bundle: TrackJobBundle }) {
         </Reveal>
       )}
 
-      {bundle.job.is_scheduled_release && bundle.schedules.length > 0 && (
+      {(bundle.printRuns.length > 0 || bundle.job.is_scheduled_release) && (
         <Reveal onScroll>
-          <ScheduledReleaseCard schedules={bundle.schedules} />
+          <ProductionRunsCard
+            job={bundle.job}
+            printRuns={bundle.printRuns}
+            schedules={bundle.schedules}
+            stageTimestamps={bundle.runStageTimestamps}
+            commonStages={bundle.stageTimestamps}
+          />
         </Reveal>
       )}
 

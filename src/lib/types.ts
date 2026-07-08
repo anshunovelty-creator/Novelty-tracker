@@ -7,6 +7,7 @@
 
 import type { Stage } from './constants/stages';
 import type { Department } from './constants/departments';
+import type { RunStage } from './constants/runStages';
 
 // ── jobs ─────────────────────────────────────────────────────
 
@@ -159,10 +160,10 @@ export interface JobDetail extends Job {
 }
 
 // ── print_runs ────────────────────────────────────────────────
-// Multi-cycle large orders: each run moves through
-// Printing → QC → Packing → Dispatched independently.
+// Multi-cycle large orders and scheduled releases: each run moves through
+// the per-run pipeline (see constants/runStages.ts) independently.
 
-export type PrintRunStage  = 'Printing' | 'QC' | 'Packing' | 'Dispatched';
+export type PrintRunStage  = RunStage;
 export type PrintRunStatus = 'in_progress' | 'dispatched';
 
 export interface PrintRun {
@@ -173,6 +174,7 @@ export interface PrintRun {
   qty_remaining_after: number;          // total remaining after this run
   current_stage:       PrintRunStage;
   status:              PrintRunStatus;
+  schedule_id:         string | null;   // dispatch_schedules row this run fulfils
   started_at:          string;
   dispatched_at:       string | null;   // set when this run reaches Dispatched
   notes:               string | null;
@@ -186,6 +188,15 @@ export interface PrintRunStageLog {
   changed_by:   string | null;          // auth.users id
   changed_at:   string;
   notes:        string | null;
+}
+
+// Client-safe slice of print_run_stage_logs — only the fields the public
+// tracking portal needs (no changed_by / notes). Fetched server-side with the
+// service-role client and passed down to ProductionRunsCard.
+export interface RunStageTimestamp {
+  print_run_id: string;
+  stage:        string;
+  changed_at:   string;
 }
 
 // ── party_contacts ────────────────────────────────────────────

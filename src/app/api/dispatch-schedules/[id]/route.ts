@@ -1,9 +1,11 @@
 // src/app/api/dispatch-schedules/[id]/route.ts
 // ============================================================
 // PATCH /api/dispatch-schedules/[id]
-// Marks a specific release row as dispatched.
-// Called from the "Dispatch This Release" button in admin history panel.
-// Only Dispatch and Admin departments can call this.
+// ADMIN OVERRIDE: force-marks a release as dispatched without a
+// production run — for corrections or releases handled outside the
+// system. The normal path is a print run advancing through the per-run
+// pipeline (print-runs/[runId]/stage), which completes the schedule
+// automatically. Blocked while a linked run is still in production.
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -22,8 +24,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const dept = parseDepartment(user.user_metadata?.department);
-  if (!dept || !['Dispatch', 'Admin'].includes(dept)) {
-    return NextResponse.json({ error: 'Only Dispatch or Admin can dispatch releases' }, { status: 403 });
+  if (dept !== 'Admin') {
+    return NextResponse.json(
+      { error: 'Only Admin can override-dispatch a release — advance its production run instead' },
+      { status: 403 }
+    );
   }
 
   const body = await request.json();
@@ -50,6 +55,21 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'This release is already dispatched' }, { status: 400 });
   }
 
+  // A release with an active production run must be dispatched through the
+  // run pipeline — otherwise the quantity would be counted twice.
+  const { data: linkedRun } = await admin
+    .from('print_runs')
+    .select('id, run_number, status')
+    .eq('schedule_id', id)
+    .maybeSingle();
+
+  if (linkedRun && linkedRun.status !== 'dispatched') {
+    return NextResponse.json(
+      { error: `Run #${linkedRun.run_number} is in production for this release — advance the run to Dispatched instead` },
+      { status: 409 }
+    );
+  }
+
   const now = new Date().toISOString();
 
   // Update schedule row
@@ -68,10 +88,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
 
-  // Update parent job's dispatched_qty
+  // Update parent job's totals (both fields move together — see stage route)
   const { data: job } = await admin
     .from('jobs')
-    .select('dispatched_qty, label_qty, delivery_date')
+    .select('dispatched_qty, total_qty_dispatched, label_qty, delivery_date')
     .eq('id', schedule.job_id)
     .single();
 
@@ -79,7 +99,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const newDispatchedQty = (job.dispatched_qty ?? 0) + actual_qty;
     await admin
       .from('jobs')
-      .update({ dispatched_qty: newDispatchedQty })
+      .update({
+        dispatched_qty:       newDispatchedQty,
+        total_qty_dispatched: (job.total_qty_dispatched ?? 0) + actual_qty,
+      })
       .eq('id', schedule.job_id);
 
     // Write status log entry

@@ -1,11 +1,15 @@
 // src/app/api/jobs/[id]/print-runs/[runId]/stage/route.ts
 // ============================================================
-// POST — advance a print run through its stages:
-//   Printing → QC → Packing → Dispatched (strictly sequential)
+// POST — advance a print run through the per-run pipeline
+// (see constants/runStages.ts), strictly sequential.
 //
 // On Dispatched:
 //   - print_run.status = 'dispatched', dispatched_at = now
-//   - jobs.total_qty_dispatched += qty_this_run
+//   - linked dispatch_schedules row (scheduled releases) is completed
+//   - jobs.dispatched_qty AND jobs.total_qty_dispatched += qty_this_run
+//     (single source of dispatch bookkeeping — both totals stay in sync)
+//   - a 'Partial Dispatch' status log is written; on-time log when the
+//     job completes
 // Every change is appended to print_run_stage_logs.
 // ============================================================
 
@@ -13,20 +17,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { parseDepartment } from '@/lib/constants/departments';
+import { RUN_STAGES, canDeptSetRunStage } from '@/lib/constants/runStages';
+import { toMonthKey } from '@/lib/utils';
 import type { PrintRunStage } from '@/lib/types';
-import type { Department } from '@/lib/constants/departments';
 
 type Params = { params: Promise<{ id: string; runId: string }> };
 
-const RUN_STAGE_ORDER: PrintRunStage[] = ['Printing', 'QC', 'Packing', 'Dispatched'];
-
-// Which departments may set each run stage (Admin always allowed)
-const RUN_STAGE_DEPTS: Record<PrintRunStage, Department[]> = {
-  Printing:   ['Production'],
-  QC:         ['QC'],
-  Packing:    ['Dispatch'],
-  Dispatched: ['Dispatch'],
-};
+const RUN_STAGE_ORDER: readonly PrintRunStage[] = RUN_STAGES;
 
 export async function POST(request: NextRequest, { params }: Params) {
   const { id, runId } = await params;
@@ -49,7 +46,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   // ── Department permission ──
-  if (dept !== 'Admin' && !RUN_STAGE_DEPTS[newStage].includes(dept)) {
+  if (!canDeptSetRunStage(dept, newStage)) {
     return NextResponse.json(
       { error: `${dept} department cannot set run stage to "${newStage}"` },
       { status: 403 }
@@ -108,18 +105,69 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
 
-  // ── On dispatch: add this run's qty to the job total ──
+  // ── On dispatch: complete the linked schedule + job bookkeeping ──
   if (newStage === 'Dispatched') {
-    const { data: job } = await admin
-      .from('jobs')
-      .select('total_qty_dispatched')
-      .eq('id', id)
-      .single();
+    // If Admin already force-dispatched the linked release (override path),
+    // its quantity is already counted — only finish the run itself.
+    let alreadyCounted = false;
 
-    await admin
-      .from('jobs')
-      .update({ total_qty_dispatched: (job?.total_qty_dispatched ?? 0) + run.qty_this_run })
-      .eq('id', id);
+    if (run.schedule_id) {
+      const { data: schedule } = await admin
+        .from('dispatch_schedules')
+        .select('id, status')
+        .eq('id', run.schedule_id)
+        .single();
+
+      if (schedule?.status === 'Dispatched') {
+        alreadyCounted = true;
+      } else if (schedule) {
+        await admin
+          .from('dispatch_schedules')
+          .update({ actual_qty: run.qty_this_run, actual_date: now, status: 'Dispatched' })
+          .eq('id', schedule.id);
+      }
+    }
+
+    if (!alreadyCounted) {
+      const { data: job } = await admin
+        .from('jobs')
+        .select('dispatched_qty, total_qty_dispatched, label_qty, delivery_date')
+        .eq('id', id)
+        .single();
+
+      if (job) {
+        // Both totals move together — the schedule path and the run path
+        // used to update different fields, which made the portals disagree.
+        const newDispatchedQty = (job.dispatched_qty ?? 0) + run.qty_this_run;
+        await admin
+          .from('jobs')
+          .update({
+            dispatched_qty:       newDispatchedQty,
+            total_qty_dispatched: (job.total_qty_dispatched ?? 0) + run.qty_this_run,
+          })
+          .eq('id', id);
+
+        await admin.from('job_status_logs').insert({
+          job_id:          id,
+          status:          'Partial Dispatch',
+          changed_by_dept: dept,
+          changed_at:      now,
+          qty_dispatched:  run.qty_this_run,
+        });
+
+        const allDispatched = newDispatchedQty >= (job.label_qty ?? 0);
+        if (allDispatched && job.delivery_date) {
+          const dispatchedAt = new Date(now);
+          await admin.from('on_time_dispatch_log').insert({
+            job_id:        id,
+            dispatched_at: dispatchedAt.toISOString(),
+            delivery_date: job.delivery_date,
+            is_on_time:    dispatchedAt <= new Date(job.delivery_date),
+            month_key:     toMonthKey(dispatchedAt),
+          });
+        }
+      }
+    }
   }
 
   // ── Audit log ──

@@ -10,7 +10,7 @@ import { unstable_noStore as noStore } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/admin';
 import TrackJobAccordion from '@/components/track/TrackJobAccordion';
 import TrackAutoRefresh from '@/components/track/TrackAutoRefresh';
-import type { ClientStatusLog, DispatchSchedule, Job, JobStageTimestamp, PrintRun } from '@/lib/types';
+import type { ClientStatusLog, DispatchSchedule, Job, JobStageTimestamp, PrintRun, RunStageTimestamp } from '@/lib/types';
 
 type Params = {
   params: Promise<{ po: string }>;
@@ -75,21 +75,37 @@ export default async function TrackJobPage({ params, searchParams }: Params) {
               .eq('job_id', job.id)
               .order('release_number')
           : Promise.resolve({ data: [] }),
-        job.has_partial_runs
-          ? anonClient
-              .from('print_runs')
-              .select('*')
-              .eq('job_id', job.id)
-              .order('run_number')
-          : Promise.resolve({ data: [] }),
+        // Always fetch — the client_job_view.has_partial_runs flag is unreliable
+        // on drifted databases, so we render the runs card whenever runs exist.
+        anonClient
+          .from('print_runs')
+          .select('*')
+          .eq('job_id', job.id)
+          .order('run_number'),
       ]);
+
+      const printRuns = (printRunsRes.data ?? []) as PrintRun[];
+
+      // Per-run stage timestamps power the side-by-side ProductionRunsCard.
+      // Fetched with the service-role client (the audit table is internal —
+      // no anon access) and narrowed to client-safe fields before sending down.
+      let runStageTimestamps: RunStageTimestamp[] = [];
+      if (printRuns.length > 0) {
+        const { data: logs } = await adminClient
+          .from('print_run_stage_logs')
+          .select('print_run_id, stage, changed_at')
+          .in('print_run_id', printRuns.map((r) => r.id))
+          .order('changed_at', { ascending: true });
+        runStageTimestamps = (logs ?? []) as RunStageTimestamp[];
+      }
 
       return {
         job,
         statusLogs: logsRes.data ?? [],
         stageTimestamps: timestampsRes.data ?? [],
         schedules: schedulesRes.data ?? [],
-        printRuns: printRunsRes.data ?? [],
+        printRuns,
+        runStageTimestamps,
       };
     })
   ) as Array<{
@@ -98,6 +114,7 @@ export default async function TrackJobPage({ params, searchParams }: Params) {
     stageTimestamps: JobStageTimestamp[];
     schedules: DispatchSchedule[];
     printRuns: PrintRun[];
+    runStageTimestamps: RunStageTimestamp[];
   }>;
 
   return (

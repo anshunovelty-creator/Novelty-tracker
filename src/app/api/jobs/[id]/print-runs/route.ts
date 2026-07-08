@@ -59,10 +59,41 @@ export async function POST(request: NextRequest, { params }: Params) {
     qty_this_run?: number;
     more_runs?:    boolean;
     notes?:        string;
+    schedule_id?:  string;   // start this run against a scheduled release
   } = await request.json();
 
-  const qtyThisRun = body.qty_this_run;
-  const moreRuns   = body.more_runs ?? false;
+  const admin = createAdminClient();
+
+  // ── Scheduled release? Validate the schedule and default qty from it ──
+  let schedule: { id: string; planned_qty: number; status: string } | null = null;
+  if (body.schedule_id) {
+    const { data: sched } = await admin
+      .from('dispatch_schedules')
+      .select('id, job_id, planned_qty, status')
+      .eq('id', body.schedule_id)
+      .single();
+
+    if (!sched || sched.job_id !== id) {
+      return NextResponse.json({ error: 'Schedule not found for this job' }, { status: 404 });
+    }
+    if (sched.status !== 'Pending') {
+      return NextResponse.json(
+        { error: `Release is already ${sched.status === 'Dispatched' ? 'dispatched' : 'in production'}` },
+        { status: 409 }
+      );
+    }
+    const { data: claimed } = await admin
+      .from('print_runs')
+      .select('id')
+      .eq('schedule_id', sched.id)
+      .maybeSingle();
+    if (claimed) {
+      return NextResponse.json({ error: 'A run already exists for this release' }, { status: 409 });
+    }
+    schedule = sched;
+  }
+
+  const qtyThisRun = body.qty_this_run ?? schedule?.planned_qty;
 
   if (!qtyThisRun || qtyThisRun <= 0) {
     return NextResponse.json(
@@ -70,8 +101,6 @@ export async function POST(request: NextRequest, { params }: Params) {
       { status: 400 }
     );
   }
-
-  const admin = createAdminClient();
 
   // ── Fetch job + validate ──
   const { data: job, error: jobError } = await admin
@@ -120,6 +149,10 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const remainingAfter = remainingBefore - qtyThisRun;
 
+  // Scheduled runs derive more_runs from the remaining quantity — future
+  // releases may not be scheduled yet, so the client cannot know.
+  const moreRuns = schedule ? remainingAfter > 0 : (body.more_runs ?? false);
+
   if (!moreRuns && remainingAfter !== 0) {
     return NextResponse.json(
       { error: 'more_runs=false requires qty_this_run to equal the full remaining quantity' },
@@ -136,6 +169,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       qty_remaining_after: remainingAfter,
       current_stage:       'Printing',
       status:              'in_progress',
+      schedule_id:         schedule?.id ?? null,
       notes:               body.notes?.trim() || null,
     })
     .select()
@@ -144,6 +178,14 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (runError) {
     console.error('[POST print-runs] insert run:', runError);
     return NextResponse.json({ error: runError.message }, { status: 500 });
+  }
+
+  // ── Move the fulfilled schedule into production ──
+  if (schedule) {
+    await admin
+      .from('dispatch_schedules')
+      .update({ status: 'In Progress' })
+      .eq('id', schedule.id);
   }
 
   // ── Mark the job as multi-run if more cycles are coming ──
