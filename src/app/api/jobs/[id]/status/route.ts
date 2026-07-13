@@ -20,7 +20,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { parseDepartment, canDeptSetStage } from '@/lib/constants/departments';
-import { getPrerequisite, getVisibleStages, isStageSkipped, NOTIFICATION_TRIGGER_STAGES } from '@/lib/constants/stages';
+import { getPrerequisite, getVisibleStages, isStageSkipped, isPerReleaseStage, NOTIFICATION_TRIGGER_STAGES } from '@/lib/constants/stages';
 import { toMonthKey } from '@/lib/utils';
 import type { Stage } from '@/lib/constants/stages';
 import type { StatusChangePayload } from '@/lib/types';
@@ -91,6 +91,15 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   const jobType = job.job_type as 'New' | 'Repeat' | 'Artwork Changed';
+
+  // Scheduled-release jobs advance printing/QC/dispatch per release through
+  // the run pipeline — job-level updates stop after the once-per-job stages.
+  if (job.is_scheduled_release && isPerReleaseStage(new_status)) {
+    return NextResponse.json(
+      { error: `"${new_status}" is updated per release for scheduled-release jobs — use the Releases panel on the job page.` },
+      { status: 400 }
+    );
+  }
 
   // ── 4. Check Repeat job stage-skip rules ─────────────────
   if (isStageSkipped(new_status, jobType)) {

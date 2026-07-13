@@ -1,0 +1,238 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-10T06:30:00Z",
+  "title": "Design System: Novelty Labels Tracker",
+  "extensions": {
+    "themes": {
+      "admin": "Airy Green light theme (scoped under .admin-light): white cards on a pale mint wash, dark ink text. Used by the authenticated admin panel for legibility and speed on the factory floor.",
+      "track": "Control Room dark theme: frosted glass over the Press Green mesh. Used by the public /track portal as the client-facing brand statement."
+    },
+    "colorMeta": {
+      "press-green": {
+        "role": "primary",
+        "displayName": "Press Green",
+        "canonical": "#10553F",
+        "tonalRamp": ["#05201A", "#0C4232", "#10553F", "#1A6B4B", "#2C8763", "#4FA582", "#8AC2A9", "#DCEDE5"]
+      },
+      "press-ink": {
+        "role": "neutral",
+        "displayName": "Press Ink",
+        "canonical": "#0A1F18",
+        "tonalRamp": ["#05100C", "#0A1F18", "#0F2E23", "#16402F", "#20543E", "#2E6B50", "#478565", "#79A98C"]
+      },
+      "glass-ink": {
+        "role": "neutral",
+        "displayName": "Glass Ink (track dark theme)",
+        "canonical": "#EAFFF5",
+        "tonalRamp": ["#1E2B25", "#3A4F45", "#5A7367", "#7D968A", "#A1B8AC", "#C4DACE", "#DCEFE4", "#EAFFF5"]
+      },
+      "glass-muted": {
+        "role": "neutral",
+        "displayName": "Glass Muted (track dark theme)",
+        "canonical": "#9FBCB0",
+        "tonalRamp": ["#1C2622", "#33443E", "#4C635B", "#66837A", "#82A296", "#9FBCB0", "#BDD4CA", "#DBEBE4"]
+      },
+      "admin-bg": {
+        "role": "neutral",
+        "displayName": "Mint Wash (admin page background)",
+        "canonical": "#F1F5F2",
+        "tonalRamp": ["#0C2A20", "#2E4A3E", "#5A6B62", "#94A39B", "#C7D6CE", "#E2EFE8", "#E7F1EB", "#F1F5F2"]
+      },
+      "admin-surface": {
+        "role": "neutral",
+        "displayName": "Card White / Mint Tint (admin surfaces)",
+        "canonical": "#FFFFFF",
+        "tonalRamp": ["#0C2A20", "#334A40", "#5A6B62", "#8FA79C", "#C7D6CE", "#EDF3EF", "#F4F8F5", "#FFFFFF"]
+      },
+      "admin-ink": {
+        "role": "neutral",
+        "displayName": "Ink (admin primary text)",
+        "canonical": "#0C2A20",
+        "tonalRamp": ["#0C2A20", "#1B3A2E", "#2E4A3E", "#425A4E", "#5A6B62", "#7C8D84", "#A6B3AC", "#D4DDD7"]
+      },
+      "admin-muted": {
+        "role": "neutral",
+        "displayName": "Muted Sage (admin secondary text)",
+        "canonical": "#5A6B62",
+        "tonalRamp": ["#22302A", "#374840", "#4C5D54", "#5A6B62", "#788A80", "#96A79D", "#B8C6BD", "#DBE5DF"]
+      },
+      "admin-border": {
+        "role": "neutral",
+        "displayName": "Green-Tinted Border (admin dividers)",
+        "canonical": "#E4EAE6",
+        "tonalRamp": ["#5A6B62", "#78897F", "#96A79D", "#B4C3BA", "#D2DDD7", "#E4EAE6", "#EFF3F0", "#F7F9F8"]
+      },
+      "success": {
+        "role": "semantic",
+        "displayName": "Success Green",
+        "canonical": "#1B7A4E",
+        "tonalRamp": ["#062A19", "#0D4229", "#14603C", "#1B7A4E", "#2B9862", "#4BB57E", "#7ECDA2", "#C2E9D3"]
+      },
+      "warning": {
+        "role": "semantic",
+        "displayName": "Warning Amber",
+        "canonical": "#C2740C",
+        "tonalRamp": ["#3A2203", "#5D3806", "#8A5509", "#C2740C", "#DE8F1F", "#EBAB4C", "#F3C783", "#FAE4C2"]
+      },
+      "danger": {
+        "role": "semantic",
+        "displayName": "Danger Red",
+        "canonical": "#C0392B",
+        "tonalRamp": ["#3A0F0A", "#5D1B13", "#8A2A1E", "#C0392B", "#D45A4C", "#E1837A", "#EDAEA8", "#F7D8D5"]
+      },
+      "status-emerald": {
+        "role": "semantic",
+        "displayName": "Stage Emerald (in printing / approved / dispatched)",
+        "canonical": "#047857",
+        "tonalRamp": ["#064E3B", "#065F46", "#047857", "#059669", "#10B981", "#34D399", "#A7F3D0", "#D1FAE5"]
+      },
+      "status-sky": {
+        "role": "semantic",
+        "displayName": "Stage Sky (prepress / slitting / scheduled)",
+        "canonical": "#0369A1",
+        "tonalRamp": ["#0C4A6E", "#075985", "#0369A1", "#0284C7", "#0EA5E9", "#38BDF8", "#BAE6FD", "#E0F2FE"]
+      },
+      "status-amber": {
+        "role": "semantic",
+        "displayName": "Stage Amber (on hold / caution / partial)",
+        "canonical": "#B45309",
+        "tonalRamp": ["#78350F", "#92400E", "#B45309", "#D97706", "#F59E0B", "#FBBF24", "#FDE68A", "#FEF3C7"]
+      },
+      "status-red": {
+        "role": "semantic",
+        "displayName": "Stage Red (urgent / fault / delete)",
+        "canonical": "#B91C1C",
+        "tonalRamp": ["#7F1D1D", "#991B1B", "#B91C1C", "#DC2626", "#EF4444", "#F87171", "#FECACA", "#FEE2E2"]
+      },
+      "status-purple": {
+        "role": "semantic",
+        "displayName": "Stage Purple (artwork / packing)",
+        "canonical": "#7E22CE",
+        "tonalRamp": ["#581C87", "#6B21A8", "#7E22CE", "#9333EA", "#A855F7", "#C084FC", "#E9D5FF", "#F3E8FF"]
+      },
+      "status-cyan": {
+        "role": "semantic",
+        "displayName": "Stage Cyan (quality check)",
+        "canonical": "#155E75",
+        "tonalRamp": ["#164E63", "#155E75", "#0E7490", "#0891B2", "#06B6D4", "#22D3EE", "#A5F3FC", "#CFFAFE"]
+      },
+      "status-yellow": {
+        "role": "semantic",
+        "displayName": "Stage Yellow (ready to dispatch)",
+        "canonical": "#854D0E",
+        "tonalRamp": ["#713F12", "#854D0E", "#A16207", "#CA8A04", "#EAB308", "#FACC15", "#FEF08A", "#FEF9C3"]
+      },
+      "status-orange": {
+        "role": "semantic",
+        "displayName": "Stage Orange (shade card sent)",
+        "canonical": "#C2410C",
+        "tonalRamp": ["#7C2D12", "#9A3412", "#C2410C", "#EA580C", "#F97316", "#FB923C", "#FED7AA", "#FFEDD5"]
+      },
+      "status-slate": {
+        "role": "semantic",
+        "displayName": "Stage Slate (PO received / repeat)",
+        "canonical": "#334155",
+        "tonalRamp": ["#0F172A", "#1E293B", "#334155", "#475569", "#64748B", "#94A3B8", "#E2E8F0", "#F1F5F9"]
+      }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Headline", "purpose": "Page and modal titles." },
+      "title": { "displayName": "Title", "purpose": "Panel headings and job names." },
+      "body": { "displayName": "Body", "purpose": "Workhorse size for tables, forms, descriptions." },
+      "label": { "displayName": "Label", "purpose": "Floating field labels and micro-metadata; the only uppercase in the system." },
+      "data": { "displayName": "Data (Mono)", "purpose": "PO numbers, quantities, dates, countdowns. If it's a number, it's mono, tabular." }
+    },
+    "shadows": [
+      { "name": "admin-card", "value": "0 1px 2px rgba(12,42,32,0.04), 0 2px 8px rgba(12,42,32,0.05)", "purpose": "Admin (light theme) white cards: soft ambient lift replacing the glass ladder." },
+      { "name": "admin-card-raised", "value": "0 2px 6px rgba(12,42,32,0.06), 0 8px 24px rgba(12,42,32,0.06)", "purpose": "Admin emphasis / floating surfaces (popovers, modals)." },
+      { "name": "ambient-float", "value": "0 8px 30px rgba(0,0,0,0.18)", "purpose": "Track (dark theme) floating cards, modals, popovers only. Never on in-flow panels." },
+      { "name": "focus-bloom", "value": "0 0 0 4px rgba(124,240,190,0.22), 0 10px 26px rgba(0,0,0,0.25)", "purpose": "Track focused inputs and controls; feedback, not decoration." }
+    ],
+    "motion": [
+      { "name": "ease-standard", "value": "all 0.2s ease", "purpose": "Default control transition; every interaction answers within 200ms." },
+      { "name": "pulse-ring", "value": "pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite", "purpose": "Live status dot only; one per section, stops under reduced motion." },
+      { "name": "shimmer", "value": "shimmer 1.4s ease infinite", "purpose": "Skeleton loading sweep; neutral grey on admin light, 7-20% white on track dark." },
+      { "name": "mesh-drift", "value": "mesh-drift 13s ease-in-out infinite", "purpose": "Track background blob drift; disabled under reduced motion." },
+      { "name": "cyc-fade", "value": "cyc-fade 0.3s ease", "purpose": "Cycling-status crossfade (fade + 4px rise)." }
+    ],
+    "breakpoints": [
+      { "name": "modal-switch", "value": "500px", "purpose": "Below: bottom sheet. Above: centered dialog." },
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Solid Press Green fill for the one primary action per view region. Identical in both themes.",
+      "html": "<button class=\"ds-btn-primary\">Update stage</button>",
+      "css": ".ds-btn-primary { background: #10553F; color: #fff; font-family: 'DM Sans', system-ui, sans-serif; font-size: 12px; font-weight: 500; padding: 6px 12px; min-height: 44px; border: none; border-radius: 8px; cursor: pointer; transition: background 0.2s ease; } .ds-btn-primary:hover { background: #0C4232; } .ds-btn-primary:disabled { opacity: 0.4; cursor: default; }"
+    },
+    {
+      "name": "Admin Status Chip (light)",
+      "kind": "chip",
+      "refersTo": "badge-status",
+      "description": "Admin light theme: solid pastel chip — color-100 fill, color-200 border, color-700/800 text. The chip IS the job's state.",
+      "html": "<span class=\"ds-chip\">In Printing</span>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; background: #D1FAE5; color: #065F46; border: 1px solid #6EE7B7; font-family: 'DM Sans', system-ui, sans-serif; font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 9999px; }"
+    },
+    {
+      "name": "Admin Card (light)",
+      "kind": "card",
+      "refersTo": "card-glass",
+      "description": "Admin light theme container: solid white with a 1px green-tinted border and a soft ambient lift. Replaces the dark glass panel inside .admin-light.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-title\">Production Runs</div><div class=\"ds-card-body\">Run 2 of 3 · <span class=\"ds-mono\">12,500</span> labels</div></div>",
+      "css": ".ds-card { background: #FFFFFF; border: 1px solid #E4EAE6; border-radius: 12px; padding: 20px; box-shadow: 0 1px 2px rgba(12,42,32,0.04), 0 2px 8px rgba(12,42,32,0.05); } .ds-card-title { font-family: 'DM Sans', system-ui, sans-serif; font-size: 16px; font-weight: 600; color: #0C2A20; margin-bottom: 8px; } .ds-card-body { font-family: 'DM Sans', system-ui, sans-serif; font-size: 14px; color: #5A6B62; } .ds-mono { font-family: 'DM Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; color: #0C2A20; }"
+    },
+    {
+      "name": "Glass Panel (track dark)",
+      "kind": "card",
+      "refersTo": "card-glass",
+      "description": "Track portal container: 7% white frosted glass with its 1px edge over the Press Green mesh.",
+      "html": "<div class=\"ds-panel\"><div class=\"ds-panel-title\">Order Progress</div><div class=\"ds-panel-body\">Stage 6 of 15 · <span class=\"ds-mono2\">12,500</span> labels</div></div>",
+      "css": ".ds-panel { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.14); border-radius: 12px; padding: 20px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); } .ds-panel-title { font-family: 'DM Sans', system-ui, sans-serif; font-size: 16px; font-weight: 600; color: #EAFFF5; margin-bottom: 8px; } .ds-panel-body { font-family: 'DM Sans', system-ui, sans-serif; font-size: 14px; color: #9FBCB0; } .ds-mono2 { font-family: 'DM Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; color: #EAFFF5; }"
+    },
+    {
+      "name": "Live Status Dot",
+      "kind": "custom",
+      "description": "Signature pulsing dot marking genuinely live state; one per section maximum. Shared across themes.",
+      "html": "<span class=\"ds-live\"><span class=\"ds-live-dot\"></span>In Printing</span>",
+      "css": ".ds-live { display: inline-flex; align-items: center; gap: 6px; font-family: 'DM Sans', system-ui, sans-serif; font-size: 12px; color: #047857; } .ds-live-dot { width: 6px; height: 6px; border-radius: 9999px; background: currentColor; animation: ds-pulse-ring 1.5s cubic-bezier(0.4,0,0.6,1) infinite; } @keyframes ds-pulse-ring { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.4); opacity: 0.5; } } @media (prefers-reduced-motion: reduce) { .ds-live-dot { animation: none; } }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Control Room",
+    "overview": "A calm control room overlooking the factory floor: every job visible, nothing shouting. The system carries the same Press Green identity and status vocabulary across two audience-split themes. The admin panel runs the Airy Green light theme — white cards on a pale mint wash, dark ink text — for maximum legibility and speed on the floor. The public /track portal keeps the original dark Control Room: frosted glass over the drifting Press Green mesh, a client-facing brand statement. In both, depth and hierarchy come from contrast, type, and consistent component vocabulary, never decoration. Premium the way precision machinery is premium: tight tolerances and controls that respond instantly.",
+    "keyCharacteristics": [
+      "Two audience-split themes, one vocabulary: admin is the Airy Green light theme (scoped under .admin-light); the /track portal stays dark glass-mesh.",
+      "Admin surfaces are solid white cards with a 1px green-tinted border (#E4EAE6) and a soft ambient lift; track surfaces are 7-12% frosted glass.",
+      "Tactile, confident controls: instant hover feedback, focus states, optimistic chip updates.",
+      "DM Mono with tabular numerals for every number, timestamp, and code.",
+      "Status is always a chip colored strictly by state: solid pastel (color-100 bg / color-200 border / color-700+ text) on admin, translucent tint on track. Color means state, never decoration."
+    ],
+    "rules": [
+      { "name": "The Two-Theme Rule", "body": "Admin renders in the Airy Green light theme, scoped under .admin-light; the public /track portal stays on the dark Press Green mesh. They share tokens, status colors, and stage language — only the surface flips. Never leak dark-glass classes into admin without a light override, and never light-theme the track portal.", "section": "colors" },
+      { "name": "The State-Only Spectrum Rule", "body": "Sky, amber, purple, orange, red, cyan, and emerald tints exist solely to encode job state (stages, urgency, QC). Never use a spectral tint decoratively; a color a user cannot read as a status is prohibited.", "section": "colors" },
+      { "name": "The Mono Number Rule", "body": "Every numeric value renders in DM Mono with tabular numerals, everywhere, with no exceptions. Columns of quantities must align digit-for-digit.", "section": "typography" },
+      { "name": "The Ladder Rule", "body": "Admin hierarchy climbs white -> mint tint (#F4F8F5) -> soft shadow. Track hierarchy climbs the translucency ladder (0% -> 7% -> 12% white). If a surface needs to feel higher, lift it within its theme's ladder, don't mix them.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep admin on the light theme and /track on the dark mesh; they share tokens and status colors, presented at each audience's polish.",
+      "Do give every admin card its 1px #E4EAE6 border and soft lift, every track panel its 1px 14% white border, and every number DM Mono tabular figures.",
+      "Do answer every interaction within 200ms of visual feedback: hover fills, focus states, press states, optimistic chip updates.",
+      "Do design loading (skeleton), empty, error, on-hold, and overdue states as first-class layouts; unhappy paths are where trust is won.",
+      "Do keep 44px minimum tap targets and prefers-reduced-motion alternatives on all animation."
+    ],
+    "donts": [
+      "Don't build \"generic admin template\" surfaces: no rows of identical stat cards, no default-blue buttons, no off-the-shelf dashboard grammar.",
+      "Don't be \"consumer-app flashy\": no gradients for fun, no confetti, no marketing-style motion inside the work tool.",
+      "Don't use spectral color decoratively; if a tint doesn't encode job state, it doesn't ship.",
+      "Don't set a dark background or dark text without checking its theme: dark-on-dark (e.g. a #0A1F18 dropdown in the light admin) is the exact bug that hides text after a theme flip.",
+      "Don't add thick left-stripe urgency borders (border-l-4); urgency reads through the row's background tint plus its badge.",
+      "Don't drop text below AA: admin Muted Sage (#5A6B62) and track Glass Muted (#9FBCB0) are the floor for secondary text and never carry body-length prose."
+    ]
+  }
+}

@@ -153,6 +153,30 @@ export const DISPATCH_STAGES: Stage[] = [
   'Dispatched',
 ];
 
+// Scheduled-release jobs: only these once-per-job stages (prepress + sample /
+// shade approval) are set at JOB level. Printing onward happens per release
+// through the run pipeline (see constants/runStages.ts).
+export const SCHEDULED_ONCE_STAGES: Stage[] = [
+  'PO Received',
+  'Artwork Received',
+  'Prepress / Design Check',
+  'Sample Printing',
+  'Shade Card Sent',
+  'Shade Card Approved',
+];
+
+/**
+ * True for stages that a scheduled-release job must NOT set at job level —
+ * they are carried out per release. On Hold / PO Closed stay job-level.
+ */
+export function isPerReleaseStage(stage: Stage): boolean {
+  return (
+    stage !== 'On Hold' &&
+    stage !== 'PO Closed' &&
+    !SCHEDULED_ONCE_STAGES.includes(stage)
+  );
+}
+
 // Stages that require a modal before saving
 export type ModalRequiredStage =
   | 'On Hold'

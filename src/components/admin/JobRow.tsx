@@ -2,9 +2,10 @@
 // src/components/admin/JobRow.tsx
 
 import { useState } from 'react';
+import { ChevronDown, ChevronUp, PauseCircle, Trash2 } from 'lucide-react';
 import { cn, formatAdminDate, formatShortDate, formatQty } from '@/lib/utils';
 import { STATUS_COLORS, ROW_URGENCY_STYLES, JOB_TYPE_BADGE, urgentBadgeClass } from '@/lib/constants/statusColors';
-import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES } from '@/lib/constants/stages';
+import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES, isPerReleaseStage } from '@/lib/constants/stages';
 import { canDeptSetStage } from '@/lib/constants/departments';
 import type { Job } from '@/lib/types';
 import type { Department } from '@/lib/constants/departments';
@@ -19,6 +20,7 @@ import {
   PartialDispatchModal,
   FullDispatchModal,
   ClosePOModal,
+  ConfirmModal,
 } from './modals';
 import toast from 'react-hot-toast';
 
@@ -39,7 +41,8 @@ type ModalState =
   | { type: 'qc' }
   | { type: 'partial_dispatch' }
   | { type: 'full_dispatch' }
-  | { type: 'close_po' };
+  | { type: 'close_po' }
+  | { type: 'delete' };
 
 export default function JobRow({
   job, dept, isExpanded, onToggleExpand, onJobUpdated, onJobDeleted, onDuplicate,
@@ -47,6 +50,7 @@ export default function JobRow({
   const [pendingStage,   setPendingStage]   = useState<Stage | null>(null);
   const [modal,          setModal]          = useState<ModalState>({ type: 'none' });
   const [submitting,     setSubmitting]     = useState(false);
+  const [deleting,       setDeleting]       = useState(false);
   const [pendingPayload, setPendingPayload] = useState<{
     new_status:      Stage;
     remark?:         string;
@@ -143,6 +147,26 @@ export default function JobRow({
     }
   }
 
+  // ── Delete job (Admin only) ─────────────────────────────────
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/jobs/${job.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error ?? 'Failed to delete job');
+        return;
+      }
+      onJobDeleted(job.id);
+      toast.success('Job deleted');
+    } catch {
+      toast.error('Network error. Try again.');
+    } finally {
+      setDeleting(false);
+      setModal({ type: 'none' });
+    }
+  }
+
   // ── Last status log display ─────────────────────────────────
   const lastUpdatedLine = job.updated_at
     ? `${formatAdminDate(job.updated_at)}`
@@ -161,9 +185,14 @@ export default function JobRow({
   // ── Available stages in dropdown ────────────────────────────
   const _stages: Stage[] = [...PIPELINE_STAGES, 'On Hold'];
   if (dept === 'Admin') _stages.push('PO Closed');
-  const availableStages = job.job_type === 'Repeat'
+  let availableStages = job.job_type === 'Repeat'
     ? _stages.filter((s) => !REPEAT_SKIPPED_STAGES.includes(s as any))
     : _stages;
+  // Scheduled-release jobs: printing onward is advanced per release in the
+  // job's Releases panel — only the once-per-job stages stay in this dropdown.
+  if (job.is_scheduled_release) {
+    availableStages = availableStages.filter((s) => !isPerReleaseStage(s));
+  }
 
   // Completed stages — shown with ✓ in the dropdown
   const completedSet = new Set(
@@ -202,8 +231,9 @@ export default function JobRow({
             </span>
           )}
           {job.halt_remark && job.status === 'On Hold' && (
-            <p className="text-xs text-amber-200 bg-amber-400/10 rounded px-1.5 py-0.5 mt-1 truncate max-w-[220px]">
-              ⏸ {job.halt_remark}
+            <p className="inline-flex items-center gap-1 text-xs text-amber-200 bg-amber-400/10 rounded px-1.5 py-0.5 mt-1 max-w-[220px]">
+              <PauseCircle className="w-3 h-3 shrink-0" aria-hidden="true" />
+              <span className="truncate">{job.halt_remark}</span>
             </p>
           )}
           {job.notes && (
@@ -221,7 +251,14 @@ export default function JobRow({
                   <span className="text-[var(--glass-muted)]"> dispatched</span>
                 )}
               </p>
-              <div className="h-1.5 bg-white/10 rounded-full mt-1.5 w-20">
+              <div
+                className="h-1.5 bg-white/10 rounded-full mt-1.5 w-20"
+                role="progressbar"
+                aria-valuenow={dispatchPct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`Dispatched ${dispatchPct}% of order`}
+              >
                 <div
                   className="h-full bg-emerald-400 rounded-full transition-all"
                   style={{ width: `${dispatchPct}%` }}
@@ -263,13 +300,14 @@ export default function JobRow({
             disabled={submitting}
             onChange={(e) => handleStageSelect(e.target.value as Stage)}
             className={cn(
-              'w-full px-2 py-1.5 rounded-lg border text-xs font-medium',
-              'focus:outline-none focus:ring-2 focus:ring-brand-accent/20',
-              'transition-colors cursor-pointer',
-              STATUS_COLORS[job.status]?.bg ?? 'bg-gray-100',
-              STATUS_COLORS[job.status]?.text ?? 'text-gray-700',
-              'border-transparent',
-              '[&>option]:bg-[#0A1F18] [&>option]:text-[var(--glass-ink)]'
+              'w-full px-2 py-1.5 rounded-lg border border-transparent text-xs font-medium',
+              // Match the app-wide emerald focus bloom (see inputCls / DeliveryDateEdit)
+              'focus:outline-none focus:border-emerald-300/70',
+              'focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)]',
+              'transition-all cursor-pointer',
+              STATUS_COLORS[job.status]?.bg ?? 'bg-white/10',
+              STATUS_COLORS[job.status]?.text ?? 'text-white/80',
+              '[&>option]:bg-white [&>option]:text-[var(--glass-ink)]'
             )}
           >
             {availableStages.map((stage) => {
@@ -298,23 +336,25 @@ export default function JobRow({
           <div className="flex items-center gap-2">
             <button
               onClick={onToggleExpand}
-              className="text-[var(--glass-muted)] hover:text-[var(--glass-ink)] text-xs transition-colors px-2 py-1 rounded border border-white/15"
+              aria-expanded={isExpanded}
+              aria-label={isExpanded ? 'Hide job history' : 'Show job history'}
+              className="inline-flex items-center gap-1 text-[var(--glass-muted)] hover:text-[var(--glass-ink)] text-xs transition-colors px-2 py-1 rounded border border-white/15 hover:bg-white/10"
             >
-              {isExpanded ? '▲ Less' : '▼ More'}
+              {isExpanded
+                ? <><ChevronUp className="w-3 h-3" aria-hidden="true" /> Less</>
+                : <><ChevronDown className="w-3 h-3" aria-hidden="true" /> More</>}
             </button>
 
             <JobDuplicateButton job={job} onDuplicate={onDuplicate} />
 
             {dept === 'Admin' && (
               <button
-                onClick={async () => {
-                  if (!confirm(`Delete job ${job.po_number}? This cannot be undone.`)) return;
-                  await fetch(`/api/jobs/${job.id}`, { method: 'DELETE' });
-                  onJobDeleted(job.id);
-                  toast.success('Job deleted');
-                }}
-                className="text-red-400 hover:text-red-600 text-xs transition-colors px-2 py-1"
+                onClick={() => setModal({ type: 'delete' })}
+                aria-label={`Delete job ${job.po_number}`}
+                title="Delete job"
+                className="inline-flex items-center gap-1 text-red-300 hover:text-red-200 text-xs transition-colors px-2 py-1 rounded hover:bg-red-400/15"
               >
+                <Trash2 className="w-3 h-3" aria-hidden="true" />
                 Del
               </button>
             )}
@@ -410,6 +450,18 @@ export default function JobRow({
           onConfirm={() =>
             submitStatusChange({ new_status: 'PO Closed' })
           }
+        />
+      )}
+
+      {modal.type === 'delete' && (
+        <ConfirmModal
+          title={`Delete job ${job.po_number}?`}
+          message="This permanently removes the job and its history. This cannot be undone."
+          confirmLabel="Delete job"
+          tone="danger"
+          busy={deleting}
+          onCancel={() => setModal({ type: 'none' })}
+          onConfirm={handleDelete}
         />
       )}
     </>

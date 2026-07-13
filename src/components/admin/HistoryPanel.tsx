@@ -2,6 +2,7 @@
 // src/components/admin/HistoryPanel.tsx
 
 import { useEffect, useState, useCallback } from 'react';
+import { CheckCircle2, RefreshCw, Clock, Lock } from 'lucide-react';
 import { cn, formatAdminDate, formatShortDate, formatQty } from '@/lib/utils';
 import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES } from '@/lib/constants/stages';
 import { DEPT_DISPLAY_NAME } from '@/lib/constants/departments';
@@ -10,7 +11,7 @@ import type { JobDetail, JobStatusLog, StageComment, DispatchSchedule, PrintRun 
 import type { Stage } from '@/lib/constants/stages';
 import type { Department } from '@/lib/constants/departments';
 import StageComments from './StageComments';
-import { PrintRunModal } from './modals';
+import { PrintRunModal, PromptModal } from './modals';
 import { SkeletonText } from '@/components/ui/Skeleton';
 import toast from 'react-hot-toast';
 
@@ -52,7 +53,7 @@ export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept,
 
   if (error || !detail) {
     return (
-      <div className="py-6 text-sm text-red-500 text-center">
+      <div className="py-6 text-sm text-red-300 text-center">
         {error ?? 'Failed to load history'}
       </div>
     );
@@ -231,6 +232,10 @@ function ReleasesSection({
   const [busyId,      setBusyId]      = useState<string | null>(null);
   const [showModal,   setShowModal]   = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
+  // Run awaiting a QC remark before advancing past QC
+  const [qcRun,          setQcRun]          = useState<PrintRun | null>(null);
+  // Schedule awaiting an override dispatch quantity
+  const [overrideSched,  setOverrideSched]  = useState<DispatchSchedule | null>(null);
 
   const loadRuns = useCallback(async () => {
     try {
@@ -267,16 +272,25 @@ function ReleasesSection({
   const awaitingSchedule =
     isScheduledRelease && !hasPendingSchedule && !activeRun && remainingQty > 0;
 
-  async function advanceRun(run: PrintRun) {
+  async function advanceRun(run: PrintRun, qcRemarkInput?: string) {
     const nextStage = nextRunStage(run.current_stage);
     if (!nextStage) return;
+
+    // QC signs the release off when moving it past QC — capture the
+    // per-release remark in a modal first (blank = no remark; Cancel aborts).
+    if (run.current_stage === 'QC' && qcRemarkInput === undefined) {
+      setQcRun(run);
+      return;
+    }
+    const qcRemark =
+      run.current_stage === 'QC' ? (qcRemarkInput?.trim() || undefined) : undefined;
 
     setBusyId(run.id);
     try {
       const res  = await fetch(`/api/jobs/${job.id}/print-runs/${run.id}/stage`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ new_stage: nextStage }),
+        body:    JSON.stringify({ new_stage: nextStage, qc_remark: qcRemark }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -341,21 +355,18 @@ function ReleasesSection({
     }
   }
 
-  // Admin escape hatch: force-dispatch a release without a production run
-  async function overrideDispatch(schedule: DispatchSchedule) {
-    const qty = window.prompt(
-      `OVERRIDE — mark Release ${schedule.release_number} dispatched without a production run.\n` +
-      `Planned qty: ${schedule.planned_qty.toLocaleString('en-IN')}\n\nEnter actual qty dispatched:`,
-      String(schedule.planned_qty)
-    );
-    if (!qty || isNaN(Number(qty))) return;
+  // Admin escape hatch: force-dispatch a release without a production run.
+  // Quantity is captured in a modal (see overrideSched); this runs on confirm.
+  async function overrideDispatch(schedule: DispatchSchedule, qtyInput: string) {
+    const qty = Number(qtyInput);
+    if (!qty || Number.isNaN(qty)) return;
 
     setBusyId(schedule.id);
     try {
       const res = await fetch(`/api/dispatch-schedules/${schedule.id}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ actual_qty: Number(qty) }),
+        body:    JSON.stringify({ actual_qty: qty }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -422,29 +433,35 @@ function ReleasesSection({
                       {formatQty(isDispatched ? (s.actual_qty ?? s.planned_qty) : s.planned_qty)} labels
                     </span>
                   </p>
-                  <p className="text-xs text-[var(--glass-muted)] mt-0.5">
+                  <p className="inline-flex items-center gap-1 text-xs text-[var(--glass-muted)] mt-0.5">
                     {isDispatched ? (
                       <>
-                        Dispatched ✅
+                        <CheckCircle2 className="w-3 h-3 text-emerald-200 shrink-0" aria-hidden="true" />
+                        Dispatched
                         {s.actual_date && (
-                          <span className="font-mono ml-1.5">{formatShortDate(s.actual_date)}</span>
+                          <span className="font-mono ml-1">{formatShortDate(s.actual_date)}</span>
                         )}
                       </>
                     ) : run ? (
                       <>
+                        <RefreshCw className="w-3 h-3 text-sky-200 shrink-0" aria-hidden="true" />
                         Stage:{' '}
                         <strong className="text-[var(--glass-ink)]">
-                          {RUN_STAGE_LABELS[run.current_stage]} 🔄
+                          {RUN_STAGE_LABELS[run.current_stage]}
                         </strong>
                       </>
                     ) : (
                       <>
-                        Planned for <span className="font-mono">{formatShortDate(s.planned_date)}</span> ⏳
+                        <Clock className="w-3 h-3 text-amber-200 shrink-0" aria-hidden="true" />
+                        Planned for <span className="font-mono">{formatShortDate(s.planned_date)}</span>
                       </>
                     )}
                   </p>
                   {s.notes && (
                     <p className="text-xs text-[var(--glass-muted)] mt-0.5 truncate">{s.notes}</p>
+                  )}
+                  {run?.qc_remark && (
+                    <p className="text-xs text-sky-200 mt-0.5 truncate">QC: {run.qc_remark}</p>
                   )}
                 </div>
 
@@ -470,7 +487,7 @@ function ReleasesSection({
                       )}
                       {dept === 'Admin' && (
                         <button
-                          onClick={() => overrideDispatch(s)}
+                          onClick={() => setOverrideSched(s)}
                           disabled={busyId === s.id}
                           title="Force-dispatch without a production run"
                           className="text-xs px-2 py-1.5 rounded-lg border border-white/10 text-[var(--glass-muted)] hover:bg-white/10 transition-colors disabled:opacity-40"
@@ -504,16 +521,22 @@ function ReleasesSection({
                     {formatQty(run.qty_this_run)} labels
                   </span>
                 </p>
-                <p className="text-xs text-[var(--glass-muted)] mt-0.5">
+                <p className="inline-flex items-center gap-1 text-xs text-[var(--glass-muted)] mt-0.5">
+                  {isDone
+                    ? <CheckCircle2 className="w-3 h-3 text-emerald-200 shrink-0" aria-hidden="true" />
+                    : <RefreshCw className="w-3 h-3 text-sky-200 shrink-0" aria-hidden="true" />}
                   Stage: <strong className={isDone ? 'text-emerald-200' : 'text-[var(--glass-ink)]'}>
-                    {RUN_STAGE_LABELS[run.current_stage]} {isDone ? '✅' : '🔄'}
+                    {RUN_STAGE_LABELS[run.current_stage]}
                   </strong>
                   {run.dispatched_at && (
-                    <span className="ml-2 font-mono">{formatShortDate(run.dispatched_at)}</span>
+                    <span className="ml-1 font-mono">{formatShortDate(run.dispatched_at)}</span>
                   )}
                 </p>
                 {run.notes && (
                   <p className="text-xs text-[var(--glass-muted)] mt-0.5 truncate">{run.notes}</p>
+                )}
+                {run.qc_remark && (
+                  <p className="text-xs text-sky-200 mt-0.5 truncate">QC: {run.qc_remark}</p>
                 )}
               </div>
 
@@ -540,9 +563,12 @@ function ReleasesSection({
       {/* Scheduled job, next release not yet known */}
       {awaitingSchedule && (
         <div className="mt-2 bg-amber-400/10 border border-amber-300/25 rounded-lg px-3 py-2">
-          <p className="text-xs text-amber-200">
-            ⏳ Next release not scheduled yet — {formatQty(remainingQty)} labels remaining.
-            {dept === 'Admin' && ' Add it above as soon as the date is known.'}
+          <p className="inline-flex items-start gap-1.5 text-xs text-amber-200">
+            <Clock className="w-3.5 h-3.5 shrink-0 mt-px" aria-hidden="true" />
+            <span>
+              Next release not scheduled yet — {formatQty(remainingQty)} labels remaining.
+              {dept === 'Admin' && ' Add it above as soon as the date is known.'}
+            </span>
           </p>
         </div>
       )}
@@ -550,8 +576,9 @@ function ReleasesSection({
       {/* Non-scheduled job, between runs */}
       {awaitingNext && (
         <div className="flex items-center justify-between gap-3 mt-2 bg-amber-400/10 border border-amber-300/25 rounded-lg px-3 py-2">
-          <p className="text-xs text-amber-200">
-            ⏳ Awaiting next print run — {formatQty(remainingQty)} labels remaining
+          <p className="inline-flex items-center gap-1.5 text-xs text-amber-200">
+            <Clock className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+            Awaiting next print run — {formatQty(remainingQty)} labels remaining
           </p>
           {canStartNext && (
             <button
@@ -570,6 +597,45 @@ function ReleasesSection({
           alreadyDispatched={dispatchedQty}
           onCancel={() => setShowModal(false)}
           onConfirm={startNextRun}
+        />
+      )}
+
+      {/* QC sign-off remark before advancing a run past QC */}
+      {qcRun && (
+        <PromptModal
+          title={`Quality Check — Run #${qcRun.run_number}`}
+          description="Leave blank for a clean pass. If filled, the remark will be visible to the client."
+          label="QC Remark (optional)"
+          kind="textarea"
+          initialValue={qcRun.qc_remark ?? ''}
+          confirmLabel="Save QC"
+          placeholder="e.g. Minor colour variation within acceptable range…"
+          onCancel={() => setQcRun(null)}
+          onConfirm={(remark) => {
+            const run = qcRun;
+            setQcRun(null);
+            advanceRun(run, remark);
+          }}
+        />
+      )}
+
+      {/* Admin override: force-dispatch a release without a production run */}
+      {overrideSched && (
+        <PromptModal
+          title={`Override — Release ${overrideSched.release_number}`}
+          description={`Mark this release dispatched without a production run. Planned quantity: ${formatQty(overrideSched.planned_qty)} labels.`}
+          label="Actual quantity dispatched *"
+          kind="number"
+          required
+          min={1}
+          initialValue={String(overrideSched.planned_qty)}
+          confirmLabel="Dispatch (override)"
+          onCancel={() => setOverrideSched(null)}
+          onConfirm={(qty) => {
+            const sched = overrideSched;
+            setOverrideSched(null);
+            overrideDispatch(sched, qty);
+          }}
         />
       )}
     </div>
@@ -612,8 +678,9 @@ function RunAdvanceControl({
       {busy ? 'Saving…' : `→ ${RUN_STAGE_LABELS[nextStage]}`}
     </button>
   ) : (
-    <span className="shrink-0 text-xs text-[var(--glass-muted)]">
-      🔒 {RUN_STAGE_DEPTS[nextStage].join('/')}
+    <span className="shrink-0 inline-flex items-center gap-1 text-xs text-[var(--glass-muted)]">
+      <Lock className="w-3 h-3" aria-hidden="true" />
+      {RUN_STAGE_DEPTS[nextStage].join('/')}
     </span>
   );
 }

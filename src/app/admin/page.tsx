@@ -5,6 +5,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { parseDepartment } from '@/lib/constants/departments';
 import { redirect } from 'next/navigation';
 import DashboardSummaryCard from '@/components/admin/DashboardSummaryCard';
+import MachineBoard from '@/components/admin/MachineBoard';
 import JobsTable from '@/components/admin/JobsTable';
 
 export default async function AdminPage() {
@@ -55,6 +56,9 @@ export default async function AdminPage() {
     <div className="space-y-6">
       {/* Dashboard summary */}
       <DashboardSummaryCard summary={summary} />
+
+      {/* Machine board — live per-machine printing queues */}
+      <MachineBoard dept={dept} />
 
       {/* Add job form + jobs table */}
       <JobsTable

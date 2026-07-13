@@ -35,8 +35,9 @@ export async function POST(request: NextRequest, { params }: Params) {
   const dept = parseDepartment(user.user_metadata?.department);
   if (!dept) return NextResponse.json({ error: 'Invalid department in token' }, { status: 403 });
 
-  const body: { new_stage?: PrintRunStage; notes?: string } = await request.json();
+  const body: { new_stage?: PrintRunStage; notes?: string; qc_remark?: string } = await request.json();
   const newStage = body.new_stage;
+  const qcRemark = body.qc_remark?.trim() || null;
 
   if (!newStage || !RUN_STAGE_ORDER.includes(newStage)) {
     return NextResponse.json(
@@ -91,6 +92,10 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (newStage === 'Dispatched') {
     runUpdate.status        = 'dispatched';
     runUpdate.dispatched_at = now;
+  }
+  // Per-release QC remark — recorded when QC signs the run off (leaving QC).
+  if (qcRemark) {
+    runUpdate.qc_remark = qcRemark;
   }
 
   const { data: updatedRun, error: updateError } = await admin
@@ -177,7 +182,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       print_run_id: runId,
       stage:        newStage,
       changed_by:   user.id,
-      notes:        body.notes?.trim() || null,
+      notes:        body.notes?.trim() || (qcRemark ? `[QC] ${qcRemark}` : null),
     });
 
   return NextResponse.json({ print_run: updatedRun });

@@ -84,9 +84,18 @@ button,
   animation: pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+/* ── Indeterminate loading bar (admin table refetch) ────────── */
+@keyframes loading-slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+.loading-bar {
+  animation: loading-slide 1.2s ease-in-out infinite;
+}
+
 /* ── Modal backdrop ─────────────────────────────────────────── */
 .modal-backdrop {
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--scrim);
   backdrop-filter: blur(2px);
 }
 
@@ -125,6 +134,17 @@ button,
   --glass-border:     rgba(255, 255, 255, 0.14);
   --glass-ink:        #EAFFF5;
   --glass-muted:      #9FBCB0;
+
+  /* Native <select> option list background. Dark by default (track / login
+     dark theme); re-pointed to white under .admin-light so option text — which
+     rides --glass-ink — never ends up dark-on-dark after the theme flip. */
+  --select-option-bg: #0A1F18;
+
+  /* Mesh atmosphere stops + modal scrim — documented in DESIGN.md (§2 Colors) */
+  --mesh-glow-emerald: rgba(46, 200, 140, 0.55);
+  --mesh-glow-teal:    rgba(20, 120, 90, 0.60);
+  --mesh-core:         rgba(12, 66, 50, 0.90);
+  --scrim:             rgba(0, 0, 0, 0.45);
 }
 
 /* Frosted panel surface */
@@ -139,9 +159,9 @@ button,
 /* Deep-green gradient-mesh page background */
 .mesh-bg {
   background:
-    radial-gradient(55% 55% at 10% 12%,  rgba(46,200,140,.55), transparent 60%),
-    radial-gradient(50% 50% at 92% 18%,  rgba(20,120,90,.60),  transparent 60%),
-    radial-gradient(70% 70% at 78% 105%, rgba(12,66,50,.90),   transparent 60%),
+    radial-gradient(55% 55% at 10% 12%,  var(--mesh-glow-emerald), transparent 60%),
+    radial-gradient(50% 50% at 92% 18%,  var(--mesh-glow-teal),    transparent 60%),
+    radial-gradient(70% 70% at 78% 105%, var(--mesh-core),         transparent 60%),
     linear-gradient(135deg, #0F4A37, #0A1F18);
 }
 
@@ -173,7 +193,140 @@ button,
 .cyc-fade { animation: cyc-fade .3s ease; }
 
 @media (prefers-reduced-motion: reduce) {
-  .skeleton  { animation: none; background: rgba(255,255,255,.12); }
-  .mesh-blob { animation: none; }
-  .cyc-fade  { animation: none; }
+  .skeleton     { animation: none; background: rgba(255,255,255,.12); }
+  .mesh-blob    { animation: none; }
+  .cyc-fade     { animation: none; }
+  .dot-pulse    { animation: none; }
+  .loading-bar  { animation: none; width: 100%; }
+  .animate-pulse { animation: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Admin "Airy Green" light theme
+   Scoped under .admin-light so the public /track portal keeps its
+   dark glass-mesh look untouched. Everything below only applies
+   inside the admin shell (and modals get .admin-light explicitly).
+   ═══════════════════════════════════════════════════════════════ */
+.admin-light {
+  color: var(--color-ink);
+  /* Re-point the glass tokens for light so every
+     text-[var(--glass-ink)] / text-[var(--glass-muted)] and the
+     bg/border-[var(--glass-*)] inputs (e.g. modal fields) read
+     correctly on white — no per-file edits needed. */
+  --glass-ink:        #0C2A20;
+  --glass-muted:      #5A6B62;
+  --glass-bg:         #F4F8F5;
+  --glass-bg-strong:  #EDF3EF;
+  --glass-border:     #E4EAE6;
+  --select-option-bg: #FFFFFF;
+  /* Soft, breathing mint wash — atmosphere without shouting */
+  background:
+    radial-gradient(60% 45% at 100% 0%,   #E2EFE8 0%, transparent 62%),
+    radial-gradient(52% 42% at 0% 100%,    #E7F1EB 0%, transparent 60%),
+    #F1F5F2;
+  background-attachment: fixed;
+}
+
+/* Inset "white-on-dark" fills become a soft ink tint on white cards.
+   Centralized here so the ~50 bg-white/* utilities across admin flip
+   consistently without touching every component. */
+.admin-light .bg-white\/\[0\.05\],
+.admin-light .bg-white\/\[0\.06\],
+.admin-light .bg-white\/\[0\.08\],
+.admin-light .bg-white\/10 { background-color: rgba(12, 42, 32, 0.04); }
+.admin-light .bg-white\/\[0\.14\],
+.admin-light .bg-white\/20  { background-color: rgba(12, 42, 32, 0.07); }
+.admin-light .hover\:bg-white\/10:hover,
+.admin-light .hover\:bg-white\/\[0\.08\]:hover { background-color: rgba(12, 42, 32, 0.06); }
+
+/* Hairline "white" borders become the green-tinted token border */
+.admin-light .border-white\/8,
+.admin-light .border-white\/10,
+.admin-light .border-white\/12,
+.admin-light .border-white\/15,
+.admin-light .border-white\/20,
+.admin-light .border-white\/30,
+.admin-light .border-white\/35 { border-color: var(--color-border); }
+
+/* ── Semantic tints: dark-glass (color-400/xx + color-200 text) → light ──
+   The admin surface is fully light now, so every state tint flips to a
+   solid pastel: color-100 fill, color-200 border, color-700/800 text.
+   Centralized so ~40 accent spots across the components stay consistent. */
+
+/* Emerald (approve / dispatch / active / done) */
+.admin-light .text-emerald-200 { color: #047857; }
+.admin-light .bg-emerald-400\/10,
+.admin-light .bg-emerald-400\/15,
+.admin-light .bg-emerald-400\/25,
+.admin-light .hover\:bg-emerald-400\/15:hover,
+.admin-light .hover\:bg-emerald-400\/25:hover { background-color: #D1FAE5; }
+.admin-light .border-emerald-300\/25,
+.admin-light .border-emerald-300\/30 { border-color: #A7F3D0; }
+.admin-light .focus\:border-emerald-300\/70:focus { border-color: #10B981; }
+
+/* Sky (prepress / slitting / scheduled / info) */
+.admin-light .text-sky-200 { color: #0369A1; }
+.admin-light .bg-sky-400\/10,
+.admin-light .bg-sky-400\/15 { background-color: #E0F2FE; }
+.admin-light .border-sky-300\/25,
+.admin-light .border-sky-300\/30 { border-color: #BAE6FD; }
+
+/* Amber (on-hold / caution / remaining) */
+.admin-light .text-amber-200 { color: #B45309; }
+.admin-light .text-amber-100 { color: #92400E; }
+.admin-light .bg-amber-400\/10,
+.admin-light .bg-amber-400\/20,
+.admin-light .hover\:bg-amber-400\/30:hover { background-color: #FEF3C7; }
+.admin-light .border-amber-300\/25,
+.admin-light .border-amber-300\/30 { border-color: #FDE68A; }
+
+/* Red (danger / urgent / fault) */
+.admin-light .text-red-200,
+.admin-light .hover\:text-red-200:hover { color: #B91C1C; }
+.admin-light .text-red-300,
+.admin-light .hover\:text-red-300:hover { color: #DC2626; }
+.admin-light .bg-red-400\/15,
+.admin-light .bg-red-400\/20,
+.admin-light .bg-red-400\/\[0\.06\],
+.admin-light .hover\:bg-red-400\/15:hover,
+.admin-light .hover\:bg-red-400\/25:hover { background-color: #FEE2E2; }
+.admin-light .border-red-300\/30 { border-color: #FECACA; }
+
+/* Purple (artwork / packing) */
+.admin-light .text-purple-200 { color: #7E22CE; }
+.admin-light .bg-purple-400\/15 { background-color: #F3E8FF; }
+
+/* Yellow (ready to dispatch) */
+.admin-light .text-yellow-100 { color: #854D0E; }
+
+/* Cards become clean white panels with a soft green-tinted edge + lift.
+   Blur is dropped (nothing translucent to blur through anymore). */
+.admin-light .glass {
+  background: #FFFFFF;
+  border: 1px solid var(--color-border);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow:
+    0 1px 2px rgba(12, 42, 32, 0.04),
+    0 2px 8px rgba(12, 42, 32, 0.05);
+}
+/* Emphasis / hover surfaces: faint mint tint instead of "more white" */
+.admin-light .glass-strong {
+  background: #F4F8F5;
+  border: 1px solid var(--color-border);
+  box-shadow:
+    0 2px 6px rgba(12, 42, 32, 0.06),
+    0 8px 24px rgba(12, 42, 32, 0.06);
+}
+
+/* Skeleton shimmer flips to a neutral grey sweep on light surfaces */
+.admin-light .skeleton {
+  background: linear-gradient(90deg,
+    rgba(12,42,32,.05) 25%, rgba(12,42,32,.10) 37%, rgba(12,42,32,.05) 63%);
+  background-size: 400% 100%;
+}
+.admin-light .modal-backdrop { background: rgba(10, 31, 24, 0.35); }
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-light .skeleton { animation: none; background: rgba(12,42,32,.08); }
 }

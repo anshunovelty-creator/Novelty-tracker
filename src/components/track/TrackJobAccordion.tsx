@@ -171,13 +171,20 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
                         </div>
                       </div>
 
-                      <ProgressBar
-                        percent={getProgressPercent(
-                          bundle.stageTimestamps.map((t) => t.stage as Stage),
-                          bundle.job.job_type
-                        )}
-                        status={bundle.job.status}
-                      />
+                      {bundle.job.is_scheduled_release ? (
+                        <p className="text-xs text-sky-200 bg-sky-400/10 border border-sky-300/20 rounded-lg px-3 py-2">
+                          Scheduled release — this order ships in multiple runs. See{' '}
+                          <strong className="font-medium">Production Runs</strong> below for the progress of each release.
+                        </p>
+                      ) : (
+                        <ProgressBar
+                          percent={getProgressPercent(
+                            bundle.stageTimestamps.map((t) => t.stage as Stage),
+                            bundle.job.job_type
+                          )}
+                          status={bundle.job.status}
+                        />
+                      )}
 
                       <DeliveryCountdown deliveryDate={bundle.job.delivery_date} />
 
@@ -194,13 +201,17 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
                     </div>
                   </Reveal>
 
-                  <StagePipeline
-                    job={bundle.job}
-                    completedStages={bundle.stageTimestamps.map((t) => t.stage as Stage)}
-                    statusLogs={bundle.statusLogs}
-                    visibleStages={getVisibleStages(bundle.job.job_type)}
-                    stageTimestamps={bundle.stageTimestamps}
-                  />
+                  {/* Scheduled-release jobs ship in multiple runs — per-release progress
+                      lives in ProductionRunsCard, so the job-level pipeline is hidden. */}
+                  {!bundle.job.is_scheduled_release && (
+                    <StagePipeline
+                      job={bundle.job}
+                      completedStages={bundle.stageTimestamps.map((t) => t.stage as Stage)}
+                      statusLogs={bundle.statusLogs}
+                      visibleStages={getVisibleStages(bundle.job.job_type)}
+                      stageTimestamps={bundle.stageTimestamps}
+                    />
+                  )}
 
                   {(bundle.job.dispatched_qty ?? 0) > 0 && (
                     <Reveal onScroll>
@@ -280,13 +291,20 @@ function SingleJobDetail({ bundle }: { bundle: TrackJobBundle }) {
             </div>
           </div>
 
-          <ProgressBar
-            percent={getProgressPercent(
-              bundle.stageTimestamps.map((t) => t.stage as Stage),
-              bundle.job.job_type
-            )}
-            status={bundle.job.status}
-          />
+          {bundle.job.is_scheduled_release ? (
+            <p className="text-xs text-sky-200 bg-sky-400/10 border border-sky-300/20 rounded-lg px-3 py-2">
+              Scheduled release — this order ships in multiple runs. See{' '}
+              <strong className="font-medium">Production Runs</strong> below for the progress of each release.
+            </p>
+          ) : (
+            <ProgressBar
+              percent={getProgressPercent(
+                bundle.stageTimestamps.map((t) => t.stage as Stage),
+                bundle.job.job_type
+              )}
+              status={bundle.job.status}
+            />
+          )}
 
           <DeliveryCountdown deliveryDate={bundle.job.delivery_date} />
 
@@ -301,13 +319,17 @@ function SingleJobDetail({ bundle }: { bundle: TrackJobBundle }) {
         </div>
       </Reveal>
 
-      <StagePipeline
-        job={bundle.job}
-        completedStages={bundle.stageTimestamps.map((t) => t.stage as Stage)}
-        statusLogs={bundle.statusLogs}
-        visibleStages={getVisibleStages(bundle.job.job_type)}
-        stageTimestamps={bundle.stageTimestamps}
-      />
+      {/* Scheduled-release jobs ship in multiple runs — per-release progress
+          lives in ProductionRunsCard, so the job-level pipeline is hidden. */}
+      {!bundle.job.is_scheduled_release && (
+        <StagePipeline
+          job={bundle.job}
+          completedStages={bundle.stageTimestamps.map((t) => t.stage as Stage)}
+          statusLogs={bundle.statusLogs}
+          visibleStages={getVisibleStages(bundle.job.job_type)}
+          stageTimestamps={bundle.stageTimestamps}
+        />
+      )}
 
       {(bundle.job.dispatched_qty ?? 0) > 0 && (
         <Reveal onScroll>

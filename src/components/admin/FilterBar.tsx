@@ -1,6 +1,7 @@
 'use client';
 // src/components/admin/FilterBar.tsx
 
+import { Flame } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PIPELINE_STAGES } from '@/lib/constants/stages';
 import { Field, SelectField } from '@/components/ui/Field';
@@ -45,14 +46,16 @@ export default function FilterBar({
       {/* Urgent filter */}
       <button
         onClick={() => onUrgentOnlyChange(!urgentOnly)}
+        aria-pressed={urgentOnly}
         className={cn(
-          'px-4 py-2 rounded-lg border text-sm font-medium transition-colors',
+          'inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg border text-sm font-medium transition-colors',
           urgentOnly
-            ? 'bg-red-400/15 border-red-300/30 text-red-200'
+            ? 'bg-red-50 border-red-200 text-red-700'
             : 'glass text-[var(--glass-muted)] hover:text-[var(--glass-ink)]'
         )}
       >
-        {urgentOnly ? '🔴 Urgent Only' : 'Urgent'}
+        <Flame className="w-4 h-4" aria-hidden="true" />
+        {urgentOnly ? 'Urgent Only' : 'Urgent'}
       </button>
     </div>
   );

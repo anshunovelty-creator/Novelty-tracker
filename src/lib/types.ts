@@ -178,7 +178,45 @@ export interface PrintRun {
   started_at:          string;
   dispatched_at:       string | null;   // set when this run reaches Dispatched
   notes:               string | null;
+  qc_remark:           string | null;   // per-release QC remark (set leaving QC)
   created_at:          string;
+}
+
+// ── machines / machine_queue_items ───────────────────────────
+// Production machine board: dynamic machine list + per-machine job queues.
+
+export interface Machine {
+  id:         string;
+  name:       string;
+  location:   string | null;
+  is_active:  boolean;   // false = marked as faulty / not working right now
+  is_retired: boolean;   // removed from the board, history preserved
+  created_at: string;
+}
+
+export type MachineQueueStatus = 'queued' | 'printing' | 'done';
+
+export interface MachineQueueItem {
+  id:           string;
+  machine_id:   string;
+  job_id:       string;
+  position:     number;                // sequence within the machine's queue
+  est_start_at: string | null;         // Production's estimate
+  est_end_at:   string | null;
+  started_at:   string | null;         // stamped automatically on Start
+  completed_at: string | null;         // stamped automatically on Complete
+  status:       MachineQueueStatus;
+  created_by:   string | null;         // department that queued it
+  created_at:   string;
+  // joined job info (GET /api/machines)
+  jobs?: {
+    po_number: string;
+    job_name:  string | null;
+    party:     string;
+    label_qty: number | null;
+  } | null;
+  // joined machine info (history rows)
+  machines?: { name: string; location: string | null } | null;
 }
 
 export interface PrintRunStageLog {

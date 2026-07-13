@@ -5,6 +5,7 @@
 // Uses a callback pattern — parent (JobRow) holds the form open state.
 
 import React from 'react';
+import { Copy } from 'lucide-react';
 import type { Job } from '@/lib/types';
 
 type Props = {
@@ -35,8 +36,10 @@ export default function JobDuplicateButton({ job, onDuplicate }: Props) {
     <button
       onClick={handleClick}
       title="Duplicate this job"
-      className="text-brand-muted hover:text-brand-accent text-xs transition-colors px-2 py-1 border border-brand-border rounded"
+      aria-label="Duplicate this job"
+      className="inline-flex items-center gap-1 text-[var(--glass-muted)] hover:text-[var(--glass-ink)] text-xs transition-colors px-2 py-1 border border-white/15 rounded hover:bg-white/10"
     >
+      <Copy className="w-3 h-3" aria-hidden="true" />
       Copy
     </button>
   );

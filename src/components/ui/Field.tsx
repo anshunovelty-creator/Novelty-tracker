@@ -58,7 +58,7 @@ export function SelectField({ label, className, id, children, ...rest }: SelectP
           'w-full rounded-xl bg-[var(--glass-bg)] border border-[var(--glass-border)] px-3.5 pt-5 pb-2 text-sm',
           'text-[var(--glass-ink)] backdrop-blur-md outline-none transition-all duration-200',
           'focus:border-emerald-300/70 focus:bg-white/[0.14] focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)]',
-          '[&>option]:bg-[#0A1F18] [&>option]:text-[var(--glass-ink)]',
+          '[&>option]:bg-[var(--select-option-bg)] [&>option]:text-[var(--glass-ink)]',
           className,
         )}
         {...rest}

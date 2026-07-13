@@ -4,7 +4,6 @@ import { redirect } from 'next/navigation';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { parseDepartment, DEPT_DISPLAY_NAME } from '@/lib/constants/departments';
 import AdminHeader from '@/components/admin/AdminHeader';
-import { GradientMesh } from '@/components/motion/GradientMesh';
 
 export const metadata = {
   title: 'Admin Panel',
@@ -32,8 +31,7 @@ export default async function AdminLayout({
   const displayName = DEPT_DISPLAY_NAME[dept];
 
   return (
-    <div className="min-h-screen text-[var(--glass-ink)]">
-      <GradientMesh />
+    <div className="admin-light min-h-screen">
       <AdminHeader dept={dept} displayName={displayName} />
       <main className="max-w-screen-2xl mx-auto px-4 py-6">
         {children}

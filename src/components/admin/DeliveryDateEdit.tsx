@@ -2,6 +2,7 @@
 // src/components/admin/DeliveryDateEdit.tsx
 
 import { useState } from 'react';
+import { Pencil, Check, X } from 'lucide-react';
 import { cn, formatShortDate } from '@/lib/utils';
 import type { Department } from '@/lib/constants/departments';
 import toast from 'react-hot-toast';
@@ -50,41 +51,50 @@ export default function DeliveryDateEdit({ jobId, deliveryDate, dept, onUpdated 
           type="date"
           value={value}
           onChange={(e) => setValue(e.target.value)}
+          aria-label="Delivery date"
           className={cn(
-            'px-2 py-1 rounded border text-xs font-mono',
-            'border-brand-border focus:outline-none focus:ring-1 focus:ring-brand-accent/30'
+            'px-2 py-1 rounded-lg border text-xs font-mono bg-white/[0.06] text-[var(--glass-ink)]',
+            'border-white/15 focus:outline-none focus:border-emerald-300/70 focus:bg-white/[0.14]',
+            'focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)] transition-all [color-scheme:dark]',
           )}
           autoFocus
         />
         <button
           onClick={handleSave}
           disabled={loading}
-          className="text-green-600 text-xs hover:text-green-700 disabled:opacity-50"
+          aria-label="Save delivery date"
+          className="p-1 rounded text-emerald-200 hover:bg-emerald-400/15 disabled:opacity-50 transition-colors"
         >
-          ✓
+          <Check className="w-4 h-4" aria-hidden="true" />
         </button>
         <button
           onClick={() => { setEditing(false); setValue(deliveryDate ?? ''); }}
-          className="text-brand-muted text-xs hover:text-brand-accent"
+          aria-label="Cancel editing delivery date"
+          className="p-1 rounded text-[var(--glass-muted)] hover:text-[var(--glass-ink)] hover:bg-white/10 transition-colors"
         >
-          ✕
+          <X className="w-4 h-4" aria-hidden="true" />
         </button>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center gap-1 group">
-      <span className="font-mono text-xs text-brand-accent">
-        {deliveryDate ? formatShortDate(deliveryDate) : <span className="text-brand-muted">—</span>}
+    <div className="flex items-center gap-1">
+      <span className="font-mono text-xs text-[var(--glass-ink)]">
+        {deliveryDate ? formatShortDate(deliveryDate) : <span className="text-[var(--glass-muted)]">—</span>}
       </span>
       {canEdit && (
         <button
           onClick={() => setEditing(true)}
-          className="opacity-0 group-hover:opacity-100 transition-opacity text-brand-muted hover:text-brand-accent text-xs ml-0.5"
+          aria-label="Edit delivery date"
           title="Edit delivery date"
+          className={cn(
+            'p-1 rounded text-[var(--glass-muted)] hover:text-[var(--glass-ink)] hover:bg-white/10 transition-colors',
+            // Visible by default on touch/keyboard; recedes to subtle on hover-capable pointers
+            'opacity-70 focus-visible:opacity-100 md:opacity-40 md:group-hover:opacity-100 md:focus-visible:opacity-100',
+          )}
         >
-          ✏
+          <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
         </button>
       )}
     </div>

@@ -8,7 +8,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { cn, formatAdminDate, formatShortDate, formatQty } from '@/lib/utils';
 import { STATUS_COLORS, JOB_TYPE_BADGE, urgentBadgeClass } from '@/lib/constants/statusColors';
-import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES } from '@/lib/constants/stages';
+import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES, isPerReleaseStage } from '@/lib/constants/stages';
 import { canDeptSetStage } from '@/lib/constants/departments';
 import type { Job } from '@/lib/types';
 import type { Department } from '@/lib/constants/departments';
@@ -52,9 +52,14 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
 
   const availableStages: Stage[] = [...PIPELINE_STAGES, 'On Hold'];
   if (dept === 'Admin') availableStages.push('PO Closed');
-  const filteredStages = job.job_type === 'Repeat'
+  let filteredStages = job.job_type === 'Repeat'
     ? availableStages.filter((s) => !REPEAT_SKIPPED_STAGES.includes(s as any))
     : availableStages;
+  // Scheduled-release jobs: printing onward is advanced per release in the
+  // Releases panel — only the once-per-job stages stay in this dropdown.
+  if (job.is_scheduled_release) {
+    filteredStages = filteredStages.filter((s) => !isPerReleaseStage(s));
+  }
 
   // Completed stages — shown with ✓ in the dropdown
   const completedSet = new Set(
@@ -252,12 +257,14 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
               disabled={submitting}
               onChange={(e) => handleStageSelect(e.target.value as Stage)}
               className={cn(
-                'w-full px-2 py-1.5 rounded-lg border text-xs font-medium',
-                'focus:outline-none focus:ring-2 focus:ring-brand-accent/20',
-                'transition-colors cursor-pointer border-transparent',
-                STATUS_COLORS[job.status]?.bg   ?? 'bg-gray-100',
-                STATUS_COLORS[job.status]?.text  ?? 'text-gray-700',
-                '[&>option]:bg-[#0A1F18] [&>option]:text-[var(--glass-ink)]',
+                'w-full px-2 py-1.5 rounded-lg border border-transparent text-xs font-medium',
+                // Match the app-wide emerald focus bloom (see inputCls / DeliveryDateEdit)
+                'focus:outline-none focus:border-emerald-300/70',
+                'focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)]',
+                'transition-all cursor-pointer',
+                STATUS_COLORS[job.status]?.bg   ?? 'bg-white/10',
+                STATUS_COLORS[job.status]?.text  ?? 'text-white/80',
+                '[&>option]:bg-white [&>option]:text-[var(--glass-ink)]',
                 submitting && 'opacity-60 cursor-not-allowed'
               )}
             >
@@ -271,6 +278,11 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
                 );
               })}
             </select>
+            {job.is_scheduled_release && (
+              <p className="text-[10px] text-[var(--glass-muted)] mt-1">
+                Printing onward is updated per release below
+              </p>
+            )}
           </InfoField>
 
           {job.is_scheduled_release && (

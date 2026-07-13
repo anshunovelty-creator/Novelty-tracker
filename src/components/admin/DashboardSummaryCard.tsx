@@ -18,17 +18,17 @@ export default function DashboardSummaryCard({ summary }: Props) {
     {
       label:  'On Hold',
       value:  summary?.on_hold_count ?? '—',
-      color:  'text-amber-200',
+      color:  'text-amber-600',
     },
     {
       label:  'Due This Week',
       value:  summary?.due_this_week ?? '—',
-      color:  'text-sky-200',
+      color:  'text-sky-600',
     },
     {
       label:  'Dispatched This Month',
       value:  summary?.dispatched_this_month ?? '—',
-      color:  'text-emerald-200',
+      color:  'text-emerald-600',
     },
     {
       label:  'On-Time Delivery',

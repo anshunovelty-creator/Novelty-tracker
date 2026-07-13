@@ -1,7 +1,7 @@
 'use client';
 // src/components/admin/JobsTable.tsx
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import type { Job, AddJobFormData } from '@/lib/types';
 import type { Department } from '@/lib/constants/departments';
@@ -44,7 +44,14 @@ export default function JobsTable({ initialJobs, dept }: Props) {
     }
   }, [search, statusFilter, urgentOnly]);
 
+  // The server already provided initialJobs; skip the redundant fetch on mount
+  // unless a filter is somehow active on first render.
+  const firstRun = useRef(true);
   useEffect(() => {
+    if (firstRun.current) {
+      firstRun.current = false;
+      if (!search && !statusFilter && !urgentOnly) return;
+    }
     const timer = setTimeout(refetch, search ? 300 : 0);
     return () => clearTimeout(timer);
   }, [search, statusFilter, urgentOnly, refetch]);
@@ -106,9 +113,8 @@ export default function JobsTable({ initialJobs, dept }: Props) {
       {/* Table */}
       <div className="table-scroll-wrapper rounded-xl glass mt-3 overflow-hidden">
         {loading && (
-          <div className="h-1 bg-brand-primary/20 relative overflow-hidden">
-            <div className="absolute inset-y-0 left-0 bg-brand-primary"
-                 style={{ width: '40%', animation: 'slide 1.2s ease-in-out infinite' }} />
+          <div className="h-1 bg-brand-primary/20 relative overflow-hidden" role="status" aria-label="Loading jobs">
+            <div className="loading-bar absolute inset-y-0 left-0 w-2/5 bg-brand-primary" />
           </div>
         )}
 
@@ -116,7 +122,7 @@ export default function JobsTable({ initialJobs, dept }: Props) {
           <thead>
             <tr className="border-b border-white/12">
               {['PO / PM', 'Party / Job', 'Dispatch', 'Delivery', 'Type', 'Status', 'Last Updated', 'Actions'].map((col) => (
-                <th key={col} className="px-4 py-3 text-left text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide whitespace-nowrap">
+                <th key={col} scope="col" className="px-4 py-3 text-left text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide whitespace-nowrap">
                   {col}
                 </th>
               ))}
@@ -152,13 +158,6 @@ export default function JobsTable({ initialJobs, dept }: Props) {
           </tbody>
         </table>
       </div>
-
-      <style>{`
-        @keyframes slide {
-          0%   { transform: translateX(-100%); }
-          100% { transform: translateX(350%); }
-        }
-      `}</style>
     </div>
   );
 }
