@@ -3,6 +3,7 @@
 // Shared by the server component (first paint) and the polling API route so
 // both always agree on the payload.
 
+import { cache } from 'react';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { Machine, MachineDisplayData, MachineDisplayItem } from '@/lib/types';
 
@@ -19,10 +20,14 @@ const ITEM_FIELDS = `id, position, status, est_start_at, est_end_at, started_at,
  * The machine, what it is printing, what is queued behind it, and the shift
  * tally. Null when the machine does not exist or has been retired — callers
  * should 404.
+ *
+ * cache() dedupes within a single server render: the display page asks once for
+ * generateMetadata (the machine name in the tab title) and once for the page
+ * itself, and without this that would be six queries per load instead of three.
  */
-export async function getMachineDisplayData(
+export const getMachineDisplayData = cache(async (
   id: string
-): Promise<MachineDisplayData | null> {
+): Promise<MachineDisplayData | null> => {
   const admin = createAdminClient();
 
   const day  = istToday();
@@ -66,7 +71,7 @@ export async function getMachineDisplayData(
     },
     server_time: new Date().toISOString(),
   };
-}
+});
 
 /** Every machine on the board — powers the /display index picker. */
 export async function listDisplayMachines(): Promise<Machine[]> {
