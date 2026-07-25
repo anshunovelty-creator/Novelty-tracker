@@ -7,11 +7,18 @@
 //   est_start_at / est_end_at      → update the estimates
 // DELETE — remove a mistakenly queued item (done items are history and
 //          cannot be removed).
+//
+// Start and Complete also carry the job's pipeline stage forward
+// (→ "In Printing" / → "Slitting") so Production records the work once rather
+// than on both the machine board and the job. The stage sync never fails the
+// machine action; the outcome comes back as `stage_sync` for the UI to report.
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { MACHINE_MANAGERS, requireDept } from '@/lib/api/machineBoard';
+import { advanceJobStageFromMachine } from '@/lib/api/advanceJobStage';
+import type { MachineDrivenStage, StageSyncResult } from '@/lib/api/advanceJobStage';
 
 type Params = { params: Promise<{ id: string; itemId: string }> };
 
@@ -31,7 +38,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const { data: item } = await admin
     .from('machine_queue_items')
-    .select('*')
+    .select('*, machines(name)')
     .eq('id', itemId)
     .eq('machine_id', machineId)
     .maybeSingle();
@@ -41,6 +48,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const now = new Date().toISOString();
   const update: Record<string, unknown> = {};
+  // Set on start/complete: the stage the job should be carried to once the
+  // queue item is successfully updated.
+  let stageTarget: MachineDrivenStage | null = null;
 
   if (body.action === 'start') {
     if (item.status !== 'queued') {
@@ -61,12 +71,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
     update.status     = 'printing';
     update.started_at = now;
+    stageTarget       = 'In Printing';
   } else if (body.action === 'complete') {
     if (item.status !== 'printing') {
       return NextResponse.json({ error: 'Only the printing job can be completed' }, { status: 409 });
     }
     update.status       = 'done';
     update.completed_at = now;
+    stageTarget         = 'Slitting';
   } else if (body.action === 'move_up' || body.action === 'move_down') {
     if (item.status !== 'queued') {
       return NextResponse.json({ error: 'Only queued jobs can be reordered' }, { status: 409 });
@@ -107,7 +119,29 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       .select('*, jobs(po_number, job_name, party, label_qty)')
       .single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ item: updated });
+
+    // Carry the job's stage forward. Deliberately after the queue item is
+    // committed and never able to fail this request: the button press records
+    // printing that physically happened, so it must stick even when the stage
+    // cannot move (prerequisite not reached, closed PO, scheduled release).
+    let stageSync: StageSyncResult | undefined;
+    if (stageTarget) {
+      const machineName = (item.machines as { name?: string } | null)?.name ?? 'machine';
+      const label = stageTarget === 'In Printing' ? 'Start' : 'Complete';
+      try {
+        stageSync = await advanceJobStageFromMachine(
+          item.job_id,
+          stageTarget,
+          auth.dept,
+          `${machineName} · ${label}`
+        );
+      } catch (err) {
+        console.error('[PATCH queue item] stage sync failed (non-fatal):', err);
+        stageSync = { advanced: false, reason: 'the stage could not be updated' };
+      }
+    }
+
+    return NextResponse.json({ item: updated, stage_sync: stageSync });
   }
 
   const { data: fresh } = await admin

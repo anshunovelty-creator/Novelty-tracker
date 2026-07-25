@@ -13,10 +13,12 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import Link from 'next/link';
 import { format } from 'date-fns';
-import { Check, X, Play, Pencil, ArrowUp, ArrowDown, MoreHorizontal } from 'lucide-react';
+import { Check, X, Play, Pencil, ArrowUp, ArrowDown, MoreHorizontal, Monitor } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatQty } from '@/lib/utils';
+import { JOBS_CHANGED_EVENT } from '@/lib/constants/events';
 import type { Department } from '@/lib/constants/departments';
 import type { Machine, MachineQueueItem } from '@/lib/types';
 import { ConfirmModal } from './modals';
@@ -78,8 +80,27 @@ export default function MachineBoard({ dept }: { dept: Department }) {
         toast.error(body.error ?? 'Something went wrong');
         return false;
       }
-      if (okMsg) toast.success(okMsg);
+      // Start / Complete also move the job's stage. Say so in the same toast so
+      // Production can see the second half of the work was recorded — and say
+      // it plainly when it wasn't, since then they still must set it by hand.
+      const sync = body.stage_sync as
+        | { advanced: true;  stage:  string }
+        | { advanced: false; reason: string }
+        | undefined;
+
+      if (okMsg) {
+        toast.success(sync?.advanced ? `${okMsg} · job moved to ${sync.stage}` : okMsg);
+      }
+      if (sync && !sync.advanced) {
+        toast(`Stage unchanged — ${sync.reason}`, { icon: '⚠️' });
+      }
+
       await load(historyDate);
+      // The jobs table keeps its own copy of the list; tell it to refetch so an
+      // auto-advanced stage appears without a page reload.
+      if (sync?.advanced) {
+        window.dispatchEvent(new Event(JOBS_CHANGED_EVENT));
+      }
       return true;
     } catch {
       toast.error('Network error. Try again.');
@@ -156,6 +177,12 @@ export default function MachineBoard({ dept }: { dept: Department }) {
     list.push(item);
     itemsByMachine.set(item.machine_id, list);
   }
+
+  // A job runs on one machine at a time. Once it is queued or printing anywhere
+  // it leaves every machine's picker — otherwise the same PO could be lined up
+  // on two machines at once. data.queue excludes done items, so a job that has
+  // finished becomes selectable again for a reprint.
+  const queuedAnywhere = new Set(data.queue.map((i) => i.job_id));
 
   return (
     <div className="glass rounded-xl p-5">
@@ -244,6 +271,7 @@ export default function MachineBoard({ dept }: { dept: Department }) {
               machine={m}
               items={itemsByMachine.get(m.id) ?? []}
               availableJobs={data.available_jobs}
+              queuedAnywhere={queuedAnywhere}
               canManage={canManage}
               busy={busy}
               onToggleFault={() => toggleFault(m)}
@@ -309,6 +337,7 @@ function MachineCard({
   machine,
   items,
   availableJobs,
+  queuedAnywhere,
   canManage,
   busy,
   onToggleFault,
@@ -318,6 +347,8 @@ function MachineCard({
   machine:       Machine;
   items:         MachineQueueItem[];
   availableJobs: AvailableJob[];
+  /** job_ids queued or printing on ANY machine — excluded from this picker. */
+  queuedAnywhere: Set<string>;
   canManage:     boolean;
   busy:          boolean;
   onToggleFault: () => void;
@@ -336,9 +367,8 @@ function MachineCard({
   const printing = items.find((i) => i.status === 'printing') ?? null;
   const queued   = items.filter((i) => i.status === 'queued');
 
-  // Jobs not already active on this machine
-  const activeJobIds  = new Set(items.map((i) => i.job_id));
-  const selectableJobs = availableJobs.filter((j) => !activeJobIds.has(j.id));
+  // Jobs not already queued or printing on any machine, this one included
+  const selectableJobs = availableJobs.filter((j) => !queuedAnywhere.has(j.id));
 
   async function addJob() {
     if (!jobId) { toast.error('Pick a job first'); return; }
@@ -409,6 +439,18 @@ function MachineCard({
           )}>
             {machine.is_active ? 'Working' : 'Not working'}
           </span>
+          {/* Opens this machine's room display — the read-only screen projected
+              in its production room. */}
+          <Link
+            href={`/display/${machine.id}`}
+            target="_blank"
+            rel="noopener"
+            title={`Open ${machine.name} room display`}
+            aria-label={`Open ${machine.name} room display in a new tab`}
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/10 text-[var(--glass-muted)] hover:bg-white/10 hover:text-[var(--glass-ink)]"
+          >
+            <Monitor className="w-3.5 h-3.5" aria-hidden="true" />
+          </Link>
           {canManage && (
             <>
               <button

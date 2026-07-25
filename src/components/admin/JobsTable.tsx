@@ -3,6 +3,7 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
+import { JOBS_CHANGED_EVENT } from '@/lib/constants/events';
 import type { Job, AddJobFormData } from '@/lib/types';
 import type { Department } from '@/lib/constants/departments';
 import JobRow from './JobRow';
@@ -55,6 +56,13 @@ export default function JobsTable({ initialJobs, dept }: Props) {
     const timer = setTimeout(refetch, search ? 300 : 0);
     return () => clearTimeout(timer);
   }, [search, statusFilter, urgentOnly, refetch]);
+
+  // The machine board advances a job's stage on Start / Complete. It has no way
+  // to reach into this list, so it fires an event and we pull fresh rows.
+  useEffect(() => {
+    window.addEventListener(JOBS_CHANGED_EVENT, refetch);
+    return () => window.removeEventListener(JOBS_CHANGED_EVENT, refetch);
+  }, [refetch]);
 
   function onJobUpdated(updatedJob: Job) {
     setJobs((prev) =>

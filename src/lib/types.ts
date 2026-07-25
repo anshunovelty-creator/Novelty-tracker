@@ -219,6 +219,40 @@ export interface MachineQueueItem {
   machines?: { name: string; location: string | null } | null;
 }
 
+// ── Machine room display (/display/[id]) ─────────────────────
+// Lean, read-only slice of one machine's board, sized for the wall
+// screens projected in each production room. Deliberately narrower than
+// MachineQueueItem: no created_by, no machine join, no history.
+
+export interface MachineDisplayJob {
+  po_number:     string;
+  job_name:      string | null;
+  party:         string;
+  label_qty:     number | null;
+  delivery_date: string | null;
+  urgent:        boolean;
+}
+
+export interface MachineDisplayItem {
+  id:           string;
+  position:     number;
+  status:       MachineQueueStatus;
+  est_start_at: string | null;
+  est_end_at:   string | null;
+  started_at:   string | null;
+  jobs:         MachineDisplayJob | null;
+}
+
+export interface MachineDisplayData {
+  machine:  Machine;
+  printing: MachineDisplayItem | null;
+  queued:   MachineDisplayItem[];
+  /** Finished on this machine since midnight IST — the shift tally. */
+  completed_today: { count: number; labels: number };
+  /** Server clock, so a room PC with a drifting clock still counts up correctly. */
+  server_time: string;
+}
+
 export interface PrintRunStageLog {
   id:           string;
   print_run_id: string;

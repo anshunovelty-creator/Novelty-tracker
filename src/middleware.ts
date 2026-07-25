@@ -1,7 +1,8 @@
 // src/middleware.ts
 // ============================================================
 // Auth guard middleware.
-// - /admin/* → requires authenticated Supabase session
+// - /admin/*   → requires authenticated Supabase session
+// - /display/* → production-room wall displays; also require a session
 // - /track/* → public, no auth required
 // - /api/cron/* → validated by CRON_SECRET header, no auth session needed
 // - / → redirects authenticated users to /admin, unauthenticated to /track
@@ -65,8 +66,9 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Admin routes: require authenticated user
-  if (pathname.startsWith('/admin')) {
+  // Admin routes and the production-room machine displays: require a session.
+  // A room screen signs in once; the display's own polling keeps it refreshed.
+  if (pathname.startsWith('/admin') || pathname.startsWith('/display')) {
     if (!user) {
       const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('redirectTo', pathname);

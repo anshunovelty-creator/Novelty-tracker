@@ -54,17 +54,25 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'This PO is closed' }, { status: 400 });
   }
 
-  // Already waiting or printing on this machine?
-  const { data: dup } = await admin
+  // A job runs on one machine at a time, so check every machine — not just this
+  // one. The picker already hides jobs queued elsewhere; this is what holds when
+  // two people queue the same PO at once, or a screen works from stale data.
+  // limit(1) rather than maybeSingle(): if any job predates this rule and sits on
+  // two machines, maybeSingle() would error instead of reporting the clash.
+  const { data: dups } = await admin
     .from('machine_queue_items')
-    .select('id')
-    .eq('machine_id', machineId)
+    .select('id, machine_id, machines(name)')
     .eq('job_id', jobId)
     .neq('status', 'done')
-    .maybeSingle();
+    .limit(1);
+
+  const dup = dups?.[0];
   if (dup) {
+    const where = dup.machine_id === machineId
+      ? "this machine's queue"
+      : `${(dup.machines as { name?: string } | null)?.name ?? 'another machine'}'s queue`;
     return NextResponse.json(
-      { error: `${job.po_number} is already in this machine's queue` },
+      { error: `${job.po_number} is already in ${where}` },
       { status: 409 }
     );
   }
