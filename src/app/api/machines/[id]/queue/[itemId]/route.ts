@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { MACHINE_MANAGERS, requireDept } from '@/lib/api/machineBoard';
 import { advanceJobStageFromMachine } from '@/lib/api/advanceJobStage';
+import { estimateFinishIso } from '@/lib/machineSpeed';
 import type { MachineDrivenStage, StageSyncResult } from '@/lib/api/advanceJobStage';
 
 type Params = { params: Promise<{ id: string; itemId: string }> };
@@ -36,9 +37,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const body  = await request.json();
   const admin = createAdminClient();
 
+  // machines(*) rather than machines(name): labels_per_hour arrives with
+  // migration 010, and naming a column that does not exist yet would fail the
+  // request. Its absence just means no automatic finish estimate.
   const { data: item } = await admin
     .from('machine_queue_items')
-    .select('*, machines(name)')
+    .select('*, machines(*), jobs(label_qty)')
     .eq('id', itemId)
     .eq('machine_id', machineId)
     .maybeSingle();
@@ -72,6 +76,22 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     update.status     = 'printing';
     update.started_at = now;
     stageTarget       = 'In Printing';
+
+    // No finish estimate yet? Derive one from the machine's rate and the actual
+    // start, so the room display can show progress against something. An
+    // estimate already on the item is left alone.
+    if (!item.est_end_at) {
+      const machine = item.machines as { labels_per_hour?: number | null } | null;
+      const job     = item.jobs     as { label_qty?: number | null } | null;
+      const derived = estimateFinishIso(now, job?.label_qty, machine?.labels_per_hour);
+      if (derived) {
+        update.est_end_at = derived;
+        // Anchor the estimate window too. The utilisation report measures
+        // accuracy as est_start→est_end against started_at→completed_at, so an
+        // end with no start would leave that comparison permanently empty.
+        if (!item.est_start_at) update.est_start_at = now;
+      }
+    }
   } else if (body.action === 'complete') {
     if (item.status !== 'printing') {
       return NextResponse.json({ error: 'Only the printing job can be completed' }, { status: 409 });

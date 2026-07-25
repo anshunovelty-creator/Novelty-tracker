@@ -15,9 +15,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { Check, X, Play, Pencil, ArrowUp, ArrowDown, MoreHorizontal, Monitor } from 'lucide-react';
+import { Check, X, Play, Pencil, ArrowUp, ArrowDown, MoreHorizontal, Monitor, Gauge } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatQty } from '@/lib/utils';
+import { runDurationMs, formatDuration, estimateFinishIso } from '@/lib/machineSpeed';
 import { JOBS_CHANGED_EVENT } from '@/lib/constants/events';
 import type { Department } from '@/lib/constants/departments';
 import type { Machine, MachineQueueItem } from '@/lib/types';
@@ -54,6 +55,7 @@ export default function MachineBoard({ dept }: { dept: Department }) {
   const [showAddMachine, setShowAddMachine] = useState(false);
   const [machineName, setMachineName]       = useState('');
   const [machineLocation, setMachineLocation] = useState('');
+  const [machineRate, setMachineRate]         = useState('');
   const [confirmRemove, setConfirmRemove]   = useState<Machine | null>(null);
 
   const load = useCallback(async (date: string) => {
@@ -116,11 +118,20 @@ export default function MachineBoard({ dept }: { dept: Department }) {
       () => fetch('/api/machines', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ name: machineName, location: machineLocation }),
+        body:    JSON.stringify({
+          name:            machineName,
+          location:        machineLocation,
+          labels_per_hour: machineRate,
+        }),
       }),
       'Machine added'
     );
-    if (ok) { setMachineName(''); setMachineLocation(''); setShowAddMachine(false); }
+    if (ok) {
+      setMachineName('');
+      setMachineLocation('');
+      setMachineRate('');
+      setShowAddMachine(false);
+    }
   }
 
   function removeMachine(m: Machine) {
@@ -212,6 +223,12 @@ export default function MachineBoard({ dept }: { dept: Department }) {
               <X className="w-4 h-4" aria-hidden="true" />
             </button>
           )}
+          <Link
+            href="/admin/machines"
+            className="inline-flex min-h-11 items-center rounded-lg border border-white/10 px-2.5 text-xs text-[var(--glass-muted)] hover:bg-white/10 hover:text-[var(--glass-ink)]"
+          >
+            Utilisation report →
+          </Link>
           {canManage && !showAddMachine && (
             <button
               onClick={() => setShowAddMachine(true)}
@@ -241,6 +258,17 @@ export default function MachineBoard({ dept }: { dept: Department }) {
               onChange={(e) => setMachineLocation(e.target.value)}
               placeholder="Ground floor"
               className="block mt-1 bg-white/[0.06] border border-white/10 min-h-11 rounded-lg px-2 py-1.5 text-xs text-[var(--glass-ink)] w-40"
+            />
+          </label>
+          <label className="text-xs text-[var(--glass-muted)]">
+            Labels per hour (optional)
+            <input
+              value={machineRate}
+              onChange={(e) => setMachineRate(e.target.value.replace(/[^0-9]/g, ''))}
+              inputMode="numeric"
+              placeholder="25000"
+              title="Used to estimate finish times automatically"
+              className="block mt-1 bg-white/[0.06] border border-white/10 min-h-11 rounded-lg px-2 py-1.5 text-xs text-[var(--glass-ink)] w-40 font-mono"
             />
           </label>
           <button
@@ -370,6 +398,17 @@ function MachineCard({
   // Jobs not already queued or printing on any machine, this one included
   const selectableJobs = availableJobs.filter((j) => !queuedAnywhere.has(j.id));
 
+  // Preview of the estimate the server will derive from this machine's run rate
+  // when Est. finish is left blank.
+  const pickedJob   = selectableJobs.find((j) => j.id === jobId) ?? null;
+  const autoRunMs   = runDurationMs(pickedJob?.label_qty, machine.labels_per_hour);
+  const autoFinish  = estimateFinishIso(
+    estStart ? new Date(estStart).toISOString() : null,
+    pickedJob?.label_qty,
+    machine.labels_per_hour
+  );
+  const autoFinishLabel = autoFinish ? fmtDT(autoFinish) : null;
+
   async function addJob() {
     if (!jobId) { toast.error('Pick a job first'); return; }
     const ok = await mutate(
@@ -431,6 +470,7 @@ function MachineCard({
               <span className="ml-2 text-xs font-normal text-[var(--glass-muted)]">{machine.location}</span>
             )}
           </p>
+          <MachineRate machine={machine} canManage={canManage} busy={busy} mutate={mutate} />
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <span className={cn(
@@ -669,6 +709,17 @@ function MachineCard({
               onClick={() => setShowAddJob(false)}
               className="text-[11px] px-2 py-1.5 rounded border border-white/10 text-[var(--glass-muted)] hover:bg-white/10"
             >Cancel</button>
+
+            {/* What the machine's run rate will fill in if Est. finish is left
+                blank. Only a preview — the server does the same sum on save. */}
+            {autoRunMs !== null && !estEnd && (
+              <p className="w-full text-[11px] text-[var(--glass-muted)]">
+                <Gauge className="mr-1 inline h-3 w-3 align-[-2px]" aria-hidden="true" />
+                Auto finish: <span className="font-mono">{formatDuration(autoRunMs)}</span> at{' '}
+                <span className="font-mono">{formatQty(machine.labels_per_hour)}</span>/hr
+                {autoFinishLabel && <> · ends <span className="font-mono">{autoFinishLabel}</span></>}
+              </p>
+            )}
           </div>
         ) : (
           <button
@@ -692,6 +743,95 @@ function MachineCard({
         />
       )}
     </div>
+  );
+}
+
+// ── Machine run rate ──────────────────────────────────────────
+// Labels/hour, which drives the automatic finish estimates. Shown to everyone,
+// editable in place by Production/Admin — there is no other machine-edit screen,
+// and sending people elsewhere to type one number would be worse.
+
+function MachineRate({
+  machine,
+  canManage,
+  busy,
+  mutate,
+}: {
+  machine:   Machine;
+  canManage: boolean;
+  busy:      boolean;
+  mutate:    (fn: () => Promise<Response>, okMsg?: string) => Promise<boolean>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue]     = useState('');
+
+  async function save() {
+    const ok = await mutate(
+      () => fetch(`/api/machines/${machine.id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ labels_per_hour: value === '' ? null : value }),
+      }),
+      value === '' ? 'Run rate cleared' : 'Run rate saved'
+    );
+    if (ok) setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <span className="mt-1 flex items-center gap-1.5">
+        <input
+          value={value}
+          onChange={(e) => setValue(e.target.value.replace(/[^0-9]/g, ''))}
+          inputMode="numeric"
+          autoFocus
+          aria-label={`Labels per hour for ${machine.name}`}
+          placeholder="25000"
+          className="w-24 rounded border border-white/10 bg-white/[0.06] px-1.5 py-1 font-mono text-[11px] text-[var(--glass-ink)]"
+        />
+        <span className="text-[11px] text-[var(--glass-muted)]">/hr</span>
+        <button
+          onClick={save}
+          disabled={busy}
+          className="rounded bg-brand-primary px-2 py-0.5 text-[11px] font-medium text-white hover:bg-brand-primary/90 disabled:opacity-40"
+        >Save</button>
+        <button
+          onClick={() => setEditing(false)}
+          className="rounded border border-white/10 px-2 py-0.5 text-[11px] text-[var(--glass-muted)] hover:bg-white/10"
+        >Cancel</button>
+      </span>
+    );
+  }
+
+  const start = () => { setValue(machine.labels_per_hour ? String(machine.labels_per_hour) : ''); setEditing(true); };
+
+  if (machine.labels_per_hour) {
+    return (
+      <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-[var(--glass-muted)]">
+        <Gauge className="h-3 w-3 shrink-0" aria-hidden="true" />
+        <span className="font-mono">{formatQty(machine.labels_per_hour)}</span> labels/hr
+        {canManage && (
+          <button
+            onClick={start}
+            aria-label={`Change run rate for ${machine.name}`}
+            title="Change run rate"
+            className="rounded p-0.5 text-[var(--glass-muted)] hover:bg-white/10 hover:text-[var(--glass-ink)]"
+          ><Pencil className="h-2.5 w-2.5" aria-hidden="true" /></button>
+        )}
+      </span>
+    );
+  }
+
+  if (!canManage) return null;
+  return (
+    <button
+      onClick={start}
+      title="Set labels per hour to get automatic finish estimates"
+      className="mt-0.5 flex items-center gap-1 text-[11px] text-[var(--glass-muted)] underline decoration-dotted underline-offset-2 hover:text-[var(--glass-ink)]"
+    >
+      <Gauge className="h-3 w-3" aria-hidden="true" />
+      Set run rate
+    </button>
   );
 }
 

@@ -71,6 +71,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Machine name is required' }, { status: 400 });
   }
 
+  // Optional run rate (migration 010) — only sent through when it is a valid
+  // positive whole number, so a blank field never becomes a bogus 0 or NaN.
+  // Omitted entirely when unset, keeping inserts working before the migration.
+  const rate = Number(body.labels_per_hour);
+  const labelsPerHour = Number.isInteger(rate) && rate > 0 ? rate : null;
+
   const admin = createAdminClient();
   const { data: machine, error } = await admin
     .from('machines')
@@ -79,6 +85,7 @@ export async function POST(request: NextRequest) {
       location: typeof body.location === 'string' && body.location.trim()
         ? body.location.trim()
         : null,
+      ...(labelsPerHour !== null ? { labels_per_hour: labelsPerHour } : {}),
     })
     .select()
     .single();

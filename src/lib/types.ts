@@ -192,6 +192,10 @@ export interface Machine {
   is_active:  boolean;   // false = marked as faulty / not working right now
   is_retired: boolean;   // removed from the board, history preserved
   created_at: string;
+  // Normal run rate, used to estimate finish times (migration 010).
+  // Optional rather than `number | null` on purpose: until that migration is
+  // applied the column does not exist and SELECT * returns no such key.
+  labels_per_hour?: number | null;
 }
 
 export type MachineQueueStatus = 'queued' | 'printing' | 'done';
@@ -251,6 +255,40 @@ export interface MachineDisplayData {
   completed_today: { count: number; labels: number };
   /** Server clock, so a room PC with a drifting clock still counts up correctly. */
   server_time: string;
+}
+
+// ── Machine utilisation report (/admin/machines) ──────────────
+// Derived entirely from completed machine_queue_items — the started_at /
+// completed_at pair already recorded on every finished run.
+
+export interface MachineUtilisation {
+  machine_id:      string;
+  machine_name:    string;
+  location:        string | null;
+  is_active:       boolean;
+  labels_per_hour: number | null;
+  /** Runs finished in the window. */
+  jobs_completed:  number;
+  labels_printed:  number;
+  /** Summed actual run time, and the mean across runs that had both stamps. */
+  printing_ms:     number;
+  avg_run_ms:      number | null;
+  /** Share of the window actually spent printing, 0–100. */
+  utilisation_pct: number | null;
+  /**
+   * Estimate accuracy over runs that carried both an estimate and actual
+   * times: how many finished inside the estimate, and the mean signed
+   * deviation as a percentage (negative = faster than estimated).
+   */
+  estimated_runs:    number;
+  within_estimate:   number;
+  avg_deviation_pct: number | null;
+}
+
+export interface MachineUtilisationReport {
+  from:     string;              // 'YYYY-MM-DD' (IST day, inclusive)
+  to:       string;              // 'YYYY-MM-DD' (IST day, inclusive)
+  machines: MachineUtilisation[];
 }
 
 export interface PrintRunStageLog {

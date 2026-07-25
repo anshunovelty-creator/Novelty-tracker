@@ -32,6 +32,24 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
   if (typeof body.is_active === 'boolean') update.is_active = body.is_active;
 
+  // Run rate: a positive whole number, or null to clear it. Requires migration
+  // 010 — before that the update fails with a "column does not exist" message.
+  if ('labels_per_hour' in body) {
+    const raw = body.labels_per_hour;
+    if (raw === null || raw === '') {
+      update.labels_per_hour = null;
+    } else {
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n <= 0) {
+        return NextResponse.json(
+          { error: 'labels_per_hour must be a whole number greater than zero' },
+          { status: 400 }
+        );
+      }
+      update.labels_per_hour = n;
+    }
+  }
+
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
   }

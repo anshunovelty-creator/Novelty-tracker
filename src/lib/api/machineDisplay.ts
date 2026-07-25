@@ -73,6 +73,60 @@ export const getMachineDisplayData = cache(async (
   };
 });
 
+/**
+ * Every machine's board in one go, for the rotating supervisor screen.
+ *
+ * Three queries total regardless of how many machines there are, rather than
+ * three per machine: a screen cycling six machines would otherwise cost 18
+ * queries every poll. Grouping in JS is far cheaper than the round trips.
+ */
+export const getAllMachineDisplayData = cache(async (): Promise<MachineDisplayData[]> => {
+  const admin = createAdminClient();
+
+  const day  = istToday();
+  const next = new Date(`${day}T00:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  const dayAfter = next.toISOString().slice(0, 10);
+
+  const [machinesRes, itemsRes, doneRes] = await Promise.all([
+    admin.from('machines').select('*').eq('is_retired', false).order('created_at'),
+
+    admin.from('machine_queue_items')
+      .select(`machine_id, ${ITEM_FIELDS}`)
+      .neq('status', 'done')
+      .order('position'),
+
+    admin.from('machine_queue_items')
+      .select('machine_id, jobs(label_qty)')
+      .eq('status', 'done')
+      .gte('completed_at', `${day}T00:00:00+05:30`)
+      .lt('completed_at', `${dayAfter}T00:00:00+05:30`),
+  ]);
+
+  const machines = (machinesRes.data ?? []) as Machine[];
+  const items    = (itemsRes.data ?? []) as unknown as
+    (MachineDisplayItem & { machine_id: string })[];
+  const done     = (doneRes.data ?? []) as unknown as
+    { machine_id: string; jobs: { label_qty: number | null } | null }[];
+
+  const serverTime = new Date().toISOString();
+
+  return machines.map((machine) => {
+    const mine = items.filter((i) => i.machine_id === machine.id);
+    const shipped = done.filter((d) => d.machine_id === machine.id);
+    return {
+      machine,
+      printing: mine.find((i) => i.status === 'printing') ?? null,
+      queued:   mine.filter((i) => i.status === 'queued'),
+      completed_today: {
+        count:  shipped.length,
+        labels: shipped.reduce((sum, d) => sum + (d.jobs?.label_qty ?? 0), 0),
+      },
+      server_time: serverTime,
+    };
+  });
+});
+
 /** Every machine on the board — powers the /display index picker. */
 export async function listDisplayMachines(): Promise<Machine[]> {
   const admin = createAdminClient();

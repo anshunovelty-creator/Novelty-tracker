@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { MACHINE_MANAGERS, requireDept } from '@/lib/api/machineBoard';
+import { estimateFinishIso } from '@/lib/machineSpeed';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -35,9 +36,12 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const admin = createAdminClient();
 
+  // select('*') rather than naming labels_per_hour: that column arrives with
+  // migration 010, and naming a missing column would fail the whole request.
+  // Absent column simply means no automatic estimate.
   const { data: machine } = await admin
     .from('machines')
-    .select('id, is_retired')
+    .select('*')
     .eq('id', machineId)
     .maybeSingle();
   if (!machine || machine.is_retired) {
@@ -46,7 +50,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const { data: job } = await admin
     .from('jobs')
-    .select('id, is_closed, po_number')
+    .select('id, is_closed, po_number, label_qty')
     .eq('id', jobId)
     .maybeSingle();
   if (!job) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
@@ -87,14 +91,21 @@ export async function POST(request: NextRequest, { params }: Params) {
     .limit(1)
     .maybeSingle();
 
+  // Work out the finish from the machine's rate when Production leaves it
+  // blank. Anything they typed wins; a machine with no rate, or a job with no
+  // quantity, just keeps the blank.
+  const estStart = body.est_start_at ?? null;
+  const estEnd   = body.est_end_at
+    ?? estimateFinishIso(estStart, job.label_qty, machine.labels_per_hour);
+
   const { data: item, error } = await admin
     .from('machine_queue_items')
     .insert({
       machine_id:   machineId,
       job_id:       jobId,
       position:     (last?.position ?? 0) + 1,
-      est_start_at: body.est_start_at ?? null,
-      est_end_at:   body.est_end_at ?? null,
+      est_start_at: estStart,
+      est_end_at:   estEnd,
       created_by:   auth.dept,
     })
     .select('*, jobs(po_number, job_name, party, label_qty)')

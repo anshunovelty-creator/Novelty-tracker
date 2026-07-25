@@ -21,6 +21,21 @@ export default async function DisplayIndexPage() {
         The page keeps itself up to date.
       </p>
 
+      {machines.length > 1 && (
+        <Link
+          href="/display/rotate"
+          className="glass mt-6 flex min-h-[44px] items-center justify-between gap-4 rounded-xl border border-white/10 px-4 py-3 transition-colors hover:bg-white/[0.12] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60 motion-reduce:transition-none"
+        >
+          <span>
+            <span className="block font-medium text-[var(--glass-ink)]">All machines</span>
+            <span className="block text-xs text-[var(--glass-muted)]">
+              Cycles through every machine — for an office or corridor screen
+            </span>
+          </span>
+          <span className="shrink-0 text-xs text-[var(--glass-muted)]">Rotating →</span>
+        </Link>
+      )}
+
       {machines.length === 0 ? (
         <p className="mt-8 text-sm text-[var(--glass-muted)]">
           No machines on the board yet — add one from the dashboard first.

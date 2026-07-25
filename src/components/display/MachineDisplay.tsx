@@ -53,8 +53,21 @@ function fmtDuration(ms: number): string {
   return `${hours}h ${mins % 60}m`;
 }
 
-export default function MachineDisplay({ initial }: { initial: MachineDisplayData }) {
-  const [data, setData]     = useState<MachineDisplayData>(initial);
+export default function MachineDisplay({
+  initial,
+  controlled = false,
+}: {
+  initial: MachineDisplayData;
+  /**
+   * true = the parent owns the data and refreshes it (the rotating supervisor
+   * screen, which fetches every machine in one request). This component then
+   * renders `initial` directly and does not poll, so the two never duplicate
+   * each other's traffic.
+   */
+  controlled?: boolean;
+}) {
+  const [stateData, setData] = useState<MachineDisplayData>(initial);
+  const data = controlled ? initial : stateData;
   const [now, setNow]       = useState<number | null>(null);
   const [lastOk, setLastOk] = useState<number | null>(null);
   const [isFull, setIsFull] = useState(false);
@@ -111,6 +124,7 @@ export default function MachineDisplay({ initial }: { initial: MachineDisplayDat
   // from the dashboard link. Don't poll a backgrounded tab every 2 s; catch up
   // the moment it comes back into view.
   useEffect(() => {
+    if (controlled) return;   // the parent refreshes us
     const tick = () => {
       if (document.visibilityState === 'visible') load();
     };
@@ -120,7 +134,7 @@ export default function MachineDisplay({ initial }: { initial: MachineDisplayDat
       clearInterval(t);
       document.removeEventListener('visibilitychange', tick);
     };
-  }, [load]);
+  }, [load, controlled]);
 
   // Reflect real fullscreen state — Escape and F11 bypass our own button.
   useEffect(() => {
