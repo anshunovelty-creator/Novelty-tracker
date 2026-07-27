@@ -7,6 +7,7 @@ import { cn, formatAdminDate, formatShortDate, formatQty } from '@/lib/utils';
 import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES } from '@/lib/constants/stages';
 import { DEPT_DISPLAY_NAME } from '@/lib/constants/departments';
 import { nextRunStage, RUN_STAGE_DEPTS, RUN_STAGE_LABELS } from '@/lib/constants/runStages';
+import { JOBS_CHANGED_EVENT } from '@/lib/constants/events';
 import type { JobDetail, JobStatusLog, StageComment, DispatchSchedule, PrintRun } from '@/lib/types';
 import type { Stage } from '@/lib/constants/stages';
 import type { Department } from '@/lib/constants/departments';
@@ -200,7 +201,13 @@ export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept,
         job={detail}
         isScheduledRelease={isScheduledRelease || detail.is_scheduled_release}
         dept={dept}
-        onChanged={() => setTick((t) => t + 1)}
+        onChanged={() => {
+          // Refresh this panel, then tell the jobs table / detail header —
+          // a dispatched release moves the job's totals, and each of them
+          // holds its own copy of the job row.
+          setTick((t) => t + 1);
+          window.dispatchEvent(new Event(JOBS_CHANGED_EVENT));
+        }}
       />
     </div>
   );

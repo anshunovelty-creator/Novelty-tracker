@@ -6,10 +6,16 @@
 
 import React from 'react';
 import { Copy } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import type { Job } from '@/lib/types';
 
 type Props = {
   job:       Job;
+  /**
+   * 'compact' — the dense desk table, where the row already carries the target.
+   * 'touch'   — the phone card, where PRODUCT.md mandates a 44px tap target.
+   */
+  size?:     'compact' | 'touch';
   onDuplicate: (prefill: {
     party:     string;
     pm_code:   string;
@@ -20,7 +26,7 @@ type Props = {
   }) => void;
 };
 
-export default function JobDuplicateButton({ job, onDuplicate }: Props) {
+export default function JobDuplicateButton({ job, onDuplicate, size = 'compact' }: Props) {
   function handleClick() {
     onDuplicate({
       party:     job.party,
@@ -32,6 +38,23 @@ export default function JobDuplicateButton({ job, onDuplicate }: Props) {
     });
   }
 
+  if (size === 'touch') {
+    return (
+      <button
+        onClick={handleClick}
+        aria-label="Duplicate this job"
+        className={cn(
+          'inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 rounded-lg',
+          'text-xs font-medium border border-black/10 text-[var(--glass-ink)]',
+          'hover:bg-black/[0.04] active:bg-black/[0.07] transition-colors',
+        )}
+      >
+        <Copy className="w-3.5 h-3.5" aria-hidden="true" />
+        Duplicate
+      </button>
+    );
+  }
+
   return (
     <button
       onClick={handleClick}
@@ -40,7 +63,7 @@ export default function JobDuplicateButton({ job, onDuplicate }: Props) {
       className="inline-flex items-center gap-1 text-[var(--glass-muted)] hover:text-[var(--glass-ink)] text-xs transition-colors px-2 py-1 border border-white/15 rounded hover:bg-white/10"
     >
       <Copy className="w-3 h-3" aria-hidden="true" />
-      Copy
+      Duplicate
     </button>
   );
 }

@@ -51,7 +51,10 @@ const EMPTY_FORM: AddJobFormData = {
 export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
   const [form,       setForm]       = useState<AddJobFormData>({ ...EMPTY_FORM, ...prefillData });
   const [loading,    setLoading]    = useState(false);
-  const [isOpen,     setIsOpen]     = useState(false);
+  // Open straight away when duplicating — JobsTable remounts us with a fresh
+  // key and the prefill, and a collapsed form would hide it (which made the
+  // Duplicate button look like it did nothing).
+  const [isOpen,     setIsOpen]     = useState(Boolean(prefillData));
   const [releases,   setReleases]   = useState<ScheduledReleaseInput[]>([
     { release_number: 1, planned_qty: 0, planned_date: '' },
   ]);

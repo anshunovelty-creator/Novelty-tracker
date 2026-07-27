@@ -3,10 +3,11 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { JOBS_CHANGED_EVENT } from '@/lib/constants/events';
+import { JOBS_CHANGED_EVENT, JOBS_FILTER_EVENT, type JobsFilterDetail } from '@/lib/constants/events';
 import type { Job, AddJobFormData } from '@/lib/types';
 import type { Department } from '@/lib/constants/departments';
 import JobRow from './JobRow';
+import JobCard from './JobCard';
 import FilterBar from './FilterBar';
 import AddJobForm from './AddJobForm';
 import { SkeletonRows } from '@/components/ui/Skeleton';
@@ -64,6 +65,26 @@ export default function JobsTable({ initialJobs, dept }: Props) {
     return () => window.removeEventListener(JOBS_CHANGED_EVENT, refetch);
   }, [refetch]);
 
+  // A dashboard stat was clicked — narrow to the rows behind that number and
+  // bring the table into view, since the stat row sits above it.
+  const tableRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function onFilter(e: Event) {
+      const detail = (e as CustomEvent<JobsFilterDetail>).detail;
+      if (!detail) return;
+      if (detail.status !== undefined) setStatusFilter(detail.status);
+      if (detail.urgent !== undefined) setUrgentOnly(detail.urgent);
+      tableRef.current?.scrollIntoView({
+        behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+          ? 'auto'
+          : 'smooth',
+        block: 'start',
+      });
+    }
+    window.addEventListener(JOBS_FILTER_EVENT, onFilter);
+    return () => window.removeEventListener(JOBS_FILTER_EVENT, onFilter);
+  }, []);
+
   function onJobUpdated(updatedJob: Job) {
     setJobs((prev) =>
       prev
@@ -78,6 +99,14 @@ export default function JobsTable({ initialJobs, dept }: Props) {
 
   function onJobDeleted(jobId: string) {
     setJobs((prev) => prev.filter((j) => j.id !== jobId));
+  }
+
+  const hasFilters = Boolean(search || statusFilter || urgentOnly);
+
+  function clearFilters() {
+    setSearch('');
+    setStatusFilter('');
+    setUrgentOnly(false);
   }
 
   // Called by JobDuplicateButton — sets prefill and triggers new form key to open fresh
@@ -118,54 +147,127 @@ export default function JobsTable({ initialJobs, dept }: Props) {
         onUrgentOnlyChange={setUrgentOnly}
       />
 
-      {/* Table */}
-      <div className="table-scroll-wrapper rounded-xl glass mt-3 overflow-hidden">
+      {/* Jobs — cards on phones, table from sm up.
+          The table's 900px min-width is 2.4 screens of horizontal scrolling on
+          a 375px phone, which buries the Status control. Floor operators get
+          the card list instead; see JobCard. */}
+      <div ref={tableRef} className="mt-3">
         {loading && (
-          <div className="h-1 bg-brand-primary/20 relative overflow-hidden" role="status" aria-label="Loading jobs">
+          <div className="h-1 bg-brand-primary/20 relative overflow-hidden rounded-full mb-3" role="status" aria-label="Loading jobs">
             <div className="loading-bar absolute inset-y-0 left-0 w-2/5 bg-brand-primary" />
           </div>
         )}
 
-        <table className="w-full min-w-[900px] border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-white/12">
-              {['PO / PM', 'Party / Job', 'Dispatch', 'Delivery', 'Type', 'Status', 'Last Updated', 'Actions'].map((col) => (
-                <th key={col} scope="col" className="px-4 py-3 text-left text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide whitespace-nowrap">
-                  {col}
-                </th>
+        {/* Phone: card list */}
+        <div className="sm:hidden">
+          {loading && jobs.length === 0 ? (
+            <div className="space-y-3" aria-hidden="true">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="rounded-xl bg-white border border-black/[0.08] p-4 space-y-3">
+                  <div className="h-3 w-24 rounded bg-black/[0.06]" />
+                  <div className="h-4 w-2/3 rounded bg-black/[0.06]" />
+                  <div className="h-12 w-full rounded-xl bg-black/[0.06]" />
+                </div>
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {loading && jobs.length === 0 ? (
-              <SkeletonRows rows={5} cols={8} />
-            ) : jobs.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-[var(--glass-muted)] text-sm">
-                  {search || statusFilter || urgentOnly
-                    ? 'No jobs match your filters.'
-                    : 'No active jobs. Add one above.'}
-                </td>
+            </div>
+          ) : jobs.length === 0 ? (
+            <EmptyState hasFilters={hasFilters} onClearFilters={clearFilters} />
+          ) : (
+            <ul className="space-y-3">
+              {jobs.map((job) => (
+                <li key={job.id}>
+                  <JobCard
+                    job={job}
+                    dept={dept}
+                    isExpanded={expandedId === job.id}
+                    onToggleExpand={() =>
+                      setExpandedId((prev) => (prev === job.id ? null : job.id))
+                    }
+                    onJobUpdated={onJobUpdated}
+                    onJobDeleted={onJobDeleted}
+                    onDuplicate={handleDuplicate}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* Desk: table */}
+        <div className="hidden sm:block table-scroll-wrapper rounded-xl glass overflow-hidden">
+          <table className="w-full min-w-[900px] border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-white/12">
+                {['PO / PM', 'Party / Job', 'Dispatch', 'Delivery', 'Type', 'Status', 'Last Updated', 'Actions'].map((col) => (
+                  <th key={col} scope="col" className="px-4 py-3 text-left text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide whitespace-nowrap">
+                    {col}
+                  </th>
+                ))}
               </tr>
-            ) : (
-              jobs.map((job) => (
-                <JobRow
-                  key={job.id}
-                  job={job}
-                  dept={dept}
-                  isExpanded={expandedId === job.id}
-                  onToggleExpand={() =>
-                    setExpandedId((prev) => (prev === job.id ? null : job.id))
-                  }
-                  onJobUpdated={onJobUpdated}
-                  onJobDeleted={onJobDeleted}
-                  onDuplicate={handleDuplicate}
-                />
-              ))
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {loading && jobs.length === 0 ? (
+                <SkeletonRows rows={5} cols={8} />
+              ) : jobs.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-0">
+                    <EmptyState hasFilters={hasFilters} onClearFilters={clearFilters} />
+                  </td>
+                </tr>
+              ) : (
+                jobs.map((job) => (
+                  <JobRow
+                    key={job.id}
+                    job={job}
+                    dept={dept}
+                    isExpanded={expandedId === job.id}
+                    onToggleExpand={() =>
+                      setExpandedId((prev) => (prev === job.id ? null : job.id))
+                    }
+                    onJobUpdated={onJobUpdated}
+                    onJobDeleted={onJobDeleted}
+                    onDuplicate={handleDuplicate}
+                  />
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
+    </div>
+  );
+}
+
+// Empty is a state, not a missing table. Filtered-empty offers the way out;
+// genuinely-empty points at the one thing to do next.
+function EmptyState({
+  hasFilters, onClearFilters,
+}: {
+  hasFilters: boolean;
+  onClearFilters: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center text-center px-4 py-12">
+      <p className="text-sm font-medium text-[var(--glass-ink)]">
+        {hasFilters ? 'No jobs match your filters.' : 'No active jobs yet.'}
+      </p>
+      <p className="text-xs text-[var(--glass-muted)] mt-1 max-w-[36ch]">
+        {hasFilters
+          ? 'Try a different search term, or clear the filters to see every active job.'
+          : 'Use “Add Job” above to put the first PO into the pipeline.'}
+      </p>
+      {hasFilters && (
+        <button
+          onClick={onClearFilters}
+          className={cn(
+            'mt-4 inline-flex items-center justify-center min-h-[44px] px-4 rounded-lg',
+            'text-xs font-medium border border-black/10 text-[var(--glass-ink)]',
+            'hover:bg-black/[0.04] active:bg-black/[0.07] transition-colors',
+          )}
+        >
+          Clear filters
+        </button>
+      )}
     </div>
   );
 }

@@ -1,28 +1,21 @@
 'use client';
 // src/components/admin/JobRow.tsx
+// The desk view of a job (sm and up). Renders inside the jobs <table>.
+// Stage-change rules, delete, and the modal set are shared with the phone
+// card via useJobActions / JobActionModals — this file is layout only.
 
-import { useState } from 'react';
 import { ChevronDown, ChevronUp, PauseCircle, Trash2 } from 'lucide-react';
-import { cn, formatAdminDate, formatShortDate, formatQty } from '@/lib/utils';
-import { STATUS_COLORS, ROW_URGENCY_STYLES, JOB_TYPE_BADGE, urgentBadgeClass } from '@/lib/constants/statusColors';
-import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES, isPerReleaseStage } from '@/lib/constants/stages';
+import { cn, formatAdminDate, formatQty } from '@/lib/utils';
+import { STATUS_COLORS, JOB_TYPE_BADGE, urgentBadgeClass } from '@/lib/constants/statusColors';
 import { canDeptSetStage } from '@/lib/constants/departments';
+import { useJobActions } from '@/hooks/useJobActions';
 import type { Job } from '@/lib/types';
 import type { Department } from '@/lib/constants/departments';
 import type { Stage } from '@/lib/constants/stages';
 import HistoryPanel from './HistoryPanel';
 import DeliveryDateEdit from './DeliveryDateEdit';
 import JobDuplicateButton from './JobDuplicateButton';
-import {
-  SequentialWarningModal,
-  OnHoldModal,
-  QCModal,
-  PartialDispatchModal,
-  FullDispatchModal,
-  ClosePOModal,
-  ConfirmModal,
-} from './modals';
-import toast from 'react-hot-toast';
+import JobActionModals from './JobActionModals';
 
 type Props = {
   job:            Job;
@@ -34,170 +27,14 @@ type Props = {
   onDuplicate:    (data: { party: string; pm_code: string; job_name: string; label_qty: number | null; job_type: 'New' | 'Repeat' | 'Artwork Changed'; notes: string }) => void;
 };
 
-type ModalState =
-  | { type: 'none' }
-  | { type: 'warning'; targetStage: Stage; missingStage: Stage }
-  | { type: 'on_hold' }
-  | { type: 'qc' }
-  | { type: 'partial_dispatch' }
-  | { type: 'full_dispatch' }
-  | { type: 'close_po' }
-  | { type: 'delete' };
-
 export default function JobRow({
   job, dept, isExpanded, onToggleExpand, onJobUpdated, onJobDeleted, onDuplicate,
 }: Props) {
-  const [pendingStage,   setPendingStage]   = useState<Stage | null>(null);
-  const [modal,          setModal]          = useState<ModalState>({ type: 'none' });
-  const [submitting,     setSubmitting]     = useState(false);
-  const [deleting,       setDeleting]       = useState(false);
-  const [pendingPayload, setPendingPayload] = useState<{
-    new_status:      Stage;
-    remark?:         string;
-    qty_dispatched?: number;
-  } | null>(null);
+  const actions = useJobActions({ job, dept, onJobUpdated, onJobDeleted });
 
-  // ── Row visual class ────────────────────────────────────────
-  const rowClass = cn(
-    'border-b border-white/8 transition-colors',
-    job.status === 'On Hold'
-      ? ROW_URGENCY_STYLES.onHold
-      : job.status === 'Quality Check'
-        ? ROW_URGENCY_STYLES.qc
-        : job.urgent
-          ? job.urgent_priority === 1
-            ? ROW_URGENCY_STYLES.urgent1
-            : job.urgent_priority === 2
-              ? ROW_URGENCY_STYLES.urgent2
-              : ROW_URGENCY_STYLES.urgent3
-          : ROW_URGENCY_STYLES.normal
-  );
+  const rowClass = cn('border-b border-white/8 transition-colors', actions.urgencyTint);
 
-  // ── Dropdown change handler ─────────────────────────────────
-  async function handleStageSelect(newStage: Stage) {
-    if (newStage === job.status) return;
-    setPendingStage(newStage);
-
-    // Modal-required stages always use their OWN modal — even when leaving Quality Check.
-    // (A Partial Dispatch from QC still needs the qty input, not the QC remark box.)
-    // Server enforces prerequisites; a 409 response triggers the warning after entry.
-    if (newStage === 'On Hold')          { setModal({ type: 'on_hold' });          return; }
-    if (newStage === 'Quality Check')    { setModal({ type: 'qc' });               return; }
-    if (newStage === 'Partial Dispatch') { setModal({ type: 'partial_dispatch' }); return; }
-    if (newStage === 'Dispatched')       { setModal({ type: 'full_dispatch' });    return; }
-    if (newStage === 'PO Closed')        { setModal({ type: 'close_po' });         return; }
-
-    // Advancing FROM Quality Check to a non-modal stage: capture an optional QC remark first
-    if (job.status === 'Quality Check') {
-      setModal({ type: 'qc' });
-      return;
-    }
-
-    // Submit directly — the server is the source of truth for prerequisites
-    // and responds 409 if the previous stage isn't complete.
-    await submitStatusChange({ new_status: newStage });
-  }
-
-  // ── Submit status change ────────────────────────────────────
-  async function submitStatusChange(payload: {
-    new_status:            Stage;
-    remark?:               string;
-    qty_dispatched?:       number;
-    override_prerequisite?: boolean;
-    override_remark?:       string;
-  }) {
-    setSubmitting(true);
-    setModal({ type: 'none' });
-
-    try {
-      const res = await fetch(`/api/jobs/${job.id}/status`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload),
-      });
-      const data = await res.json();
-
-      if (res.status === 409 && data.error === 'PREREQUISITE_MISSING') {
-        setPendingPayload({
-          new_status:     payload.new_status,
-          remark:         payload.remark,
-          qty_dispatched: payload.qty_dispatched,
-        });
-        setModal({
-          type:         'warning',
-          targetStage:  payload.new_status,
-          missingStage: data.missing_stage,
-        });
-        return;
-      }
-
-      if (!res.ok) {
-        toast.error(data.error ?? 'Failed to update status');
-        return;
-      }
-
-      onJobUpdated(data.job);
-      toast.success(`Status updated to "${payload.new_status}"`);
-      setPendingStage(null);
-      setPendingPayload(null);
-    } catch {
-      toast.error('Network error. Try again.');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  // ── Delete job (Admin only) ─────────────────────────────────
-  async function handleDelete() {
-    setDeleting(true);
-    try {
-      const res = await fetch(`/api/jobs/${job.id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        toast.error(data.error ?? 'Failed to delete job');
-        return;
-      }
-      onJobDeleted(job.id);
-      toast.success('Job deleted');
-    } catch {
-      toast.error('Network error. Try again.');
-    } finally {
-      setDeleting(false);
-      setModal({ type: 'none' });
-    }
-  }
-
-  // ── Last status log display ─────────────────────────────────
-  const lastUpdatedLine = job.updated_at
-    ? `${formatAdminDate(job.updated_at)}`
-    : '—';
-
-  // ── Dispatch progress ───────────────────────────────────────
-  // Print-run jobs track quantity via total_qty_dispatched;
-  // classic jobs via dispatched_qty.
-  const effectiveDispatched = job.has_partial_runs
-    ? (job.total_qty_dispatched ?? 0)
-    : (job.dispatched_qty ?? 0);
-  const dispatchPct = job.label_qty
-    ? Math.round((effectiveDispatched / job.label_qty) * 100)
-    : 0;
-
-  // ── Available stages in dropdown ────────────────────────────
-  const _stages: Stage[] = [...PIPELINE_STAGES, 'On Hold'];
-  if (dept === 'Admin') _stages.push('PO Closed');
-  let availableStages = job.job_type === 'Repeat'
-    ? _stages.filter((s) => !REPEAT_SKIPPED_STAGES.includes(s as any))
-    : _stages;
-  // Scheduled-release jobs: printing onward is advanced per release in the
-  // job's Releases panel — only the once-per-job stages stay in this dropdown.
-  if (job.is_scheduled_release) {
-    availableStages = availableStages.filter((s) => !isPerReleaseStage(s));
-  }
-
-  // Completed stages — shown with ✓ in the dropdown
-  const completedSet = new Set(
-    (job.job_stage_timestamps ?? []).map((t) => t.stage)
-  );
+  const lastUpdatedLine = job.updated_at ? formatAdminDate(job.updated_at) : '—';
 
   return (
     <>
@@ -246,7 +83,7 @@ export default function JobRow({
           {job.label_qty ? (
             <div>
               <p className="font-mono text-xs text-[var(--glass-ink)]">
-                {formatQty(effectiveDispatched)} / {formatQty(job.label_qty)}
+                {formatQty(actions.effectiveDispatched)} / {formatQty(job.label_qty)}
                 {job.has_partial_runs && (
                   <span className="text-[var(--glass-muted)]"> dispatched</span>
                 )}
@@ -254,14 +91,14 @@ export default function JobRow({
               <div
                 className="h-1.5 bg-white/10 rounded-full mt-1.5 w-20"
                 role="progressbar"
-                aria-valuenow={dispatchPct}
+                aria-valuenow={actions.dispatchPct}
                 aria-valuemin={0}
                 aria-valuemax={100}
-                aria-label={`Dispatched ${dispatchPct}% of order`}
+                aria-label={`Dispatched ${actions.dispatchPct}% of order`}
               >
                 <div
                   className="h-full bg-emerald-400 rounded-full transition-all"
-                  style={{ width: `${dispatchPct}%` }}
+                  style={{ width: `${actions.dispatchPct}%` }}
                 />
               </div>
               {job.is_scheduled_release && (
@@ -295,24 +132,28 @@ export default function JobRow({
 
         {/* Status dropdown */}
         <td className="px-4 py-3 min-w-[180px]">
+          <label htmlFor={`row-stage-${job.id}`} className="sr-only">
+            Status for job {job.po_number}
+          </label>
           <select
+            id={`row-stage-${job.id}`}
             value={job.status}
-            disabled={submitting}
-            onChange={(e) => handleStageSelect(e.target.value as Stage)}
+            disabled={actions.submitting}
+            onChange={(e) => actions.handleStageSelect(e.target.value as Stage)}
             className={cn(
               'w-full px-2 py-1.5 rounded-lg border border-transparent text-xs font-medium',
               // Match the app-wide emerald focus bloom (see inputCls / DeliveryDateEdit)
               'focus:outline-none focus:border-emerald-300/70',
               'focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)]',
               'transition-all cursor-pointer',
-              STATUS_COLORS[job.status]?.bg ?? 'bg-white/10',
-              STATUS_COLORS[job.status]?.text ?? 'text-white/80',
+              STATUS_COLORS[job.status]?.bg ?? 'bg-slate-100',
+              STATUS_COLORS[job.status]?.text ?? 'text-slate-700',
               '[&>option]:bg-white [&>option]:text-[var(--glass-ink)]'
             )}
           >
-            {availableStages.map((stage) => {
+            {actions.availableStages.map((stage) => {
               const allowed   = canDeptSetStage(dept, stage);
-              const completed = completedSet.has(stage);
+              const completed = actions.completedSet.has(stage);
               return (
                 <option
                   key={stage}
@@ -349,7 +190,7 @@ export default function JobRow({
 
             {dept === 'Admin' && (
               <button
-                onClick={() => setModal({ type: 'delete' })}
+                onClick={actions.openDeleteModal}
                 aria-label={`Delete job ${job.po_number}`}
                 title="Delete job"
                 className="inline-flex items-center gap-1 text-red-300 hover:text-red-200 text-xs transition-colors px-2 py-1 rounded hover:bg-red-400/15"
@@ -377,95 +218,8 @@ export default function JobRow({
         </tr>
       )}
 
-      {/* Modals */}
-      {modal.type === 'warning' && (
-        <SequentialWarningModal
-          targetStage={modal.targetStage}
-          missingStage={modal.missingStage}
-          isAdmin={dept === 'Admin'}
-          onCancel={() => { setModal({ type: 'none' }); setPendingPayload(null); setPendingStage(null); }}
-          onOverride={(overrideRemark) => {
-            // Re-submit the stored payload (preserves qty/remark) with the
-            // Admin override flag and justification remark.
-            const stored = pendingPayload ?? { new_status: modal.targetStage };
-            setPendingPayload(null);
-            submitStatusChange({
-              ...stored,
-              override_prerequisite: true,
-              override_remark:       overrideRemark,
-            });
-          }}
-        />
-      )}
-
-      {modal.type === 'on_hold' && (
-        <OnHoldModal
-          onCancel={() => setModal({ type: 'none' })}
-          onConfirm={(remark) =>
-            submitStatusChange({ new_status: 'On Hold', remark })
-          }
-        />
-      )}
-
-      {modal.type === 'qc' && (
-        <QCModal
-          onCancel={() => { setModal({ type: 'none' }); setPendingStage(null); }}
-          onConfirm={(remark) => {
-            const target = (pendingStage ?? 'Quality Check') as Stage;
-            // Safety net: stages with their own modal must NEVER be submitted from
-            // the QC remark box — they have required inputs (qty etc.). Route instead.
-            if (target === 'Partial Dispatch') { setModal({ type: 'partial_dispatch' }); return; }
-            if (target === 'Dispatched')       { setModal({ type: 'full_dispatch' });    return; }
-            if (target === 'On Hold')          { setModal({ type: 'on_hold' });          return; }
-            if (target === 'PO Closed')        { setModal({ type: 'close_po' });         return; }
-            submitStatusChange({ new_status: target, remark });
-          }}
-        />
-      )}
-
-      {modal.type === 'partial_dispatch' && (
-        <PartialDispatchModal
-          remaining={job.remaining_qty ?? (job.label_qty ? job.label_qty - job.dispatched_qty : 0)}
-          onCancel={() => setModal({ type: 'none' })}
-          onConfirm={(qty) =>
-            submitStatusChange({ new_status: 'Partial Dispatch', qty_dispatched: qty })
-          }
-        />
-      )}
-
-      {modal.type === 'full_dispatch' && (
-        <FullDispatchModal
-          remaining={job.remaining_qty ?? (job.label_qty ? job.label_qty - job.dispatched_qty : 0)}
-          onCancel={() => setModal({ type: 'none' })}
-          onConfirm={() =>
-            submitStatusChange({ new_status: 'Dispatched' })
-          }
-        />
-      )}
-
-      {modal.type === 'close_po' && (
-        <ClosePOModal
-          job={job}
-          onCancel={() => setModal({ type: 'none' })}
-          onConfirm={() =>
-            submitStatusChange({ new_status: 'PO Closed' })
-          }
-        />
-      )}
-
-      {modal.type === 'delete' && (
-        <ConfirmModal
-          title={`Delete job ${job.po_number}?`}
-          message="This permanently removes the job and its history. This cannot be undone."
-          confirmLabel="Delete job"
-          tone="danger"
-          busy={deleting}
-          onCancel={() => setModal({ type: 'none' })}
-          onConfirm={handleDelete}
-        />
-      )}
+      {/* Modals portal to document.body, so rendering them here is tbody-safe */}
+      <JobActionModals job={job} dept={dept} actions={actions} />
     </>
   );
 }
-
-// StatusBadge is imported from ./StatusBadge — no inline duplicate needed.

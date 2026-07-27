@@ -127,6 +127,26 @@ button,
   }
 }
 
+/* ── Focus ──────────────────────────────────────────────────
+   DESIGN.md §4 names the focus bloom as the designed keyboard-focus
+   state, but only two components implemented it — every other button
+   fell back to whatever the UA drew, which is close to invisible on
+   the green header and on white cards.
+
+   Declared once, globally, with :where() so specificity stays 0 and any
+   component can still override. :focus-visible (not :focus) keeps the
+   ring off mouse clicks. Fields opt out via their own outline-none and
+   keep the emerald border + bloom they already define. */
+:where(
+  a[href], button, select, summary,
+  [role="button"], [role="menuitem"], [role="tab"],
+  [tabindex]:not([tabindex="-1"])
+):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  box-shadow: var(--focus-bloom);
+}
+
 /* ── Premium glass-mesh theme ───────────────────────────────── */
 :root {
   --glass-bg:         rgba(255, 255, 255, 0.07);
@@ -134,6 +154,9 @@ button,
   --glass-border:     rgba(255, 255, 255, 0.14);
   --glass-ink:        #EAFFF5;
   --glass-muted:      #9FBCB0;
+  /* Focus bloom (DESIGN.md §4) — bright mint reads on the dark mesh. */
+  --focus-ring:       #7CF0BE;
+  --focus-bloom:      0 0 0 4px rgba(124, 240, 190, 0.22);
 
   /* Native <select> option list background. Dark by default (track / login
      dark theme); re-pointed to white under .admin-light so option text — which
@@ -219,6 +242,9 @@ button,
   --glass-bg-strong:  #EDF3EF;
   --glass-border:     #E4EAE6;
   --select-option-bg: #FFFFFF;
+  /* Press Green ring on white — the mint bloom is invisible on light. */
+  --focus-ring:       #10553F;
+  --focus-bloom:      0 0 0 4px rgba(16, 85, 63, 0.16);
   /* Soft, breathing mint wash — atmosphere without shouting */
   background:
     radial-gradient(60% 45% at 100% 0%,   #E2EFE8 0%, transparent 62%),
@@ -239,6 +265,14 @@ button,
 .admin-light .hover\:bg-white\/10:hover,
 .admin-light .hover\:bg-white\/\[0\.08\]:hover { background-color: rgba(12, 42, 32, 0.06); }
 
+/* The header keeps its solid Press Green bar inside the light shell, so the
+   Press Green focus ring would disappear on it. Re-point to the light ring
+   for anything focusable inside the bar. */
+.bg-brand-header {
+  --focus-ring:  #EAFFF5;
+  --focus-bloom: 0 0 0 4px rgba(255, 255, 255, 0.22);
+}
+
 /* Hairline "white" borders become the green-tinted token border */
 .admin-light .border-white\/8,
 .admin-light .border-white\/10,
@@ -247,6 +281,13 @@ button,
 .admin-light .border-white\/20,
 .admin-light .border-white\/30,
 .admin-light .border-white\/35 { border-color: var(--color-border); }
+
+/* The floating field labels rest at text-white/60 (Field.tsx) — invisible on
+   the light admin surface until focus flips them to emerald. Re-point to the
+   muted ink token so "Search", "Party", "Notes" read in their resting state.
+   Deliberately NOT extended to text-white/70: AdminHeader's "Sign out" uses
+   that on the dark header bar, which also sits inside .admin-light. */
+.admin-light .text-white\/60 { color: var(--glass-muted); }
 
 /* ── Semantic tints: dark-glass (color-400/xx + color-200 text) → light ──
    The admin surface is fully light now, so every state tint flips to a

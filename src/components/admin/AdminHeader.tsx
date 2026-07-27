@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import type { Department } from '@/lib/constants/departments';
 import { Logo } from '@/components/brand/Logo';
+import ExportButton from './ExportButton';
 
 type Props = {
   dept:        Department;
@@ -31,10 +32,13 @@ export default function AdminHeader({ dept, displayName }: Props) {
         </div>
 
         {/* Right side */}
-        <div className="flex items-center gap-4">
-          <span className="text-white/75 text-xs font-mono">
+        <div className="flex items-center gap-3">
+          <span className="text-white/75 text-xs font-mono hidden sm:inline">
             {displayName}
           </span>
+          {/* Full-database export — Admin only, mirrored by the check in
+              GET /api/export, which is the actual gate. */}
+          {dept === 'Admin' && <ExportButton />}
           <button
             onClick={handleLogout}
             className="text-white/70 hover:text-white text-xs transition-colors px-2 py-1"

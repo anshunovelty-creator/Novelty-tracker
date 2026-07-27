@@ -4,8 +4,9 @@
 // Contains all interactive state — status dropdown, all 6 modals, delivery date edit.
 // Receives initial job data from the server page; updates local state after changes.
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { cn, formatAdminDate, formatShortDate, formatQty } from '@/lib/utils';
 import { STATUS_COLORS, JOB_TYPE_BADGE, urgentBadgeClass } from '@/lib/constants/statusColors';
 import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES, isPerReleaseStage } from '@/lib/constants/stages';
@@ -15,6 +16,7 @@ import type { Department } from '@/lib/constants/departments';
 import type { Stage } from '@/lib/constants/stages';
 import HistoryPanel from './HistoryPanel';
 import DeliveryDateEdit from './DeliveryDateEdit';
+import { JOBS_CHANGED_EVENT } from '@/lib/constants/events';
 import {
   SequentialWarningModal,
   OnHoldModal,
@@ -40,6 +42,7 @@ type ModalState =
   | { type: 'close_po' };
 
 export default function JobDetailClient({ initialJob, dept }: Props) {
+  const router = useRouter();
   const [job,          setJob]          = useState<Job>(initialJob);
   const [modal,        setModal]        = useState<ModalState>({ type: 'none' });
   const [submitting,   setSubmitting]   = useState(false);
@@ -49,6 +52,25 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
     remark?:         string;
     qty_dispatched?: number;
   } | null>(null);
+
+  // A release dispatched down in the Releases panel changes this job's
+  // quantities without touching our copy of it — refetch when it says so.
+  useEffect(() => {
+    async function refreshJob() {
+      try {
+        const res  = await fetch(`/api/jobs/${initialJob.id}`);
+        const data = await res.json();
+        if (res.ok) setJob((prev) => ({ ...prev, ...data.job }));
+        // Drop the client router cache too, so going back to /admin shows the
+        // new totals instead of the list as it looked before the dispatch.
+        router.refresh();
+      } catch {
+        // Leave the current view in place — the panel already showed the error.
+      }
+    }
+    window.addEventListener(JOBS_CHANGED_EVENT, refreshJob);
+    return () => window.removeEventListener(JOBS_CHANGED_EVENT, refreshJob);
+  }, [initialJob.id, router]);
 
   const availableStages: Stage[] = [...PIPELINE_STAGES, 'On Hold'];
   if (dept === 'Admin') availableStages.push('PO Closed');
