@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment } from '@/lib/constants/departments';
+import { parseDepartment, canDeptSetPrinting } from '@/lib/constants/departments';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -70,6 +70,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     'pm_code',
     'job_name',
     'label_qty',
+    // Prepress/production reassign the printing unit from the job card.
+    // Sending printing_method alone lets the set_job_printing_unit trigger
+    // snap the unit to that method's default; sending both is an explicit
+    // override the trigger leaves alone.
+    'printing_method',
+    'printing_unit_id',
   ] as const;
 
   // Delivery date edit: only Dispatch or Admin
@@ -78,6 +84,38 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       { error: 'Only Dispatch or Admin can edit delivery date' },
       { status: 403 }
     );
+  }
+
+  // Printing method / unit: Prepress, Production or Admin decide which
+  // press takes the job. Enforced here as well as in the UI, because the
+  // UI control is only a hint — this endpoint is the actual boundary.
+  const touchesPrinting = 'printing_method' in body || 'printing_unit_id' in body;
+  if (touchesPrinting && !canDeptSetPrinting(dept)) {
+    return NextResponse.json(
+      { error: 'Only Prepress, Production or Admin can set the printing unit' },
+      { status: 403 }
+    );
+  }
+
+  // Prepress and Production may change the printing unit and NOTHING else —
+  // PO number, PM code, job name and every other detail stay fixed for them.
+  // Admin keeps full access. Enforced here because the endpoint, not the UI,
+  // is the real boundary.
+  const PRINTING_ONLY_DEPTS = ['Prepress', 'Production'];
+  if (PRINTING_ONLY_DEPTS.includes(dept)) {
+    const nonPrintingKeys = Object.keys(body).filter(
+      (k) => k !== 'printing_method' && k !== 'printing_unit_id',
+    );
+    if (nonPrintingKeys.length > 0) {
+      return NextResponse.json(
+        {
+          error:
+            `${dept} can only change the printing unit. ` +
+            `Rejected fields: ${nonPrintingKeys.join(', ')}`,
+        },
+        { status: 403 }
+      );
+    }
   }
 
   const updates: Record<string, unknown> = {};

@@ -48,6 +48,17 @@ export const DEPT_ALLOWED_STAGES: Record<Department, Stage[] | '*'> = {
 /**
  * Returns true if the department is allowed to set the given stage.
  */
+/**
+ * Who may set a job's printing method / unit.
+ * Prepress and Production make the call on the floor; Admin always has
+ * full access. QC and Dispatch can see the assignment but not change it.
+ */
+export const PRINTING_EDIT_DEPTS: Department[] = ['Prepress', 'Production', 'Admin'];
+
+export function canDeptSetPrinting(dept: Department | null): boolean {
+  return dept !== null && PRINTING_EDIT_DEPTS.includes(dept);
+}
+
 export function canDeptSetStage(dept: Department, stage: Stage): boolean {
   const allowed = DEPT_ALLOWED_STAGES[dept];
   if (allowed === '*') return true;

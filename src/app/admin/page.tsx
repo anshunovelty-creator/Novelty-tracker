@@ -1,6 +1,7 @@
 // src/app/admin/page.tsx
 // Server component — fetches initial data, passes to client components.
 
+import Link from 'next/link';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { parseDepartment } from '@/lib/constants/departments';
 import { redirect } from 'next/navigation';
@@ -21,7 +22,7 @@ export default async function AdminPage() {
   // job_stage_timestamps(stage) join powers the ✓ marks in the status dropdown
   const { data: jobs } = await supabase
     .from('jobs')
-    .select('*, job_stage_timestamps(stage)')
+    .select('*, job_stage_timestamps(stage), printing_units(id, name, printing_method)')
     .eq('is_closed', false)
     .order('delivery_date', { ascending: true, nullsFirst: false });
 
@@ -59,6 +60,18 @@ export default async function AdminPage() {
 
       {/* Machine board — live per-machine printing queues */}
       <MachineBoard dept={dept} />
+
+      {/* Admin-only settings entry points */}
+      {dept === 'Admin' && (
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/admin/printing-units"
+            className="inline-flex min-h-11 items-center rounded-lg border border-black/[0.12] px-3 text-sm text-[var(--glass-muted)] hover:bg-black/[0.04] hover:text-[var(--glass-ink)]"
+          >
+            Manage printing units →
+          </Link>
+        </div>
+      )}
 
       {/* Add job form + jobs table */}
       <JobsTable

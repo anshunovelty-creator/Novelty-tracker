@@ -29,15 +29,17 @@ export async function GET(request: NextRequest) {
 
   let query = supabase
     .from('jobs')
-    .select('*, job_stage_timestamps(stage)')
+    .select('*, job_stage_timestamps(stage), printing_units(id, name, printing_method)')
     .eq('is_closed', closed)
     .order('delivery_date', { ascending: true, nullsFirst: false });
 
   if (status)  query = query.eq('status', status);
   if (urgent === 'true')  query = query.eq('urgent', true);
   if (search) {
+    // job_card_number first: prepress reads a number off a printed card
+    // and searches for it, so it is the most common lookup on the floor.
     query = query.or(
-      `po_number.ilike.%${search}%,party.ilike.%${search}%,job_name.ilike.%${search}%`
+      `job_card_number.ilike.%${search}%,po_number.ilike.%${search}%,party.ilike.%${search}%,job_name.ilike.%${search}%`
     );
   }
 
@@ -96,6 +98,10 @@ export async function POST(request: NextRequest) {
     dispatched_qty:       0,
     is_scheduled_release: body.is_scheduled_release ?? false,
     is_closed:            false,
+    printing_method:      body.printing_method || 'Flexo',
+    // null is meaningful: it tells the set_job_printing_unit trigger to
+    // pick the default unit for the chosen method.
+    printing_unit_id:     body.printing_unit_id || null,
   };
 
   const { data: job, error: jobError } = await admin

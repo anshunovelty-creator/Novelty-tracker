@@ -41,9 +41,32 @@ export default function JobRow({
       <tr className={rowClass}>
         {/* PO / PM */}
         <td className="px-4 py-3 min-w-[130px]">
-          <p className="font-mono text-xs font-medium text-[var(--glass-ink)]">{job.po_number}</p>
+          {/* Job card number leads — it is what prepress quotes off the card. */}
+          {job.job_card_number && (
+            <p className="font-mono text-xs font-semibold text-[var(--glass-ink)] tracking-wide">
+              {job.job_card_number}
+            </p>
+          )}
+          <p
+            className={cn(
+              'font-mono text-xs',
+              job.job_card_number
+                ? 'text-[var(--glass-muted)] mt-0.5'
+                : 'font-medium text-[var(--glass-ink)]',
+            )}
+          >
+            {job.po_number}
+          </p>
           {job.pm_code && (
             <p className="font-mono text-xs text-[var(--glass-muted)] mt-0.5">{job.pm_code}</p>
+          )}
+          {/* Printing unit — which press is taking this job. */}
+          {job.printing_units && (
+            <p className="text-xs text-[var(--glass-muted)] mt-1">
+              <span className="inline-flex items-center rounded px-1.5 py-0.5 bg-black/[0.06]">
+                {job.printing_units.name}
+              </span>
+            </p>
           )}
           {job.urgent && (
             <span className={cn(

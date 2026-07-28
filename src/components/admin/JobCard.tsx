@@ -64,9 +64,19 @@ export default function JobCard({
       <div className="px-4 pt-3.5 pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
+            {/* Job card number leads — it is what prepress quotes off the card. */}
+            {job.job_card_number && (
+              <p className="font-mono text-[11px] font-semibold text-[var(--glass-ink)] tracking-wide">
+                {job.job_card_number}
+              </p>
+            )}
             <p className="font-mono text-[11px] text-[var(--glass-muted)] tracking-wide">
               {job.po_number}
               {job.pm_code && <span className="ml-1.5">· {job.pm_code}</span>}
+              {/* Printing unit — which press is taking this job. */}
+              {job.printing_units && (
+                <span className="ml-1.5">· {job.printing_units.name}</span>
+              )}
             </p>
             <h3 className="font-semibold text-[15px] leading-snug text-[var(--glass-ink)] mt-0.5 break-words">
               {job.party}

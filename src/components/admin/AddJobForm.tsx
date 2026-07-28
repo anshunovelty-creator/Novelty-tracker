@@ -4,7 +4,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { cn, formatQty, formatShortDate } from '@/lib/utils';
 import type { Department } from '@/lib/constants/departments';
-import type { AddJobFormData, ScheduledReleaseInput, JobType } from '@/lib/types';
+import type { AddJobFormData, ScheduledReleaseInput, JobType, PrintingUnit, PrintingMethod } from '@/lib/types';
+import { PRINTING_METHODS } from '@/lib/types';
 import { LoadingButton } from '@/components/ui/Loading';
 import toast from 'react-hot-toast';
 
@@ -46,10 +47,16 @@ const EMPTY_FORM: AddJobFormData = {
   notes:                '',
   is_scheduled_release: false,
   scheduled_releases:   [],
+  // Jobs start on Flexo; leaving the unit null lets the DB trigger assign
+  // that method's default unit.
+  printing_method:      'Flexo',
+  printing_unit_id:     null,
 };
 
 export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
   const [form,       setForm]       = useState<AddJobFormData>({ ...EMPTY_FORM, ...prefillData });
+  // Active units only — a retired unit must never be assignable to a new job.
+  const [units,      setUnits]      = useState<PrintingUnit[]>([]);
   const [loading,    setLoading]    = useState(false);
   // Open straight away when duplicating — JobsTable remounts us with a fresh
   // key and the prefill, and a collapsed form would hide it (which made the
@@ -65,6 +72,24 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
   // Set after picking a suggestion so the effect doesn't immediately re-open
   // the dropdown for the value it just wrote.
   const suppressPmLookup = useRef(false);
+
+  // Load assignable units once the form opens.
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/printing-units');
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!cancelled) setUnits(json.units ?? []);
+      } catch {
+        // Non-fatal: the unit select falls back to "no units configured"
+        // and the DB trigger still assigns the method's default on insert.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -290,6 +315,45 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
             >
               {JOB_TYPES.map((t) => (
                 <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </Field>
+        </div>
+
+        {/* Row 2b: Printing method + unit */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Printing Method">
+            <select
+              value={form.printing_method}
+              onChange={(e) => {
+                // Clear the unit so the DB trigger assigns the new method's
+                // default; the user can still override below.
+                set('printing_method', e.target.value as PrintingMethod);
+                set('printing_unit_id', null);
+              }}
+              className={inputCls}
+            >
+              {PRINTING_METHODS.map((m) => (
+                <option key={m} value={m}>{m} Printing</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Printing Unit">
+            <select
+              value={form.printing_unit_id ?? ''}
+              onChange={(e) => set('printing_unit_id', e.target.value || null)}
+              className={inputCls}
+              disabled={units.length === 0}
+            >
+              <option value="">
+                {units.length === 0
+                  ? 'No units configured'
+                  : `Default for ${form.printing_method}`}
+              </option>
+              {units.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name} · {u.printing_method}
+                </option>
               ))}
             </select>
           </Field>

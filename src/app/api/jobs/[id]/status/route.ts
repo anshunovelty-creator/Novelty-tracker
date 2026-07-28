@@ -233,7 +233,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     .from('jobs')
     .update(jobUpdate)
     .eq('id', id)
-    .select('*, job_stage_timestamps(stage)')
+    .select('*, job_stage_timestamps(stage), printing_units(id, name, printing_method)')
     .single();
 
   if (updateError) {

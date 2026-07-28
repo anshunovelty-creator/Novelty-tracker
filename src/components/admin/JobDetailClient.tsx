@@ -16,6 +16,7 @@ import type { Department } from '@/lib/constants/departments';
 import type { Stage } from '@/lib/constants/stages';
 import HistoryPanel from './HistoryPanel';
 import DeliveryDateEdit from './DeliveryDateEdit';
+import PrintingUnitEdit from './PrintingUnitEdit';
 import { JOBS_CHANGED_EVENT } from '@/lib/constants/events';
 import {
   SequentialWarningModal,
@@ -217,6 +218,12 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
       <div className="glass rounded-xl p-6">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-8 gap-y-5">
 
+          <InfoField label="Job Card">
+            <p className="text-sm font-mono font-semibold text-[var(--glass-ink)]">
+              {job.job_card_number ?? '—'}
+            </p>
+          </InfoField>
+
           <InfoField label="Party">
             <p className="text-sm font-semibold text-[var(--glass-ink)]">{job.party}</p>
           </InfoField>
@@ -262,6 +269,17 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
               deliveryDate={job.delivery_date}
               dept={dept}
               onUpdated={(date) => setJob((j) => ({ ...j, delivery_date: date }))}
+            />
+          </InfoField>
+
+          {/* Prepress/production pick the unit that takes this job. */}
+          <InfoField label="Printing">
+            <PrintingUnitEdit
+              jobId={job.id}
+              printingMethod={job.printing_method}
+              printingUnitId={job.printing_unit_id}
+              dept={dept}
+              onSaved={() => router.refresh()}
             />
           </InfoField>
 

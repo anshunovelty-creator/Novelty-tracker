@@ -15,6 +15,18 @@ export type JobType = 'New' | 'Repeat' | 'Artwork Changed';
 
 export interface Job {
   id: string;
+  // Auto-assigned by the set_job_card_number DB trigger on insert.
+  // Format '<mon><yy>-<seq>' e.g. 'jul26-102'; seq restarts each month.
+  // Nullable only to tolerate rows written before migration 011.
+  job_card_number: string | null;
+  // Defaults to 'Flexo' at creation. Changing it snaps printing_unit_id
+  // to that method's default unit unless a unit is set in the same write.
+  printing_method: PrintingMethod;
+  // Null only when no active unit exists for the method, or the assigned
+  // unit was deleted (FK is ON DELETE SET NULL).
+  printing_unit_id: string | null;
+  // Present when fetched with the printing_units(...) join.
+  printing_units?: Pick<PrintingUnit, 'id' | 'name' | 'printing_method'> | null;
   po_number: string;
   pm_code: string | null;
   party: string;
@@ -45,6 +57,23 @@ export interface Job {
 }
 
 // Form data for Add Job — subset of Job used in the form
+/** Printing process a unit runs. Mirrors the jobs_printing_method_check constraint. */
+export type PrintingMethod = 'Offset' | 'Flexo';
+
+export const PRINTING_METHODS: PrintingMethod[] = ['Offset', 'Flexo'];
+
+/** Admin-managed printing unit, e.g. { name: 'Unit-1', printing_method: 'Offset' }. */
+export interface PrintingUnit {
+  id: string;
+  name: string;
+  printing_method: PrintingMethod;
+  // Lowest sort_order among active units of a method is that method's default.
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AddJobFormData {
   po_number: string;
   pm_code: string;
@@ -60,6 +89,10 @@ export interface AddJobFormData {
   notes: string;
   is_scheduled_release: boolean;
   scheduled_releases?: ScheduledReleaseInput[];
+  // Defaults to 'Flexo'. Leaving printing_unit_id null lets the
+  // set_job_printing_unit trigger pick that method's default unit.
+  printing_method: PrintingMethod;
+  printing_unit_id: string | null;
 }
 
 export interface ScheduledReleaseInput {
