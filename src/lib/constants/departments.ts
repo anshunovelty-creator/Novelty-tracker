@@ -11,6 +11,7 @@ export const DEPARTMENTS = [
   'Prepress',
   'QC',
   'Production',
+  'Postpress',
   'Dispatch',
   'Admin',
 ] as const;
@@ -22,8 +23,9 @@ export type Department = typeof DEPARTMENTS[number];
 export const DEPT_ALLOWED_STAGES: Record<Department, Stage[] | '*'> = {
   Prepress: [
     'PO Received',
-    'Artwork Received',
-    'Prepress / Design Check',
+    'Artwork Pending',
+    'Plate Status',
+    'Job Card Done',
   ],
   QC: [
     'Sample Printing',
@@ -31,8 +33,14 @@ export const DEPT_ALLOWED_STAGES: Record<Department, Stage[] | '*'> = {
     'Shade Card Approved',
     'Quality Check',
   ],
+  // Production runs the presses and nothing downstream of them.
   Production: [
     'In Printing',
+    'On Hold',
+  ],
+  // Postpress took slitting off Production. On Hold comes with it: a team
+  // that owns a physical machine has to be able to say it stopped.
+  Postpress: [
     'Slitting',
     'On Hold',
   ],
@@ -59,6 +67,33 @@ export function canDeptSetPrinting(dept: Department | null): boolean {
   return dept !== null && PRINTING_EDIT_DEPTS.includes(dept);
 }
 
+/**
+ * Who may correct a job's detail fields — PO number, party, PM code, job
+ * name, quantity, type, PO date, notes — through the Edit Job form.
+ *
+ * Prepress enters most jobs off the PO, so they fix their own typos. Admin
+ * always has full access. QC and Dispatch read these fields but do not own
+ * them; Dispatch still owns the delivery date, which is guarded separately.
+ */
+export const JOB_DETAIL_EDIT_DEPTS: Department[] = ['Prepress', 'Admin'];
+
+export function canDeptEditJobDetails(dept: Department | null): boolean {
+  return dept !== null && JOB_DETAIL_EDIT_DEPTS.includes(dept);
+}
+
+/**
+ * Who may change the label stock shelf — add a manual entry, correct a
+ * quantity, or mark stock as dispatched out.
+ *
+ * Dispatch physically handles the shelf, so they own it; Admin always may.
+ * Everyone else can read stock (the page is open to all staff) but not move it.
+ */
+export const STOCK_EDIT_DEPTS: Department[] = ['Dispatch', 'Admin'];
+
+export function canDeptManageStock(dept: Department | null): boolean {
+  return dept !== null && STOCK_EDIT_DEPTS.includes(dept);
+}
+
 export function canDeptSetStage(dept: Department, stage: Stage): boolean {
   const allowed = DEPT_ALLOWED_STAGES[dept];
   if (allowed === '*') return true;
@@ -70,6 +105,7 @@ export const DEPT_DISPLAY_NAME: Record<Department, string> = {
   Prepress:   'Prepress Team',
   QC:         'QC Team',
   Production: 'Production Team',
+  Postpress:  'Postpress Team',
   Dispatch:   'Dispatch Team',
   Admin:      'Admin',
 };

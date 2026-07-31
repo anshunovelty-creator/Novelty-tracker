@@ -681,6 +681,14 @@ function MachineCard({
                   </option>
                 ))}
               </select>
+              {/* An empty picker looks like a bug unless it says why. Jobs are
+                  withheld until Prepress stamps Job Card Done. */}
+              {selectableJobs.length === 0 && (
+                <span className="block mt-1 text-[11px] text-amber-200">
+                  No jobs ready. A job appears here once Prepress completes
+                  “Job Card Done”, and disappears once it is queued elsewhere.
+                </span>
+              )}
             </label>
             <label className="text-[11px] text-[var(--glass-muted)]">
               Est. start

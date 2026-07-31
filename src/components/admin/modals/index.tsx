@@ -458,13 +458,21 @@ export function PartialDispatchModal({
 }: {
   remaining: number;
   onCancel:  () => void;
-  onConfirm: (qty: number) => void;
+  onConfirm: (qty: number, stockRemaining: number) => void;
 }) {
   const [qty, setQty] = useState<number | ''>('');
   const titleId = useId();
   const qtyId = useId();
+  const stockId = useId();
 
   const isValid = typeof qty === 'number' && qty > 0 && qty <= remaining;
+
+  // What is physically left on the shelf after this dispatch. Pre-filled from
+  // the order balance, but editable: the press may have run short, so the
+  // arithmetic answer is a starting point, not the truth.
+  const computedLeft = isValid ? remaining - (qty as number) : remaining;
+  const [stockLeft, setStockLeft] = useState<number | ''>('');
+  const effectiveStockLeft = stockLeft === '' ? computedLeft : stockLeft;
 
   return (
     <ModalShell titleId={titleId} onClose={onCancel}>
@@ -494,13 +502,34 @@ export function PartialDispatchModal({
           <p className="text-xs text-red-300 mt-1">Cannot exceed remaining quantity.</p>
         )}
 
+        {/* The balance stays on the shelf — record it so it can be found later */}
+        <label htmlFor={stockId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mt-4 mb-1.5">
+          Labels left in stock
+        </label>
+        <input
+          id={stockId}
+          type="number"
+          inputMode="numeric"
+          min={0}
+          value={stockLeft}
+          onChange={(e) => setStockLeft(e.target.value ? Number(e.target.value) : '')}
+          placeholder={formatQty(computedLeft)}
+          className={cn(inputCls, 'font-mono')}
+        />
+        <p className="text-xs text-[var(--glass-muted)] mt-1.5">
+          Defaults to{' '}
+          <strong className="text-[var(--glass-ink)] font-mono">{formatQty(computedLeft)}</strong>
+          {' '}— the order balance. Correct it if the shelf says otherwise.
+          {' '}This goes to Label Stock.
+        </p>
+
         <div className="flex gap-3 justify-end mt-4">
           <button onClick={onCancel} className={btnCancel}>
             Cancel
           </button>
           {/* NOTE: Only ONE button — Save Partial Dispatch. No full dispatch button here. */}
           <button
-            onClick={() => isValid && onConfirm(qty as number)}
+            onClick={() => isValid && onConfirm(qty as number, effectiveStockLeft as number)}
             disabled={!isValid}
             className={btnCaution}
           >
@@ -522,27 +551,95 @@ export function FullDispatchModal({
 }: {
   remaining: number;
   onCancel:  () => void;
-  onConfirm: () => void;
+  onConfirm: (extraQty: number, location: string, remark: string) => void;
 }) {
-  const titleId = useId();
+  const titleId  = useId();
+  const extraId  = useId();
+  const locId    = useId();
+  const remarkId = useId();
+
+  // Surplus printed beyond the order. Blank means none — the question is asked
+  // every time, but answering it is never a tax on the common case.
+  const [extraQty, setExtraQty] = useState<number | ''>('');
+  const [location, setLocation] = useState('');
+  const [remark,   setRemark]   = useState('');
+
+  const hasExtra = typeof extraQty === 'number' && extraQty > 0;
+
   return (
     <ModalShell titleId={titleId} onClose={onCancel}>
       <div className="p-6">
         <h3 id={titleId} className="font-semibold text-[var(--glass-ink)] text-base mb-1">
           Confirm Full Dispatch
         </h3>
-        <p className="text-sm text-[var(--glass-muted)] mb-6">
+        <p className="text-sm text-[var(--glass-muted)] mb-5">
           Mark all remaining{' '}
           <strong className="text-[var(--glass-ink)] font-mono">{formatQty(remaining)}</strong>{' '}
-          labels as fully dispatched?
+          labels as fully dispatched? Anything held in stock for this job clears out.
         </p>
 
-        <div className="flex gap-3 justify-end">
+        {/* Over-runs are found now or never — once the job closes, nobody
+            remembers why a pile of labels is on the shelf. */}
+        <div className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-4">
+          <label htmlFor={extraId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
+            Any extra labels printed?
+          </label>
+          <input
+            id={extraId}
+            type="number"
+            inputMode="numeric"
+            min={0}
+            value={extraQty}
+            onChange={(e) => setExtraQty(e.target.value ? Number(e.target.value) : '')}
+            placeholder="Leave blank if none"
+            className={cn(inputCls, 'font-mono')}
+          />
+
+          {hasExtra && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+              <div>
+                <label htmlFor={locId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
+                  Location
+                </label>
+                <input
+                  id={locId}
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="Rack / shelf"
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label htmlFor={remarkId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
+                  Remark
+                </label>
+                <input
+                  id={remarkId}
+                  value={remark}
+                  onChange={(e) => setRemark(e.target.value)}
+                  placeholder="Optional"
+                  className={inputCls}
+                />
+              </div>
+            </div>
+          )}
+
+          <p className="text-xs text-[var(--glass-muted)] mt-2">
+            {hasExtra
+              ? `${formatQty(extraQty as number)} labels will be added to Label Stock.`
+              : 'Blank or 0 adds nothing to stock.'}
+          </p>
+        </div>
+
+        <div className="flex gap-3 justify-end mt-5">
           <button onClick={onCancel} className={btnCancel}>
             Cancel
           </button>
           {/* NOTE: Only ONE button — Confirm Full Dispatch. No partial input here. */}
-          <button onClick={onConfirm} className={btnPrimary}>
+          <button
+            onClick={() => onConfirm(hasExtra ? (extraQty as number) : 0, location, remark)}
+            className={btnPrimary}
+          >
             Confirm Full Dispatch
           </button>
         </div>

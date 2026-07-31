@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment, canDeptSetPrinting } from '@/lib/constants/departments';
+import { parseDepartment, canDeptSetPrinting, canDeptEditJobDetails } from '@/lib/constants/departments';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -67,6 +67,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     'notes',
     'urgent',
     'urgent_priority',
+    'po_number',
+    'party',
+    'po_date',
+    'job_type',
     'pm_code',
     'job_name',
     'label_qty',
@@ -97,12 +101,29 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     );
   }
 
-  // Prepress and Production may change the printing unit and NOTHING else —
-  // PO number, PM code, job name and every other detail stay fixed for them.
-  // Admin keeps full access. Enforced here because the endpoint, not the UI,
-  // is the real boundary.
-  const PRINTING_ONLY_DEPTS = ['Prepress', 'Production'];
-  if (PRINTING_ONLY_DEPTS.includes(dept)) {
+  // Job detail corrections (the Edit Job form): Prepress enters most jobs off
+  // the PO, so they fix their own typos; Admin always may. QC and Dispatch see
+  // these fields but do not own them.
+  const DETAIL_FIELDS = [
+    'po_number', 'party', 'pm_code', 'job_name',
+    'label_qty', 'job_type', 'po_date', 'notes',
+  ];
+  const touchedDetails = DETAIL_FIELDS.filter((f) => f in body);
+  if (touchedDetails.length > 0 && !canDeptEditJobDetails(dept)) {
+    return NextResponse.json(
+      {
+        error:
+          `${dept} cannot change job details. ` +
+          `Rejected fields: ${touchedDetails.join(', ')}`,
+      },
+      { status: 403 }
+    );
+  }
+
+  // Production may change the printing unit and NOTHING else — every other
+  // detail stays fixed for them. Enforced here because the endpoint, not the
+  // UI, is the real boundary.
+  if (dept === 'Production') {
     const nonPrintingKeys = Object.keys(body).filter(
       (k) => k !== 'printing_method' && k !== 'printing_unit_id',
     );
@@ -114,6 +135,17 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             `Rejected fields: ${nonPrintingKeys.join(', ')}`,
         },
         { status: 403 }
+      );
+    }
+  }
+
+  // PO number and party are how a job is found and who it is for — neither
+  // may be blanked by an edit. Everything else is legitimately clearable.
+  for (const field of ['po_number', 'party'] as const) {
+    if (field in body && !String(body[field] ?? '').trim()) {
+      return NextResponse.json(
+        { error: `${field === 'po_number' ? 'PO number' : 'Party'} cannot be empty` },
+        { status: 400 }
       );
     }
   }

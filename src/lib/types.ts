@@ -56,6 +56,40 @@ export interface Job {
   print_runs?: PrintRun[];
 }
 
+// ── label_stock ──────────────────────────────────────────────
+
+/**
+ * Why a row of printed labels is on the shelf.
+ * 'Remaining' — balance of a partially dispatched order; cleared on full dispatch.
+ * 'Extra'     — surplus beyond the order; survives full dispatch.
+ * 'Manual'    — found stock the system never knew about.
+ */
+export type StockKind = 'Remaining' | 'Extra' | 'Manual';
+
+export const STOCK_KINDS: StockKind[] = ['Remaining', 'Extra', 'Manual'];
+
+export interface LabelStock {
+  id: string;
+  // Null once the originating job is deleted — the physical stock outlives it.
+  job_id: string | null;
+  kind: StockKind;
+  qty: number;
+  // Snapshot of the job as it was when the stock was recorded.
+  job_card_number: string | null;
+  po_number:       string | null;
+  pm_code:         string | null;
+  party:           string;
+  job_name:        string | null;
+  location: string | null;
+  remark:   string | null;
+  is_dispatched: boolean;
+  dispatched_at: string | null;
+  dispatched_by: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Form data for Add Job — subset of Job used in the form
 /** Printing process a unit runs. Mirrors the jobs_printing_method_check constraint. */
 export type PrintingMethod = 'Offset' | 'Flexo';
@@ -362,4 +396,12 @@ export interface StatusChangePayload {
   qty_dispatched?: number;      // Partial Dispatch only
   override_prerequisite?: boolean;  // true = Admin clicked "Skip & Continue"
   override_remark?: string;     // required when override_prerequisite — Admin's justification
+  // ── Label stock (optional) ──
+  // Partial Dispatch: what Dispatch confirms is physically left on the shelf.
+  // Omitted → the route falls back to (label_qty − dispatched_qty).
+  stock_remaining_qty?: number;
+  // Dispatched: surplus printed beyond the order. 0 or omitted → no extras.
+  extra_label_qty?: number;
+  extra_label_location?: string;
+  extra_label_remark?: string;
 }

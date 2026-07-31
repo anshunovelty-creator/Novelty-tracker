@@ -19,11 +19,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { upsertRemainingStock, clearRemainingStock, addExtraStock } from '@/lib/api/labelStock';
 import { parseDepartment, canDeptSetStage } from '@/lib/constants/departments';
 import { getPrerequisite, getVisibleStages, isStageSkipped, isPerReleaseStage, NOTIFICATION_TRIGGER_STAGES } from '@/lib/constants/stages';
 import { toMonthKey } from '@/lib/utils';
 import type { Stage } from '@/lib/constants/stages';
-import type { StatusChangePayload } from '@/lib/types';
+import type { StatusChangePayload, Job } from '@/lib/types';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -43,7 +44,12 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   const body: StatusChangePayload = await request.json();
-  const { new_status, remark, qty_dispatched, override_prerequisite, override_remark } = body;
+  const {
+    new_status, remark, qty_dispatched, override_prerequisite, override_remark,
+    // Label stock (optional): Dispatch confirms what is left on the shelf at a
+    // partial dispatch, and reports any surplus printed at a full dispatch.
+    stock_remaining_qty, extra_label_qty, extra_label_location, extra_label_remark,
+  } = body;
 
   if (!new_status) {
     return NextResponse.json({ error: 'new_status is required' }, { status: 400 });
@@ -239,6 +245,42 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (updateError) {
     console.error('[POST status] update job:', updateError);
     return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+
+  // ── Label stock side-effects ──────────────────────────────
+  // Deliberately after the job update and deliberately non-blocking: the
+  // dispatch is the physical truth. If the shelf record fails to keep up we
+  // log it, but we never fail a dispatch that already happened.
+  //
+  //   Partial Dispatch → the balance of the run is still on the shelf.
+  //                      Dispatch confirms the qty in the modal; we fall back
+  //                      to the computed remainder if they sent nothing.
+  //   Dispatched       → the balance left the building, so that row closes.
+  //                      Any 'Extra' surplus reported is added, not cleared.
+  const stockActor = user.email ?? dept;
+
+  if (new_status === 'Partial Dispatch') {
+    const computedRemaining = (updatedJob.label_qty ?? 0) - (updatedJob.dispatched_qty ?? 0);
+    const remainingForStock = typeof stock_remaining_qty === 'number'
+      ? stock_remaining_qty
+      : computedRemaining;
+    const { error } = await upsertRemainingStock(
+      admin, updatedJob as Job, remainingForStock, stockActor,
+    );
+    if (error) console.error('[POST status] remaining stock:', error);
+  }
+
+  if (new_status === 'Dispatched') {
+    const { error } = await clearRemainingStock(admin, id, stockActor);
+    if (error) console.error('[POST status] clear remaining stock:', error);
+
+    if (typeof extra_label_qty === 'number' && extra_label_qty > 0) {
+      const { error: extraErr } = await addExtraStock(
+        admin, updatedJob as Job, extra_label_qty, stockActor,
+        extra_label_location, extra_label_remark,
+      );
+      if (extraErr) console.error('[POST status] extra stock:', extraErr);
+    }
   }
 
   // Write status log

@@ -16,8 +16,9 @@ type ColorConfig = {
 
 export const STATUS_COLORS: Record<Stage, ColorConfig> = {
   'PO Received':             { bg: 'bg-slate-100',   text: 'text-slate-700',   border: 'border border-slate-200' },
-  'Artwork Received':        { bg: 'bg-purple-100',  text: 'text-purple-700',  border: 'border border-purple-200' },
-  'Prepress / Design Check': { bg: 'bg-sky-100',     text: 'text-sky-700',     border: 'border border-sky-200' },
+  'Artwork Pending':         { bg: 'bg-purple-100',  text: 'text-purple-700',  border: 'border border-purple-200' },
+  'Plate Status':            { bg: 'bg-indigo-100',  text: 'text-indigo-700',  border: 'border border-indigo-200' },
+  'Job Card Done':           { bg: 'bg-sky-100',     text: 'text-sky-700',     border: 'border border-sky-200' },
   'Sample Printing':         { bg: 'bg-amber-100',   text: 'text-amber-800',   border: 'border border-amber-200' },
   'Shade Card Sent':         { bg: 'bg-orange-100',  text: 'text-orange-700',  border: 'border border-orange-200' },
   'Shade Card Approved':     { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border border-emerald-200' },

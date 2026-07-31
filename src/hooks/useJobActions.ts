@@ -33,6 +33,12 @@ export type StatusPayload = {
   qty_dispatched?:        number;
   override_prerequisite?: boolean;
   override_remark?:       string;
+  // Label stock — see StatusChangePayload. Dispatch confirms what stays on
+  // the shelf at a partial dispatch, and reports surplus at a full dispatch.
+  stock_remaining_qty?:   number;
+  extra_label_qty?:       number;
+  extra_label_location?:  string;
+  extra_label_remark?:    string;
 };
 
 type Params = {

@@ -26,10 +26,15 @@ export async function GET(request: NextRequest) {
       .select('*, jobs(po_number, job_name, party, label_qty)')
       .neq('status', 'done')
       .order('position'),
+    // Only jobs whose job card is done are queueable. The !inner join is the
+    // filter: a job with no 'Job Card Done' stamp has no matching row, so it
+    // drops out of the list entirely rather than appearing and failing on add.
+    // Prepress owns that stage — nothing reaches a press before they finish.
     admin.from('jobs')
-      .select('id, po_number, job_name, party, label_qty')
+      .select('id, po_number, job_name, party, label_qty, job_stage_timestamps!inner(stage)')
       .eq('is_closed', false)
       .not('status', 'in', '("Dispatched","PO Closed")')
+      .eq('job_stage_timestamps.stage', 'Job Card Done')
       .order('created_at', { ascending: false }),
   ]);
 

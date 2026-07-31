@@ -17,12 +17,39 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// ── Job card numbers ──────────────────────────────────────────
+
+/**
+ * Job card numbers are stored lowercase by the set_job_card_number trigger
+ * ('jul26-102'), and the unique index depends on that form. The physical card
+ * is printed in caps, so every screen shows 'JUL26-102' instead.
+ */
+export function formatJobCardNumber(value: string | null): string | null {
+  return value ? value.toUpperCase() : null;
+}
+
 // ── Date formatting ───────────────────────────────────────────
 
 /** Admin panel format: "09-06-2026, 02:45 PM" */
 export function formatAdminDate(iso: string | null): string {
   if (!iso) return '—';
   return format(new Date(iso), 'dd-MM-yyyy, hh:mm aa');
+}
+
+/** Numeric date only: "09-06-2026" — the dense desk table's mono date form. */
+export function formatNumericDate(iso: string | null): string {
+  if (!iso) return '—';
+  return format(new Date(iso), 'dd-MM-yyyy');
+}
+
+/**
+ * Admin timestamp split for two-line table cells:
+ * "09-06-2026" over "02:45 PM". Null when there is no timestamp.
+ */
+export function formatAdminDateParts(iso: string | null): { date: string; time: string } | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return { date: format(d, 'dd-MM-yyyy'), time: format(d, 'hh:mm aa') };
 }
 
 /** Client portal format: "09 June, 2:45 PM" */

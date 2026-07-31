@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { Pencil, Check, X } from 'lucide-react';
-import { cn, formatShortDate } from '@/lib/utils';
+import { cn, formatNumericDate, getDeliveryCountdown } from '@/lib/utils';
 import type { Department } from '@/lib/constants/departments';
 import toast from 'react-hot-toast';
 
@@ -78,10 +78,22 @@ export default function DeliveryDateEdit({ jobId, deliveryDate, dept, onUpdated 
     );
   }
 
+  // A delivery date is only worth reading if you can see it slipping, so the
+  // date itself carries the countdown state instead of an extra line of text.
+  const countdown = getDeliveryCountdown(deliveryDate);
+  const dateTone =
+    !deliveryDate                 ? 'text-[var(--glass-muted)]'
+    : countdown.color === 'red'   ? 'text-red-600 font-semibold'
+    : countdown.color === 'amber' ? 'text-amber-700 font-semibold'
+    : 'text-[var(--glass-ink)]';
+
   return (
     <div className="flex items-center gap-1">
-      <span className="font-mono text-xs text-[var(--glass-ink)]">
-        {deliveryDate ? formatShortDate(deliveryDate) : <span className="text-[var(--glass-muted)]">—</span>}
+      <span
+        className={cn('font-mono text-xs', dateTone)}
+        title={deliveryDate ? countdown.label : undefined}
+      >
+        {deliveryDate ? formatNumericDate(deliveryDate) : 'Not set'}
       </span>
       {canEdit && (
         <button

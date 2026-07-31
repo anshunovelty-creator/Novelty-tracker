@@ -28,8 +28,9 @@ type Props = {
 const JOB_TYPES = ['New', 'Repeat', 'Artwork Changed'] as const;
 const INITIAL_STAGES = [
   'PO Received',
-  'Artwork Received',
-  'Prepress / Design Check',
+  'Artwork Pending',
+  'Plate Status',
+  'Job Card Done',
 ] as const;
 
 const EMPTY_FORM: AddJobFormData = {

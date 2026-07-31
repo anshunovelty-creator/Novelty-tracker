@@ -37,7 +37,7 @@ export const RUN_STAGE_LABELS: Record<RunStage, string> = {
 // Mirrors DEPT_ALLOWED_STAGES for the equivalent job stages.
 export const RUN_STAGE_DEPTS: Record<RunStage, Department[]> = {
   'Printing':          ['Production'],
-  'Slitting':          ['Production'],
+  'Slitting':          ['Postpress'],
   'QC':                ['QC'],
   'Packing':           ['Dispatch'],
   'Ready to Dispatch': ['Dispatch'],

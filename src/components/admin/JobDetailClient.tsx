@@ -7,7 +7,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { cn, formatAdminDate, formatShortDate, formatQty } from '@/lib/utils';
+import { cn, formatAdminDate, formatJobCardNumber, formatShortDate, formatQty } from '@/lib/utils';
 import { STATUS_COLORS, JOB_TYPE_BADGE, urgentBadgeClass } from '@/lib/constants/statusColors';
 import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES, isPerReleaseStage } from '@/lib/constants/stages';
 import { canDeptSetStage } from '@/lib/constants/departments';
@@ -220,7 +220,7 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
 
           <InfoField label="Job Card">
             <p className="text-sm font-mono font-semibold text-[var(--glass-ink)]">
-              {job.job_card_number ?? '—'}
+              {formatJobCardNumber(job.job_card_number) ?? '—'}
             </p>
           </InfoField>
 

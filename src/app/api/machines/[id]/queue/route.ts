@@ -58,6 +58,23 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'This PO is closed' }, { status: 400 });
   }
 
+  // Nothing reaches a press before Prepress finishes the job card. The picker
+  // already hides these jobs; this is what holds when the board is working
+  // from stale data, or when a job card is un-stamped after it was queued.
+  const { data: jobCard } = await admin
+    .from('job_stage_timestamps')
+    .select('id')
+    .eq('job_id', jobId)
+    .eq('stage', 'Job Card Done')
+    .maybeSingle();
+
+  if (!jobCard) {
+    return NextResponse.json(
+      { error: `Job card is pending for ${job.po_number} — Prepress must complete "Job Card Done" before it can be queued` },
+      { status: 400 }
+    );
+  }
+
   // A job runs on one machine at a time, so check every machine — not just this
   // one. The picker already hides jobs queued elsewhere; this is what holds when
   // two people queue the same PO at once, or a screen works from stale data.

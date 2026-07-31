@@ -60,9 +60,13 @@ export default function JobDuplicateButton({ job, onDuplicate, size = 'compact' 
       onClick={handleClick}
       title="Duplicate this job"
       aria-label="Duplicate this job"
-      className="inline-flex items-center gap-1 text-[var(--glass-muted)] hover:text-[var(--glass-ink)] text-xs transition-colors px-2 py-1 border border-white/15 rounded hover:bg-white/10"
+      className={cn(
+        'inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md',
+        'bg-white border border-white/15 text-[var(--glass-ink)]',
+        'hover:bg-black/[0.04] transition-colors whitespace-nowrap',
+      )}
     >
-      <Copy className="w-3 h-3" aria-hidden="true" />
+      <Copy className="w-3.5 h-3.5" aria-hidden="true" />
       Duplicate
     </button>
   );

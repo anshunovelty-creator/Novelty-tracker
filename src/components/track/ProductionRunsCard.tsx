@@ -2,7 +2,7 @@
 // src/components/track/ProductionRunsCard.tsx
 // Production view for multi-run and scheduled-release orders:
 //   • A shared header of the 3 job-level steps that happen once and are common
-//     to every run — PO Received, Artwork Received, Prepress / Design Check.
+//     to every run — PO Received, Artwork Pending, Plate Status, Job Card Done.
 //   • One column per print run showing every per-run step (see
 //     constants/runStages.ts) with the date & time of each.
 //   • Planned releases that haven't started production yet appear as their own
@@ -37,7 +37,7 @@ type Selected =
   | { kind: 'schedule'; schedule: DispatchSchedule };
 
 // Job-level steps shared by all runs — shown once, above the columns.
-const COMMON_STAGES = ['PO Received', 'Artwork Received', 'Prepress / Design Check'] as const;
+const COMMON_STAGES = ['PO Received', 'Artwork Pending', 'Plate Status', 'Job Card Done'] as const;
 
 // Per-run process, in order — from the single source of truth.
 const RUN_STEPS = RUN_STAGES.map((stage) => ({ stage, label: RUN_STAGE_LABELS[stage] }));

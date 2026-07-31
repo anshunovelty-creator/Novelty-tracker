@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { JOBS_CHANGED_EVENT, JOBS_FILTER_EVENT, type JobsFilterDetail } from '@/lib/constants/events';
 import type { Job, AddJobFormData } from '@/lib/types';
 import type { Department } from '@/lib/constants/departments';
-import JobRow from './JobRow';
+import JobRow, { JOB_ROW_COLS } from './JobRow';
 import JobCard from './JobCard';
 import FilterBar from './FilterBar';
 import AddJobForm from './AddJobForm';
@@ -16,6 +16,13 @@ type Props = {
   initialJobs: Job[];
   dept:        Department;
 };
+
+// Header labels for the desk table. Must stay in the same order — and at the
+// same count (JOB_ROW_COLS) — as the <td>s in JobRow.
+const JOB_COLUMNS = [
+  'Job Card', 'PM / Job', 'Party / PO', 'Type',
+  'Dispatch', 'Delivery', 'Status', 'Updated', 'Actions',
+] as const;
 
 type DuplicatePrefill = Pick<AddJobFormData,
   'party' | 'pm_code' | 'job_name' | 'label_qty' | 'job_type' | 'notes'
@@ -195,11 +202,19 @@ export default function JobsTable({ initialJobs, dept }: Props) {
 
         {/* Desk: table */}
         <div className="hidden sm:block table-scroll-wrapper rounded-xl glass overflow-hidden">
-          <table className="w-full min-w-[900px] border-collapse text-sm">
+          <table className="w-full min-w-[1400px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-white/12">
-                {['Job Card / PO', 'Party / Job', 'Dispatch', 'Delivery', 'Type', 'Status', 'Last Updated', 'Actions'].map((col) => (
-                  <th key={col} scope="col" className="px-4 py-3 text-left text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide whitespace-nowrap">
+                {JOB_COLUMNS.map((col) => (
+                  <th
+                    key={col}
+                    scope="col"
+                    className={cn(
+                      'px-4 py-3 text-left text-[11px] font-semibold text-[var(--glass-muted)]',
+                      'uppercase tracking-[0.06em] whitespace-nowrap',
+                      col === 'Actions' && 'text-right',
+                    )}
+                  >
                     {col}
                   </th>
                 ))}
@@ -207,10 +222,10 @@ export default function JobsTable({ initialJobs, dept }: Props) {
             </thead>
             <tbody>
               {loading && jobs.length === 0 ? (
-                <SkeletonRows rows={5} cols={8} />
+                <SkeletonRows rows={5} cols={JOB_ROW_COLS} />
               ) : jobs.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-0">
+                  <td colSpan={JOB_ROW_COLS} className="px-4 py-0">
                     <EmptyState hasFilters={hasFilters} onClearFilters={clearFilters} />
                   </td>
                 </tr>

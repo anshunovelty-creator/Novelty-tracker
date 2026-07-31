@@ -1,14 +1,15 @@
 // src/lib/constants/stages.ts
 // ============================================================
-// SINGLE SOURCE OF TRUTH for the 15-stage pipeline.
+// SINGLE SOURCE OF TRUTH for the 16-stage pipeline.
 // Every component, API route, and modal reads from here.
 // Never hardcode stage names anywhere else in the codebase.
 // ============================================================
 
 export const STAGES = [
   'PO Received',
-  'Artwork Received',
-  'Prepress / Design Check',
+  'Artwork Pending',
+  'Plate Status',
+  'Job Card Done',
   'Sample Printing',
   'Shade Card Sent',
   'Shade Card Approved',
@@ -29,8 +30,9 @@ export type Stage = typeof STAGES[number];
 // which are special — On Hold has no prerequisite; PO Closed is admin-only terminal).
 export const PIPELINE_STAGES: Stage[] = [
   'PO Received',
-  'Artwork Received',
-  'Prepress / Design Check',
+  'Artwork Pending',
+  'Plate Status',
+  'Job Card Done',
   'Sample Printing',
   'Shade Card Sent',
   'Shade Card Approved',
@@ -53,12 +55,13 @@ export const REPEAT_SKIPPED_STAGES: Stage[] = [
 // Map each stage to its prerequisite stage (what must be completed first).
 // Null = no prerequisite (PO Received is the first; On Hold has no prereq).
 // For Repeat jobs, the prerequisite of 'In Printing' is overridden to
-// 'Prepress / Design Check' — see getPrerequisite() below.
+// 'Job Card Done' — see getPrerequisite() below.
 export const STAGE_PREREQUISITES: Record<Stage, Stage | null> = {
   'PO Received':             null,
-  'Artwork Received':        'PO Received',
-  'Prepress / Design Check': 'Artwork Received',
-  'Sample Printing':         'Prepress / Design Check',
+  'Artwork Pending':         'PO Received',
+  'Plate Status':            'Artwork Pending',
+  'Job Card Done':           'Plate Status',
+  'Sample Printing':         'Job Card Done',
   'Shade Card Sent':         'Sample Printing',
   'Shade Card Approved':     'Shade Card Sent',
   'In Printing':             'Shade Card Approved',   // overridden for Repeat
@@ -81,7 +84,7 @@ export function getPrerequisite(
   jobType: 'New' | 'Repeat' | 'Artwork Changed'
 ): Stage | null {
   if (jobType === 'Repeat' && targetStage === 'In Printing') {
-    return 'Prepress / Design Check';
+    return 'Job Card Done';
   }
   return STAGE_PREREQUISITES[targetStage];
 }
@@ -158,8 +161,9 @@ export const DISPATCH_STAGES: Stage[] = [
 // through the run pipeline (see constants/runStages.ts).
 export const SCHEDULED_ONCE_STAGES: Stage[] = [
   'PO Received',
-  'Artwork Received',
-  'Prepress / Design Check',
+  'Artwork Pending',
+  'Plate Status',
+  'Job Card Done',
   'Sample Printing',
   'Shade Card Sent',
   'Shade Card Approved',

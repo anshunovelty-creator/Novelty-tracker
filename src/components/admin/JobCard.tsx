@@ -8,17 +8,18 @@
 // identity first, then the one decision that matters (what stage is it in),
 // then delivery pressure, then everything else.
 
-import React from 'react';
-import { ChevronDown, ChevronUp, PauseCircle, Trash2 } from 'lucide-react';
-import { cn, formatAdminDate, formatQty, getDeliveryCountdown } from '@/lib/utils';
+import React, { useState } from 'react';
+import { ChevronDown, ChevronUp, PauseCircle, Pencil, Trash2 } from 'lucide-react';
+import { cn, formatAdminDate, formatJobCardNumber, formatQty, getDeliveryCountdown } from '@/lib/utils';
 import { STATUS_COLORS, JOB_TYPE_BADGE, urgentBadgeClass } from '@/lib/constants/statusColors';
-import { canDeptSetStage } from '@/lib/constants/departments';
+import { canDeptSetStage, canDeptEditJobDetails } from '@/lib/constants/departments';
 import { useJobActions } from '@/hooks/useJobActions';
 import type { Job } from '@/lib/types';
 import type { Department } from '@/lib/constants/departments';
 import type { Stage } from '@/lib/constants/stages';
 import HistoryPanel from './HistoryPanel';
 import DeliveryDateEdit from './DeliveryDateEdit';
+import EditJobModal from './EditJobModal';
 import JobDuplicateButton from './JobDuplicateButton';
 import JobActionModals from './JobActionModals';
 
@@ -50,6 +51,7 @@ export default function JobCard({
 }: Props) {
   const actions   = useJobActions({ job, dept, onJobUpdated, onJobDeleted });
   const countdown = getDeliveryCountdown(job.delivery_date);
+  const [editing, setEditing] = useState(false);
   const statusColor = STATUS_COLORS[job.status];
 
   return (
@@ -67,7 +69,7 @@ export default function JobCard({
             {/* Job card number leads — it is what prepress quotes off the card. */}
             {job.job_card_number && (
               <p className="font-mono text-[11px] font-semibold text-[var(--glass-ink)] tracking-wide">
-                {job.job_card_number}
+                {formatJobCardNumber(job.job_card_number)}
               </p>
             )}
             <p className="font-mono text-[11px] text-[var(--glass-muted)] tracking-wide">
@@ -225,6 +227,21 @@ export default function JobCard({
             : <><ChevronDown className="w-3.5 h-3.5" aria-hidden="true" /> History</>}
         </button>
 
+        {canDeptEditJobDetails(dept) && (
+          <button
+            onClick={() => setEditing(true)}
+            aria-label={`Edit job ${job.po_number}`}
+            title="Edit job details"
+            className={cn(
+              cardBtn, 'border-black/10 text-[var(--glass-ink)]',
+              'hover:bg-black/[0.04] active:bg-black/[0.07]',
+            )}
+          >
+            <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
+            Edit
+          </button>
+        )}
+
         <JobDuplicateButton job={job} onDuplicate={onDuplicate} size="touch" />
 
         {dept === 'Admin' && (
@@ -257,6 +274,15 @@ export default function JobCard({
       )}
 
       <JobActionModals job={job} dept={dept} actions={actions} />
+
+      {editing && (
+        <EditJobModal
+          job={job}
+          dept={dept}
+          onClose={() => setEditing(false)}
+          onSaved={onJobUpdated}
+        />
+      )}
     </article>
   );
 }

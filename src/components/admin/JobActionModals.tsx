@@ -61,8 +61,12 @@ export default function JobActionModals({ job, dept, actions }: Props) {
         <PartialDispatchModal
           remaining={actions.remainingQty}
           onCancel={actions.closeModal}
-          onConfirm={(qty) =>
-            actions.submitStatusChange({ new_status: 'Partial Dispatch', qty_dispatched: qty })
+          onConfirm={(qty, stockRemaining) =>
+            actions.submitStatusChange({
+              new_status:          'Partial Dispatch',
+              qty_dispatched:      qty,
+              stock_remaining_qty: stockRemaining,
+            })
           }
         />
       )}
@@ -71,7 +75,15 @@ export default function JobActionModals({ job, dept, actions }: Props) {
         <FullDispatchModal
           remaining={actions.remainingQty}
           onCancel={actions.closeModal}
-          onConfirm={() => actions.submitStatusChange({ new_status: 'Dispatched' })}
+          onConfirm={(extraQty, location, remark) =>
+            actions.submitStatusChange({
+              new_status: 'Dispatched',
+              // 0 is the "no extras" answer — the route ignores it.
+              extra_label_qty:      extraQty,
+              extra_label_location: location || undefined,
+              extra_label_remark:   remark   || undefined,
+            })
+          }
         />
       )}
 
