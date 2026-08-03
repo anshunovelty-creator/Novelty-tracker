@@ -4,8 +4,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { cn, formatQty, formatShortDate } from '@/lib/utils';
 import type { Department } from '@/lib/constants/departments';
-import type { AddJobFormData, ScheduledReleaseInput, JobType, PrintingUnit, PrintingMethod } from '@/lib/types';
-import { PRINTING_METHODS } from '@/lib/types';
+import type { AddJobFormData, ScheduledReleaseInput, JobType, PrintingUnit } from '@/lib/types';
 import { LoadingButton } from '@/components/ui/Loading';
 import toast from 'react-hot-toast';
 
@@ -321,24 +320,12 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
           </Field>
         </div>
 
-        {/* Row 2b: Printing method + unit */}
+        {/* Row 2b: Printing unit.
+             Method is not asked for — each unit runs one process (Unit-1
+             Offset, Unit-2 Flexo), so the unit already determines it. The
+             server reads the method off the chosen unit; the option labels
+             show it so the floor can see what they are picking. */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Printing Method">
-            <select
-              value={form.printing_method}
-              onChange={(e) => {
-                // Clear the unit so the DB trigger assigns the new method's
-                // default; the user can still override below.
-                set('printing_method', e.target.value as PrintingMethod);
-                set('printing_unit_id', null);
-              }}
-              className={inputCls}
-            >
-              {PRINTING_METHODS.map((m) => (
-                <option key={m} value={m}>{m} Printing</option>
-              ))}
-            </select>
-          </Field>
           <Field label="Printing Unit">
             <select
               value={form.printing_unit_id ?? ''}
@@ -347,9 +334,7 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
               disabled={units.length === 0}
             >
               <option value="">
-                {units.length === 0
-                  ? 'No units configured'
-                  : `Default for ${form.printing_method}`}
+                {units.length === 0 ? 'No units configured' : 'Not assigned yet'}
               </option>
               {units.map((u) => (
                 <option key={u.id} value={u.id}>

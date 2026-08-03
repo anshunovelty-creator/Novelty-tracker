@@ -18,7 +18,6 @@ import { Save, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { ModalShell } from './modals';
-import { PRINTING_METHODS } from '@/lib/types';
 import type { Job, PrintingUnit, JobType, PrintingMethod } from '@/lib/types';
 import type { Department } from '@/lib/constants/departments';
 
@@ -123,9 +122,8 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
     if (canEditDelivery && form.delivery_date !== original.delivery_date) {
       updates.delivery_date = form.delivery_date || null;
     }
-    if (form.printing_method !== original.printing_method) {
-      updates.printing_method = form.printing_method;
-    }
+    // Only the unit is sent. PATCH /api/jobs/[id] derives printing_method
+    // from it, so the two can never drift apart.
     if (form.printing_unit_id !== original.printing_unit_id) {
       updates.printing_unit_id = form.printing_unit_id || null;
     }
@@ -157,10 +155,6 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
       setSaving(false);
     }
   }
-
-  // Units are listed per method, because putting a Flexo unit on an Offset
-  // job is the mistake this form exists to fix, not to create.
-  const unitsForMethod = units.filter((u) => u.printing_method === form.printing_method);
 
   return (
     <ModalShell titleId={titleId} onClose={saving ? undefined : onClose}>
@@ -252,34 +246,24 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
             </FormField>
           </div>
 
+          {/* Printing unit only. The unit fixes the method (Unit-1 Offset,
+              Unit-2 Flexo), so asking for both invited the mismatch this
+              form warns about elsewhere. The server reads the method off
+              the unit; the labels show it so the choice stays legible. */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormField label="Printing Method">
-              <select
-                value={form.printing_method}
-                onChange={(e) => {
-                  // Clearing the unit lets the DB trigger snap to the new
-                  // method's default rather than keep a mismatched press.
-                  set('printing_method', e.target.value as PrintingMethod);
-                  set('printing_unit_id', '');
-                }}
-                className={inputCls}
-              >
-                {PRINTING_METHODS.map((m) => <option key={m} value={m}>{m} Printing</option>)}
-              </select>
-            </FormField>
             <FormField label="Printing Unit">
               <select
                 value={form.printing_unit_id}
                 onChange={(e) => set('printing_unit_id', e.target.value)}
-                disabled={unitsForMethod.length === 0}
+                disabled={units.length === 0}
                 className={cn(inputCls, 'disabled:opacity-60')}
               >
                 <option value="">
-                  {unitsForMethod.length === 0
-                    ? 'No units configured'
-                    : `Default ${form.printing_method} unit`}
+                  {units.length === 0 ? 'No units configured' : 'Not assigned'}
                 </option>
-                {unitsForMethod.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                {units.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name} · {u.printing_method}</option>
+                ))}
               </select>
             </FormField>
           </div>

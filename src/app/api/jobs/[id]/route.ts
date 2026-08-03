@@ -160,6 +160,30 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient();
+
+  // ── Keep printing_method in step with the unit ──
+  // The edit forms now ask only for the unit, and each unit runs exactly one
+  // process. Reassigning a job from a Flexo unit to an Offset one must move
+  // the method with it, otherwise the job keeps a stale method that
+  // contradicts the press it is sitting on.
+  // Skipped when a caller sets the method explicitly — no UI does that any
+  // more, but the field stays accepted, and an explicit method must win over
+  // the derived one rather than be silently overwritten.
+  if (updates.printing_unit_id && !('printing_method' in body)) {
+    const { data: unit, error: unitError } = await admin
+      .from('printing_units')
+      .select('printing_method')
+      .eq('id', updates.printing_unit_id as string)
+      .single();
+
+    if (unitError || !unit) {
+      return NextResponse.json(
+        { error: 'Selected printing unit was not found' },
+        { status: 400 }
+      );
+    }
+    updates.printing_method = unit.printing_method;
+  }
   const { data, error } = await admin
     .from('jobs')
     .update(updates)

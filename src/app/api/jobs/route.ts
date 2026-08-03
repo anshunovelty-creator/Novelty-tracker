@@ -81,6 +81,30 @@ export async function POST(request: NextRequest) {
   // Use admin client to bypass RLS for insert — we've already verified auth above
   const admin = createAdminClient();
 
+  // ── Resolve printing method from the chosen unit ──
+  // Each unit runs exactly one process (Unit-1 Offset, Unit-2 Flexo), so the
+  // Add Job form asks only for the unit. The unit row is the single source of
+  // truth for the method — deriving it here keeps the two from ever
+  // disagreeing, which a second form field made possible.
+  // No unit named => keep the previous default and let the
+  // set_job_printing_unit trigger pick that method's default unit.
+  let printingMethod: string = body.printing_method || 'Flexo';
+  if (body.printing_unit_id) {
+    const { data: unit, error: unitError } = await admin
+      .from('printing_units')
+      .select('printing_method')
+      .eq('id', body.printing_unit_id)
+      .single();
+
+    if (unitError || !unit) {
+      return NextResponse.json(
+        { error: 'Selected printing unit was not found' },
+        { status: 400 }
+      );
+    }
+    printingMethod = unit.printing_method;
+  }
+
   // ── Insert job row ──
   const jobPayload = {
     po_number:            body.po_number.trim(),
@@ -98,7 +122,7 @@ export async function POST(request: NextRequest) {
     dispatched_qty:       0,
     is_scheduled_release: body.is_scheduled_release ?? false,
     is_closed:            false,
-    printing_method:      body.printing_method || 'Flexo',
+    printing_method:      printingMethod,
     // null is meaningful: it tells the set_job_printing_unit trigger to
     // pick the default unit for the chosen method.
     printing_unit_id:     body.printing_unit_id || null,

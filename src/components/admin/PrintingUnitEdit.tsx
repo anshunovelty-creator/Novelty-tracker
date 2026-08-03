@@ -2,20 +2,20 @@
 
 // src/components/admin/PrintingUnitEdit.tsx
 // ============================================================
-// Printing method + unit control on the job card.
+// Printing unit control on the job card.
 //
-// Changing the METHOD sends only printing_method, letting the
-// set_job_printing_unit DB trigger snap the unit to that method's
-// default (Offset -> Unit-1, Flexo -> Unit-2).
+// The unit is the only thing asked for: each unit runs exactly one
+// process (Unit-1 Offset, Unit-2 Flexo), so the method follows from it.
+// PATCH /api/jobs/[id] reads the method off the chosen unit, which is
+// what stops the two from drifting apart.
 //
-// Changing the UNIT sends printing_unit_id explicitly, which the same
-// trigger treats as a deliberate override and leaves alone — so a job
-// can be parked on a unit that does not match its method.
+// The method is still shown — on the option labels, and as a warning if
+// a job predating this rule carries a method its unit does not run.
 // ============================================================
 
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { PRINTING_METHODS, type PrintingMethod, type PrintingUnit } from '@/lib/types';
+import type { PrintingMethod, PrintingUnit } from '@/lib/types';
 import { canDeptSetPrinting, type Department } from '@/lib/constants/departments';
 
 interface Props {
@@ -108,60 +108,32 @@ export default function PrintingUnitEdit({
 
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {/* Method */}
-        <div>
-          <label
-            htmlFor={`printing-method-${jobId}`}
-            className="block text-xs font-medium text-[var(--glass-muted)] mb-1"
-          >
-            Printing Method
-          </label>
-          <select
-            id={`printing-method-${jobId}`}
-            className={selectCls}
-            value={method}
-            disabled={busy}
-            onChange={(e) => {
-              const next = e.target.value as PrintingMethod;
-              setMethod(next);
-              // Method only — let the trigger choose the default unit.
-              save({ printing_method: next });
-            }}
-          >
-            {PRINTING_METHODS.map((m) => (
-              <option key={m} value={m}>{m} Printing</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Unit */}
-        <div>
-          <label
-            htmlFor={`printing-unit-${jobId}`}
-            className="block text-xs font-medium text-[var(--glass-muted)] mb-1"
-          >
-            Printing Unit
-          </label>
-          <select
-            id={`printing-unit-${jobId}`}
-            className={selectCls}
-            value={unitId ?? ''}
-            disabled={busy || units.length === 0}
-            onChange={(e) => {
-              const next = e.target.value || null;
-              setUnitId(next);
-              save({ printing_unit_id: next });
-            }}
-          >
-            <option value="">— Unassigned —</option>
-            {units.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name} · {u.printing_method}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div>
+        <label
+          htmlFor={`printing-unit-${jobId}`}
+          className="block text-xs font-medium text-[var(--glass-muted)] mb-1"
+        >
+          Printing Unit
+        </label>
+        <select
+          id={`printing-unit-${jobId}`}
+          className={selectCls}
+          value={unitId ?? ''}
+          disabled={busy || units.length === 0}
+          onChange={(e) => {
+            const next = e.target.value || null;
+            setUnitId(next);
+            // Unit only — the endpoint derives the method from it.
+            save({ printing_unit_id: next });
+          }}
+        >
+          <option value="">— Unassigned —</option>
+          {units.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.name} · {u.printing_method}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div aria-live="polite" className="min-h-[18px]">
@@ -174,9 +146,13 @@ export default function PrintingUnitEdit({
         {!saving && error && (
           <p className="text-xs text-red-600">{error}</p>
         )}
+        {/* Only legacy rows can land here — since the method became
+            unit-derived, no form can create this state. Reassigning the
+            unit rewrites the method and clears it. */}
         {!saving && !error && unitMismatch && (
           <p className="text-xs text-amber-700">
-            {assignedUnit.name} runs {assignedUnit.printing_method}, not {method}.
+            This job is recorded as {method} but sits on {assignedUnit.name},
+            which runs {assignedUnit.printing_method}. Pick the unit again to correct it.
           </p>
         )}
         {!saving && !error && units.length === 0 && (
