@@ -2,9 +2,10 @@
 // src/components/admin/AddJobForm.tsx
 
 import React, { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { cn, formatQty, formatShortDate } from '@/lib/utils';
 import type { Department } from '@/lib/constants/departments';
-import type { AddJobFormData, ScheduledReleaseInput, JobType, PrintingUnit } from '@/lib/types';
+import type { AddJobFormData, ScheduledReleaseInput, JobType, PrintingUnit, LabelStock } from '@/lib/types';
 import { LoadingButton } from '@/components/ui/Loading';
 import toast from 'react-hot-toast';
 
@@ -16,6 +17,13 @@ type PmSuggestion = {
   job_type:   JobType;
   label_qty:  number | null;
   created_at: string;
+};
+
+// Shape returned by /api/stock/match
+type StockMatch = {
+  available:     LabelStock[];  // Extra + Manual — free to use
+  committed:     LabelStock[];  // Remaining — already promised to an open order
+  available_qty: number;
 };
 
 type Props = {
@@ -73,6 +81,9 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
   // the dropdown for the value it just wrote.
   const suppressPmLookup = useRef(false);
 
+  // ── Stock already on the shelf for this PM code ────────────
+  const [stockMatch, setStockMatch] = useState<StockMatch | null>(null);
+
   // Load assignable units once the form opens.
   useEffect(() => {
     if (!isOpen) return;
@@ -117,6 +128,31 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
       }
     }, 300);
     return () => clearTimeout(timer);
+  }, [form.pm_code, isOpen]);
+
+  // Deliberately not gated on suppressPmLookup: picking a suggestion is a
+  // repeat order, which is exactly when the shelf is worth checking. It is
+  // also not gated on job_type — a "New" job whose PM code already has
+  // stock is the surprise most worth catching.
+  useEffect(() => {
+    if (!isOpen) return;
+    const code = form.pm_code?.trim() ?? '';
+    if (code.length < 2) {
+      setStockMatch(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/stock/match?pm_code=${encodeURIComponent(code)}`);
+        if (!res.ok) return;
+        const data: StockMatch = await res.json();
+        if (!cancelled) setStockMatch(data);
+      } catch {
+        // Best-effort: a failed shelf check must never block job entry.
+      }
+    }, 350);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [form.pm_code, isOpen]);
 
   function applyPmSuggestion(s: PmSuggestion) {
@@ -286,6 +322,13 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
             />
           </Field>
         </div>
+
+        {/* Shelf stock for the typed PM code. Sits directly under the PM
+             field so it is read before the quantity is decided, not after
+             the job has already been booked onto a press. */}
+        {stockMatch && (stockMatch.available.length > 0 || stockMatch.committed.length > 0) && (
+          <ShelfStockCallout match={stockMatch} orderQty={form.label_qty} />
+        )}
 
         {/* Row 2: Job name + Label qty + Job type */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -520,6 +563,93 @@ const inputCls = cn(
   'focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)] transition-all',
   '[&>option]:bg-white [&>option]:text-[var(--glass-ink)]',
 );
+
+/**
+ * "You already have these" — shown while a job is being entered.
+ *
+ * Amber, not red: nothing is wrong and nothing is blocked. The order may
+ * well still be printed in full. The panel exists so that decision is
+ * made knowingly rather than by default.
+ */
+function ShelfStockCallout({
+  match,
+  orderQty,
+}: {
+  match: StockMatch;
+  orderQty: number | null;
+}) {
+  const { available, committed, available_qty } = match;
+  const hasFree      = available_qty > 0;
+  const coversOrder  = hasFree && orderQty !== null && orderQty > 0 && available_qty >= orderQty;
+  const committedQty = committed.reduce((sum, s) => sum + s.qty, 0);
+
+  return (
+    <div
+      role="status"
+      className={cn(
+        'rounded-xl border px-4 py-3 space-y-2',
+        hasFree
+          ? 'border-amber-300/40 bg-amber-400/[0.12]'
+          : 'border-[var(--glass-border)] bg-[var(--glass-bg)]'
+      )}
+    >
+      {hasFree ? (
+        <p className="text-sm text-[var(--glass-ink)]">
+          <strong className="font-semibold">{formatQty(available_qty)} labels</strong>{' '}
+          for this PM code are already on the shelf
+          {coversOrder && (
+            <> — enough to cover this order of {formatQty(orderQty)}</>
+          )}
+          .
+        </p>
+      ) : (
+        <p className="text-sm text-[var(--glass-ink)]">
+          No free stock for this PM code, but an open order is still holding some.
+        </p>
+      )}
+
+      {available.length > 0 && (
+        <ul className="space-y-1">
+          {available.map((s) => (
+            <li
+              key={s.id}
+              className="flex flex-wrap gap-x-2 text-xs text-[var(--glass-muted)]"
+            >
+              <span className="font-mono font-medium text-[var(--glass-ink)]">
+                {formatQty(s.qty)}
+              </span>
+              <span>{s.kind}</span>
+              {s.location && <span>· {s.location}</span>}
+              <span>· {s.party}</span>
+              {s.po_number && <span>· {s.po_number}</span>}
+              <span>· {formatShortDate(s.created_at)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {committedQty > 0 && (
+        <p className="text-xs text-[var(--glass-muted)]">
+          Plus {formatQty(committedQty)} held as the unshipped balance of an open
+          order — not free to use.
+        </p>
+      )}
+
+      <Link
+        href="/admin/stock"
+        target="_blank"
+        className={cn(
+          'inline-flex items-center min-h-[44px] -my-2 text-xs font-medium',
+          'text-[var(--glass-ink)] underline underline-offset-[3px] decoration-current/40',
+          'hover:decoration-current focus-visible:outline-none focus-visible:ring-2',
+          'focus-visible:ring-emerald-400/70 rounded'
+        )}
+      >
+        Open stock list
+      </Link>
+    </div>
+  );
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
