@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { parseDepartment, DEPT_DISPLAY_NAME } from '@/lib/constants/departments';
 import AdminHeader from '@/components/admin/AdminHeader';
+import NotesFeed from '@/components/admin/NotesFeed';
 
 export const metadata = {
   title: 'Admin Panel',
@@ -36,6 +37,9 @@ export default async function AdminLayout({
       <main className="max-w-screen-2xl mx-auto px-4 py-6">
         {children}
       </main>
+      {/* Global internal-note feed. Mounted in the layout so the unread
+          badge survives navigation between admin pages. */}
+      <NotesFeed dept={dept} userEmail={user.email ?? ''} />
     </div>
   );
 }

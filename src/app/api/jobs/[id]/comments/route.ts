@@ -58,10 +58,11 @@ export async function POST(request: NextRequest, { params }: Params) {
   const { data, error } = await admin
     .from('stage_comments')
     .insert({
-      job_id:     id,
-      stage:      stage.trim(),
-      comment:    comment.trim(),
-      created_by: dept,
+      job_id:           id,
+      stage:            stage.trim(),
+      comment:          comment.trim(),
+      created_by:       dept,
+      created_by_email: user.email ?? null,
     })
     .select()
     .single();

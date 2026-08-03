@@ -175,7 +175,17 @@ export interface StageComment {
   stage: Stage;
   comment: string;
   created_by: string;
+  /** NULL for notes written before migration 016 — fall back to created_by. */
+  created_by_email: string | null;
   created_at: string;
+}
+
+/** A stage comment joined with its job, for the global notes feed. */
+export interface NoteFeedItem extends StageComment {
+  job_name: string | null;
+  pm_code: string | null;
+  po_number: string;
+  party: string;
 }
 
 // ── dispatch_schedules ────────────────────────────────────────
