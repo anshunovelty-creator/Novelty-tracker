@@ -9,6 +9,7 @@
 // then delivery pressure, then everything else.
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { ChevronDown, ChevronUp, PauseCircle, Pencil, Trash2 } from 'lucide-react';
 import { cn, formatAdminDate, formatJobCardNumber, formatQty, getDeliveryCountdown } from '@/lib/utils';
 import { STATUS_COLORS, JOB_TYPE_BADGE, urgentBadgeClass } from '@/lib/constants/statusColors';
@@ -65,7 +66,19 @@ export default function JobCard({
       {/* ── Identity ─────────────────────────────────────────── */}
       <div className="px-4 pt-3.5 pb-3">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
+          {/* The identity block is the way into job detail, mirroring the
+              first column of the desk row. Everything interactive on this
+              card sits below it, so the whole block is the tap target —
+              and at this size it comfortably clears 44px. */}
+          <Link
+            href={`/admin/jobs/${job.id}`}
+            aria-label={`Open job ${formatJobCardNumber(job.job_card_number) ?? job.po_number} in detail`}
+            className={cn(
+              'min-w-0 block -mx-2 -my-1 px-2 py-1 rounded-lg transition-colors',
+              'hover:bg-black/[0.04] active:bg-black/[0.06]',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70',
+            )}
+          >
             {/* Job card number leads — it is what prepress quotes off the card. */}
             {job.job_card_number && (
               <p className="font-mono text-[11px] font-semibold text-[var(--glass-ink)] tracking-wide">
@@ -80,13 +93,13 @@ export default function JobCard({
                 <span className="ml-1.5">· {job.printing_units.name}</span>
               )}
             </p>
-            <h3 className="font-semibold text-[15px] leading-snug text-[var(--glass-ink)] mt-0.5 break-words">
+            <h3 className="font-semibold text-[15px] leading-snug text-[var(--glass-ink)] mt-0.5 break-words underline decoration-transparent underline-offset-[3px] hover:decoration-current transition-[text-decoration-color]">
               {job.party}
             </h3>
             {job.job_name && (
               <p className="text-xs text-[var(--glass-muted)] mt-0.5 break-words">{job.job_name}</p>
             )}
-          </div>
+          </Link>
 
           <div className="shrink-0 flex flex-col items-end gap-1.5">
             {job.urgent && (

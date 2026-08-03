@@ -11,6 +11,7 @@
 // because it is what the floor actually recognises a job by.
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { ChevronDown, ChevronUp, PauseCircle, Pencil, Trash2 } from 'lucide-react';
 import { cn, formatAdminDateParts, formatJobCardNumber, formatNumericDate, formatQty } from '@/lib/utils';
 import { STATUS_COLORS, JOB_TYPE_BADGE, urgentBadgeClass } from '@/lib/constants/statusColors';
@@ -61,41 +62,56 @@ export default function JobRow({
     <>
       <tr className={rowClass}>
         {/* ── Job Card: the number on the physical card, its PO date, and
-             the two facts that change how the row is handled. ───────── */}
-        <td className="px-4 py-4 align-top w-[168px]">
-          {cardNo ? (
-            <p className="font-mono text-[17px] font-bold leading-tight tracking-[0.02em] text-[var(--glass-ink)]">
-              {cardNo}
-            </p>
-          ) : (
-            <p className="font-mono text-[13px] font-semibold text-[var(--glass-muted)]">
-              No card no.
-            </p>
-          )}
+             the two facts that change how the row is handled.
+             This cell is the row's way into job detail. It leads the row
+             and holds nothing interactive, so the whole cell is the target
+             — the rest of the row is full of its own controls (status
+             select, inline delivery edit, action buttons) and a row-level
+             click would fight every one of them. ──────────────────────── */}
+        <td className="align-top w-[168px] p-0">
+          <Link
+            href={`/admin/jobs/${job.id}`}
+            aria-label={`Open job ${cardNo ?? job.po_number} in detail`}
+            className={cn(
+              'group/open block px-4 py-4 h-full transition-colors',
+              'hover:bg-black/[0.05] focus:outline-none',
+              'focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-400/70',
+            )}
+          >
+            {cardNo ? (
+              <p className="font-mono text-[17px] font-bold leading-tight tracking-[0.02em] text-[var(--glass-ink)] underline decoration-transparent underline-offset-[3px] group-hover/open:decoration-current transition-[text-decoration-color]">
+                {cardNo}
+              </p>
+            ) : (
+              <p className="font-mono text-[13px] font-semibold text-[var(--glass-muted)] underline decoration-transparent underline-offset-[3px] group-hover/open:decoration-current transition-[text-decoration-color]">
+                No card no.
+              </p>
+            )}
 
-          {job.po_date && (
-            <p className="font-mono text-[11px] text-[var(--glass-muted)] mt-1">
-              <span className={microLabel}>PO DT</span>
-              <span className="ml-1.5">{formatNumericDate(job.po_date)}</span>
-            </p>
-          )}
+            {job.po_date && (
+              <p className="font-mono text-[11px] text-[var(--glass-muted)] mt-1">
+                <span className={microLabel}>PO DT</span>
+                <span className="ml-1.5">{formatNumericDate(job.po_date)}</span>
+              </p>
+            )}
 
-          {(job.printing_units || job.urgent) && (
-            <div className="flex flex-wrap items-center gap-1.5 mt-2">
-              {job.printing_units && (
-                <span className={metaChip}>{job.printing_units.name}</span>
-              )}
-              {job.urgent && (
-                <span className={cn(
-                  'inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded',
-                  urgentBadgeClass(job.urgent_priority),
-                )}>
-                  <span className="dot-pulse inline-block w-1.5 h-1.5 rounded-full bg-current" />
-                  P{job.urgent_priority}
-                </span>
-              )}
-            </div>
-          )}
+            {(job.printing_units || job.urgent) && (
+              <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                {job.printing_units && (
+                  <span className={metaChip}>{job.printing_units.name}</span>
+                )}
+                {job.urgent && (
+                  <span className={cn(
+                    'inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded',
+                    urgentBadgeClass(job.urgent_priority),
+                  )}>
+                    <span className="dot-pulse inline-block w-1.5 h-1.5 rounded-full bg-current" />
+                    P{job.urgent_priority}
+                  </span>
+                )}
+              </div>
+            )}
+          </Link>
         </td>
 
         {/* ── PM / Job: the largest text in the row. Wraps to two lines
