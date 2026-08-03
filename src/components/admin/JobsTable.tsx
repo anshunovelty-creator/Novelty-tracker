@@ -1,8 +1,8 @@
 'use client';
 // src/components/admin/JobsTable.tsx
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { cn } from '@/lib/utils';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { cn, sortJobs, type JobSortOption } from '@/lib/utils';
 import { JOBS_CHANGED_EVENT, JOBS_FILTER_EVENT, type JobsFilterDetail } from '@/lib/constants/events';
 import type { Job, AddJobFormData } from '@/lib/types';
 import type { Department } from '@/lib/constants/departments';
@@ -34,6 +34,7 @@ export default function JobsTable({ initialJobs, dept }: Props) {
   const [search,       setSearch]       = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [urgentOnly,   setUrgentOnly]   = useState(false);
+  const [sortBy,       setSortBy]       = useState<JobSortOption>('delivery_asc');
   const [expandedId,   setExpandedId]   = useState<string | null>(null);
   const [prefill,      setPrefill]      = useState<Partial<DuplicatePrefill> | undefined>(undefined);
   const [formKey,      setFormKey]      = useState(0); // increment to reset form
@@ -92,21 +93,17 @@ export default function JobsTable({ initialJobs, dept }: Props) {
     return () => window.removeEventListener(JOBS_FILTER_EVENT, onFilter);
   }, []);
 
+  // Display order comes from `sortedJobs` below, so this just needs to swap
+  // the updated row in — no need to re-sort `jobs` itself.
   function onJobUpdated(updatedJob: Job) {
-    setJobs((prev) =>
-      prev
-        .map((j) => (j.id === updatedJob.id ? updatedJob : j))
-        .sort((a, b) => {
-          if (!a.delivery_date) return 1;
-          if (!b.delivery_date) return -1;
-          return new Date(a.delivery_date).getTime() - new Date(b.delivery_date).getTime();
-        })
-    );
+    setJobs((prev) => prev.map((j) => (j.id === updatedJob.id ? updatedJob : j)));
   }
 
   function onJobDeleted(jobId: string) {
     setJobs((prev) => prev.filter((j) => j.id !== jobId));
   }
+
+  const sortedJobs = useMemo(() => sortJobs(jobs, sortBy), [jobs, sortBy]);
 
   const hasFilters = Boolean(search || statusFilter || urgentOnly);
 
@@ -152,6 +149,8 @@ export default function JobsTable({ initialJobs, dept }: Props) {
         onStatusFilterChange={setStatusFilter}
         urgentOnly={urgentOnly}
         onUrgentOnlyChange={setUrgentOnly}
+        sortBy={sortBy}
+        onSortByChange={setSortBy}
       />
 
       {/* Jobs — cards on phones, table from sm up.
@@ -167,7 +166,7 @@ export default function JobsTable({ initialJobs, dept }: Props) {
 
         {/* Phone: card list */}
         <div className="sm:hidden">
-          {loading && jobs.length === 0 ? (
+          {loading && sortedJobs.length === 0 ? (
             <div className="space-y-3" aria-hidden="true">
               {Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="rounded-xl bg-white border border-black/[0.08] p-4 space-y-3">
@@ -177,11 +176,11 @@ export default function JobsTable({ initialJobs, dept }: Props) {
                 </div>
               ))}
             </div>
-          ) : jobs.length === 0 ? (
+          ) : sortedJobs.length === 0 ? (
             <EmptyState hasFilters={hasFilters} onClearFilters={clearFilters} />
           ) : (
             <ul className="space-y-3">
-              {jobs.map((job) => (
+              {sortedJobs.map((job) => (
                 <li key={job.id}>
                   <JobCard
                     job={job}
@@ -221,16 +220,16 @@ export default function JobsTable({ initialJobs, dept }: Props) {
               </tr>
             </thead>
             <tbody>
-              {loading && jobs.length === 0 ? (
+              {loading && sortedJobs.length === 0 ? (
                 <SkeletonRows rows={5} cols={JOB_ROW_COLS} />
-              ) : jobs.length === 0 ? (
+              ) : sortedJobs.length === 0 ? (
                 <tr>
                   <td colSpan={JOB_ROW_COLS} className="px-4 py-0">
                     <EmptyState hasFilters={hasFilters} onClearFilters={clearFilters} />
                   </td>
                 </tr>
               ) : (
-                jobs.map((job) => (
+                sortedJobs.map((job) => (
                   <JobRow
                     key={job.id}
                     job={job}

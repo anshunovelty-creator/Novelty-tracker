@@ -2,7 +2,7 @@
 // src/components/admin/FilterBar.tsx
 
 import { Flame } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, JOB_SORT_OPTIONS, type JobSortOption } from '@/lib/utils';
 import { PIPELINE_STAGES } from '@/lib/constants/stages';
 import { Field, SelectField } from '@/components/ui/Field';
 
@@ -13,15 +13,18 @@ type Props = {
   onStatusFilterChange: (v: string) => void;
   urgentOnly:           boolean;
   onUrgentOnlyChange:   (v: boolean) => void;
+  sortBy:               JobSortOption;
+  onSortByChange:       (v: JobSortOption) => void;
 };
 
 export default function FilterBar({
   search, onSearchChange,
   statusFilter, onStatusFilterChange,
   urgentOnly, onUrgentOnlyChange,
+  sortBy, onSortByChange,
 }: Props) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2">
+    <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-2">
       {/* Search */}
       <Field
         label="Search"
@@ -41,6 +44,17 @@ export default function FilterBar({
           <option key={s} value={s}>{s}</option>
         ))}
         <option value="On Hold">On Hold</option>
+      </SelectField>
+
+      {/* Sort order */}
+      <SelectField
+        label="Sort By"
+        value={sortBy}
+        onChange={(e) => onSortByChange(e.target.value as JobSortOption)}
+      >
+        {JOB_SORT_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
       </SelectField>
 
       {/* Urgent filter */}

@@ -8,7 +8,7 @@ import { twMerge } from 'tailwind-merge';
 import { format, differenceInDays } from 'date-fns';
 import { getPrerequisite } from './constants/stages';
 import type { Stage } from './constants/stages';
-import type { JobType } from './types';
+import type { JobType, Job } from './types';
 
 // ── Class name merging ────────────────────────────────────────
 
@@ -26,6 +26,84 @@ export function cn(...inputs: ClassValue[]) {
  */
 export function formatJobCardNumber(value: string | null): string | null {
   return value ? value.toUpperCase() : null;
+}
+
+const CARD_MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+/**
+ * Job card numbers reset their sequence every month ('aug26-1' .. 'aug26-40',
+ * then 'sep26-1'), so sorting the raw string gives wrong order both across
+ * months (alphabetical 'aug' > 'jul' happens to work, but 'dec' < 'jan' does
+ * not) and within a month once the sequence passes 9 ('aug26-10' < 'aug26-2'
+ * as a string). Parse into a chronological period + numeric sequence instead.
+ */
+function parseJobCardNumber(value: string | null): { period: number; seq: number } | null {
+  if (!value) return null;
+  const match = value.match(/^([a-z]{3})(\d{2})-(\d+)$/i);
+  if (!match) return null;
+  const monthIndex = CARD_MONTHS.indexOf(match[1].toLowerCase());
+  if (monthIndex === -1) return null;
+  return { period: Number(match[2]) * 12 + monthIndex, seq: Number(match[3]) };
+}
+
+export type JobSortOption =
+  | 'delivery_asc'
+  | 'delivery_desc'
+  | 'card_asc'
+  | 'card_desc'
+  | 'recent_first'
+  | 'recent_last';
+
+export const JOB_SORT_OPTIONS: { value: JobSortOption; label: string }[] = [
+  { value: 'delivery_asc',  label: 'Delivery Date (soonest first)' },
+  { value: 'delivery_desc', label: 'Delivery Date (latest first)' },
+  { value: 'card_asc',      label: 'Job Card No. (ascending)' },
+  { value: 'card_desc',     label: 'Job Card No. (descending)' },
+  { value: 'recent_first',  label: 'Recently Added (newest first)' },
+  { value: 'recent_last',   label: 'Recently Added (oldest first)' },
+];
+
+/** Sort a jobs list for display. Never mutates the input array. */
+export function sortJobs(jobs: Job[], sortBy: JobSortOption): Job[] {
+  const sorted = [...jobs];
+
+  switch (sortBy) {
+    case 'delivery_desc':
+      sorted.sort((a, b) => {
+        if (!a.delivery_date) return 1;
+        if (!b.delivery_date) return -1;
+        return new Date(b.delivery_date).getTime() - new Date(a.delivery_date).getTime();
+      });
+      break;
+    case 'card_asc':
+    case 'card_desc':
+      sorted.sort((a, b) => {
+        const pa = parseJobCardNumber(a.job_card_number);
+        const pb = parseJobCardNumber(b.job_card_number);
+        if (!pa && !pb) return 0;
+        if (!pa) return 1;
+        if (!pb) return -1;
+        const diff = pa.period !== pb.period ? pa.period - pb.period : pa.seq - pb.seq;
+        return sortBy === 'card_asc' ? diff : -diff;
+      });
+      break;
+    case 'recent_first':
+      sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      break;
+    case 'recent_last':
+      sorted.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      break;
+    case 'delivery_asc':
+    default:
+      sorted.sort((a, b) => {
+        if (!a.delivery_date) return 1;
+        if (!b.delivery_date) return -1;
+        return new Date(a.delivery_date).getTime() - new Date(b.delivery_date).getTime();
+      });
+      break;
+  }
+
+  return sorted;
 }
 
 // ── Date formatting ───────────────────────────────────────────
