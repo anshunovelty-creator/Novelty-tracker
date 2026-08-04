@@ -249,11 +249,12 @@ themselves inside the handler.
 | `job_card_counters` | Per-month sequence for job card numbers |
 | `label_stock` | Printed labels physically on the shelf |
 | `party_contacts` | Customer email / WhatsApp for notifications |
+| `note_reads` | Per-user, per-note read state for the internal notes feed |
 
 Plus two views used exclusively by the public portal: `client_job_view` and
 `client_status_log_view`.
 
-Migrations are numbered `001`–`016` and **must be applied in order**.
+Migrations are numbered `001`–`017` and **must be applied in order**.
 
 ---
 
@@ -327,7 +328,7 @@ pnpm install
 ### 2. Database
 
 In the Supabase dashboard → **SQL Editor**, run every file in
-`supabase/migrations/` **in numerical order**, `001` through `016`. Run them one
+`supabase/migrations/` **in numerical order**, `001` through `017`. Run them one
 at a time and confirm each succeeds before the next.
 
 Verify afterwards that Table Editor shows `jobs`, `label_stock`, `machines`,

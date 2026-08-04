@@ -1,15 +1,16 @@
 // src/app/api/notes/feed/route.ts
 // ============================================================
-// GET /api/notes/feed?since=<iso>&limit=50
+// GET /api/notes/feed?limit=50
 //   Newest-first internal notes across every job, for the global
-//   notes box in the admin shell.
+//   notes box in the admin shell. Each note carries `read`, the
+//   caller's own read state (see migration 017_note_reads).
 //
-//   `since`  — optional ISO timestamp of the caller's last-seen marker.
-//              Notes strictly newer than it are counted into `unread`.
 //   `limit`  — page size, 1..100, default 50.
 //
-//   Returns { notes: NoteFeedItem[], unread: number, serverTime: string }.
-//   One round trip per poll: the list and the badge count come together.
+//   Returns { notes: NoteFeedItem[], unread: number }.
+//   `unread` counts notes in this page that are unread and not the
+//   caller's own. One round trip per poll: the list and the badge
+//   count come together.
 //
 // Access: uses the RLS-respecting server client. stage_comments already
 // grants SELECT to every authenticated user (migration 001), so this
@@ -52,7 +53,6 @@ export async function GET(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const params = new URL(request.url).searchParams;
-  const since  = params.get('since');
 
   // Clamp rather than reject: a bad limit should not break the poll loop.
   const rawLimit = Number.parseInt(params.get('limit') ?? '', 10);
@@ -79,6 +79,20 @@ export async function GET(request: NextRequest) {
 
   const rows = (data ?? []) as unknown as JoinedRow[];
 
+  // Which of these notes has the caller already marked read?
+  const noteIds = rows.map((r) => r.id);
+  const { data: readRows, error: readError } = noteIds.length
+    ? await supabase
+        .from('note_reads')
+        .select('note_id')
+        .eq('user_email', user.email ?? '')
+        .in('note_id', noteIds)
+    : { data: [], error: null };
+
+  if (readError) return NextResponse.json({ error: readError.message }, { status: 500 });
+
+  const readIds = new Set((readRows ?? []).map((r: { note_id: string }) => r.note_id));
+
   // Flatten the join so the client gets one object per note.
   // A note whose job row is missing (deleted mid-flight) is dropped
   // rather than rendered with blank identity.
@@ -96,27 +110,14 @@ export async function GET(request: NextRequest) {
       pm_code:          r.jobs!.pm_code,
       po_number:        r.jobs!.po_number,
       party:            r.jobs!.party,
+      read:             readIds.has(r.id),
     }));
 
-  // Unread = notes newer than the caller's marker, excluding their own.
-  // An invalid `since` yields 0 rather than marking everything unread.
-  let unread = 0;
-  if (since) {
-    const sinceMs = Date.parse(since);
-    if (Number.isFinite(sinceMs)) {
-      unread = notes.filter(
-        (n) =>
-          Date.parse(n.created_at) > sinceMs &&
-          n.created_by_email !== user.email
-      ).length;
-    }
-  }
+  // Unread = notes in this page the caller hasn't marked read, excluding
+  // their own — matches the "remaining to read" count in the panel badge.
+  const unread = notes.filter(
+    (n) => !n.read && n.created_by_email !== user.email
+  ).length;
 
-  return NextResponse.json({
-    notes,
-    unread,
-    // The client stores this as its next `since`, so the marker advances
-    // on server time and never drifts against a wrong client clock.
-    serverTime: new Date().toISOString(),
-  });
+  return NextResponse.json({ notes, unread });
 }

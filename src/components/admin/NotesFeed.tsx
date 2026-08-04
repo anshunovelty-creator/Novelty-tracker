@@ -9,6 +9,14 @@
 // on the job it belongs to. That keeps every message traceable to a
 // job + stage instead of drifting into untethered chat.
 //
+// Each note can be marked read individually (POST /api/notes/read,
+// see migration 017_note_reads) — read state is per user, synced across
+// devices. A read note drops out of the panel, so what's left is always
+// "what I still need to read." Replaces the old single localStorage
+// "last seen" timestamp, which could only mark everything seen at once;
+// that legacy marker is migrated into real read receipts on first load
+// (see the backfill in `poll`) and then discarded.
+//
 // Refresh is polled, not Realtime — same call the room displays make,
 // but at 25s rather than 2s: this runs in every open admin tab, so a
 // tight interval would multiply across the whole team for no benefit.
@@ -16,8 +24,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { MessageSquare, X, BellRing } from 'lucide-react';
+import { MessageSquare, X, BellRing, Check } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
+import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { DEPARTMENTS, type Department } from '@/lib/constants/departments';
 import type { NoteFeedItem } from '@/lib/types';
@@ -31,8 +40,18 @@ type Props = {
   userEmail: string;
 };
 
+/** Legacy pre-017 marker, kept only long enough to migrate it once. */
 function lastSeenKey(email: string) {
   return `nl:notes:lastSeen:${email}`;
+}
+
+async function markNotesRead(ids: string[]) {
+  const res = await fetch('/api/notes/read', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ ids }),
+  });
+  if (!res.ok) throw new Error('Failed to mark read');
 }
 
 /** The person if we have them, else the department alone (pre-016 notes). */
@@ -51,59 +70,76 @@ function relativeTime(iso: string): string {
 }
 
 export default function NotesFeed({ dept, userEmail }: Props) {
-  const [open,    setOpen]    = useState(false);
-  const [notes,   setNotes]   = useState<NoteFeedItem[]>([]);
-  const [unread,  setUnread]  = useState(0);
-  const [filter,  setFilter]  = useState<'All' | Department>('All');
-  const [error,   setError]   = useState(false);
-  const [canPush, setCanPush] = useState<NotificationPermission | 'unsupported'>('unsupported');
+  const [open,           setOpen]           = useState(false);
+  const [notes,          setNotes]          = useState<NoteFeedItem[]>([]);
+  const [unread,         setUnread]         = useState(0);
+  const [filter,         setFilter]         = useState<'All' | Department>('All');
+  const [error,          setError]          = useState(false);
+  const [canPush,        setCanPush]        = useState<NotificationPermission | 'unsupported'>('unsupported');
+  // Ids marked read locally but not yet confirmed by the next poll —
+  // keeps a click feel instant instead of waiting on the 25s cycle.
+  const [optimisticRead, setOptimisticRead] = useState<Set<string>>(new Set());
 
   // Refs, not state: the poll loop reads these without re-subscribing.
-  const lastSeenRef = useRef<string | null>(null);
-  const openRef     = useRef(false);
+  const openRef = useRef(false);
   // Newest note id we have already fired a desktop notification for.
   // null until the first poll completes, so a page load never notifies
-  // about the backlog.
+  // about the backlog. Doubles as the "is this the first poll" flag,
+  // which gates the one-time legacy-marker migration below.
   const notifiedIdRef = useRef<string | null>(null);
 
   useEffect(() => { openRef.current = open; }, [open]);
 
-  // Restore the last-seen marker for this account.
   useEffect(() => {
-    try {
-      lastSeenRef.current = window.localStorage.getItem(lastSeenKey(userEmail));
-    } catch {
-      // Private mode / storage disabled — badge resets each load, feed still works.
-    }
     if ('Notification' in window) setCanPush(Notification.permission);
-  }, [userEmail]);
-
-  const markSeen = useCallback((serverTime: string) => {
-    lastSeenRef.current = serverTime;
-    setUnread(0);
-    try {
-      window.localStorage.setItem(lastSeenKey(userEmail), serverTime);
-    } catch {
-      // Non-fatal; see above.
-    }
-  }, [userEmail]);
+  }, []);
 
   const poll = useCallback(async () => {
-    const since = lastSeenRef.current;
-    const url   = since ? `${FEED_URL}&since=${encodeURIComponent(since)}` : FEED_URL;
-
     try {
-      const res = await fetch(url, { cache: 'no-store' });
+      const res = await fetch(FEED_URL, { cache: 'no-store' });
       if (!res.ok) { setError(true); return; }
 
-      const data = await res.json() as {
-        notes: NoteFeedItem[]; unread: number; serverTime: string;
-      };
+      const data = await res.json() as { notes: NoteFeedItem[]; unread: number };
       setError(false);
       setNotes(data.notes);
 
+      // Drop any optimistic ids the server has now confirmed as read.
+      setOptimisticRead((prev) => {
+        if (prev.size === 0) return prev;
+        const next = new Set(prev);
+        for (const n of data.notes) if (n.read) next.delete(n.id);
+        return next;
+      });
+
       const newest = data.notes[0];
       const isFirstPoll = notifiedIdRef.current === null;
+
+      // One-time backfill: fold the legacy "last seen" timestamp into real
+      // read receipts so upgrading doesn't dump the whole note history
+      // into everyone's unread pile. Only ever runs once per browser.
+      let backfilledUnread = 0;
+      if (isFirstPoll) {
+        let legacy: string | null = null;
+        try { legacy = window.localStorage.getItem(lastSeenKey(userEmail)); } catch { /* ignored */ }
+
+        if (legacy) {
+          const legacyMs = Date.parse(legacy);
+          const toBackfill = Number.isFinite(legacyMs)
+            ? data.notes.filter((n) => !n.read && Date.parse(n.created_at) <= legacyMs)
+            : [];
+
+          if (toBackfill.length > 0) {
+            const ids = toBackfill.map((n) => n.id);
+            markNotesRead(ids).catch(() => {
+              // Best-effort backfill — a failure here just means those
+              // notes still show as unread; the user can mark them read.
+            });
+            setOptimisticRead((prev) => new Set([...Array.from(prev), ...ids]));
+            backfilledUnread = toBackfill.filter((n) => n.created_by_email !== userEmail).length;
+          }
+          try { window.localStorage.removeItem(lastSeenKey(userEmail)); } catch { /* ignored */ }
+        }
+      }
 
       // Desktop notification: only for someone else's note, only when the
       // panel is shut, and never for the backlog present at page load.
@@ -124,14 +160,31 @@ export default function NotesFeed({ dept, userEmail }: Props) {
       }
       if (newest) notifiedIdRef.current = newest.id;
 
-      // An open panel is "being read": keep advancing the marker so the
-      // badge does not build up behind the user's back.
-      if (openRef.current) markSeen(data.serverTime);
-      else setUnread(data.unread);
+      setUnread(Math.max(0, data.unread - backfilledUnread));
     } catch {
       setError(true);
     }
-  }, [markSeen, userEmail]);
+  }, [userEmail]);
+
+  const handleMarkRead = useCallback(async (note: NoteFeedItem) => {
+    setOptimisticRead((prev) => new Set(prev).add(note.id));
+    if (note.created_by_email !== userEmail) {
+      setUnread((u) => Math.max(0, u - 1));
+    }
+    try {
+      await markNotesRead([note.id]);
+    } catch {
+      toast.error('Could not mark as read — try again');
+      setOptimisticRead((prev) => {
+        const next = new Set(prev);
+        next.delete(note.id);
+        return next;
+      });
+      if (note.created_by_email !== userEmail) {
+        setUnread((u) => u + 1);
+      }
+    }
+  }, [userEmail]);
 
   // Poll while the tab is visible; catch up immediately on refocus.
   useEffect(() => {
@@ -163,8 +216,7 @@ export default function NotesFeed({ dept, userEmail }: Props) {
 
   function handleOpen() {
     setOpen(true);
-    setUnread(0);
-    poll(); // fetch fresh on open; also advances the marker via openRef
+    poll(); // fetch fresh on open
   }
 
   async function requestPush() {
@@ -173,9 +225,12 @@ export default function NotesFeed({ dept, userEmail }: Props) {
     setCanPush(result);
   }
 
+  // Read notes drop out of the panel — what's left is what still needs
+  // a look. History for a note stays on its job via StageComments.
+  const unreadNotes = notes.filter((n) => !n.read && !optimisticRead.has(n.id));
   const visible = filter === 'All'
-    ? notes
-    : notes.filter((n) => n.created_by === filter);
+    ? unreadNotes
+    : unreadNotes.filter((n) => n.created_by === filter);
 
   // ── Launcher ────────────────────────────────────────────────
   if (!open) {
@@ -219,7 +274,12 @@ export default function NotesFeed({ dept, userEmail }: Props) {
     >
       {/* Header */}
       <header className="flex items-center justify-between gap-2 px-4 h-12 bg-brand-header text-white shrink-0">
-        <h2 className="text-sm font-semibold">Internal Notes</h2>
+        <div className="flex items-baseline gap-2 min-w-0">
+          <h2 className="text-sm font-semibold">Internal Notes</h2>
+          <span className="text-[11px] text-white/70">
+            {unread > 0 ? `${unread} remaining to read` : 'All caught up'}
+          </span>
+        </div>
         <div className="flex items-center gap-1">
           {canPush === 'default' && (
             <button
@@ -270,16 +330,18 @@ export default function NotesFeed({ dept, userEmail }: Props) {
           <li className="px-4 py-8 text-center text-xs text-brand-muted">
             {notes.length === 0
               ? 'No internal notes yet. Notes added on any job appear here.'
-              : `No notes from ${filter}.`}
+              : unreadNotes.length === 0
+                ? 'All caught up — no unread notes.'
+                : `No unread notes from ${filter}.`}
           </li>
         )}
 
         {visible.map((note) => (
-          <li key={note.id}>
+          <li key={note.id} className="group relative">
             <Link
               href={`/admin/jobs/${note.job_id}`}
               onClick={() => setOpen(false)}
-              className="block px-4 py-3 hover:bg-brand-bg transition-colors focus:outline-none focus-visible:bg-brand-bg"
+              className="block px-4 py-3 pr-14 hover:bg-brand-bg transition-colors focus:outline-none focus-visible:bg-brand-bg"
             >
               <div className="flex items-baseline justify-between gap-2">
                 <span className="text-[11px] font-mono text-brand-primary truncate">
@@ -307,6 +369,20 @@ export default function NotesFeed({ dept, userEmail }: Props) {
                 </span>
               </div>
             </Link>
+
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleMarkRead(note); }}
+              aria-label="Mark as read"
+              title="Mark as read"
+              className={cn(
+                'absolute right-1 top-1/2 -translate-y-1/2 min-h-[44px] min-w-[44px] rounded-full',
+                'flex items-center justify-center text-brand-muted',
+                'hover:text-white hover:bg-brand-primary transition-colors',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40'
+              )}
+            >
+              <Check className="h-4 w-4" aria-hidden="true" />
+            </button>
           </li>
         ))}
       </ul>

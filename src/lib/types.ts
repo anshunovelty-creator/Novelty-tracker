@@ -186,6 +186,8 @@ export interface NoteFeedItem extends StageComment {
   pm_code: string | null;
   po_number: string;
   party: string;
+  /** Has the calling user marked this note read? See migration 017_note_reads. */
+  read: boolean;
 }
 
 // ── dispatch_schedules ────────────────────────────────────────
