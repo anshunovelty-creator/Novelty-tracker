@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn, formatAdminDate, formatJobCardNumber, formatShortDate, formatQty } from '@/lib/utils';
+import { CheckCircle2 } from 'lucide-react';
 import { STATUS_COLORS, JOB_TYPE_BADGE, urgentBadgeClass } from '@/lib/constants/statusColors';
 import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES, isPerReleaseStage } from '@/lib/constants/stages';
 import { canDeptSetStage } from '@/lib/constants/departments';
@@ -104,12 +105,6 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
     if (newStage === 'Dispatched')       { setModal({ type: 'full_dispatch' });    return; }
     if (newStage === 'PO Closed')        { setModal({ type: 'close_po' });         return; }
 
-    // Advancing FROM Quality Check to a non-modal stage: capture an optional QC remark first
-    if (job.status === 'Quality Check') {
-      setModal({ type: 'qc' });
-      return;
-    }
-
     // Submit directly — the server is the source of truth for prerequisites
     // and responds 409 if the previous stage isn't complete.
     await submitStatusChange({ new_status: newStage });
@@ -161,6 +156,33 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
       setSubmitting(false);
     }
   }
+
+  // Covers the machine-board path, which sets job.status = 'Slitting'
+  // directly and bypasses /status — see confirm-slitting/route.ts.
+  async function confirmSlitting() {
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/confirm-slitting`, { method: 'POST' });
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast.error(data.error ?? 'Failed to confirm slitting');
+        return;
+      }
+
+      setJob(data.job);
+      toast.success('Slitting marked complete — QC can proceed');
+    } catch {
+      toast.error('Network error. Try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const canConfirmSlitting =
+    (dept === 'Postpress' || dept === 'Admin') &&
+    job.status === 'Slitting' &&
+    !job.slitting_confirmed_at;
 
   // ── Derived display values ───────────────────────────────────
 
@@ -322,6 +344,26 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
               <p className="text-[10px] text-[var(--glass-muted)] mt-1">
                 Printing onward is updated per release below
               </p>
+            )}
+
+            {job.status === 'Slitting' && job.slitting_confirmed_at && (
+              <p className="flex items-center gap-1.5 text-xs text-emerald-300 font-medium mt-2">
+                <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" /> Ready for QC
+              </p>
+            )}
+
+            {canConfirmSlitting && (
+              <button
+                onClick={confirmSlitting}
+                disabled={submitting}
+                className={cn(
+                  'mt-2 w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold',
+                  'px-3 py-2 rounded-lg bg-emerald-500/90 text-white hover:bg-emerald-500',
+                  'transition-colors disabled:opacity-60',
+                )}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" /> Mark Slitting Complete
+              </button>
             )}
           </InfoField>
 

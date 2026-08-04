@@ -43,6 +43,9 @@ export interface Job {
   remaining_qty: number | null;
   halt_remark: string | null;
   qc_remark: string | null;
+  // Set when Postpress (or Admin) confirms slitting is physically done —
+  // gates the Quality Check prerequisite. See migration 018.
+  slitting_confirmed_at: string | null;
   is_scheduled_release: boolean;
   is_closed: boolean;
   total_qty_dispatched: number;     // cumulative qty dispatched via print runs

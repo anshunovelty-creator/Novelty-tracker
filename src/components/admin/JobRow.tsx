@@ -12,7 +12,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { ChevronDown, ChevronUp, PauseCircle, Pencil, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, PauseCircle, Pencil, Trash2, CheckCircle2 } from 'lucide-react';
 import { cn, formatAdminDateParts, formatJobCardNumber, formatNumericDate, formatQty } from '@/lib/utils';
 import { STATUS_COLORS, JOB_TYPE_BADGE, urgentBadgeClass } from '@/lib/constants/statusColors';
 import { canDeptSetStage, canDeptEditJobDetails } from '@/lib/constants/departments';
@@ -241,6 +241,26 @@ export default function JobRow({
               );
             })}
           </select>
+
+          {job.status === 'Slitting' && job.slitting_confirmed_at && (
+            <p className="flex items-center gap-1 text-[11px] text-emerald-700 font-medium mt-1.5">
+              <CheckCircle2 className="w-3 h-3" aria-hidden="true" /> Ready for QC
+            </p>
+          )}
+
+          {actions.canConfirmSlitting && (
+            <button
+              onClick={actions.confirmSlitting}
+              disabled={actions.submitting}
+              className={cn(
+                'mt-1.5 w-full inline-flex items-center justify-center gap-1 text-[11px] font-semibold',
+                'px-2 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700',
+                'transition-colors disabled:opacity-60 whitespace-nowrap',
+              )}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" /> Mark Slitting Complete
+            </button>
+          )}
         </td>
 
         {/* ── Updated: date over time, so the eye scans one column. ── */}

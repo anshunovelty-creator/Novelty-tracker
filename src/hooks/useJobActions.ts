@@ -100,6 +100,34 @@ export function useJobActions({ job, dept, onJobUpdated, onJobDeleted }: Params)
     }
   }
 
+  // ── Confirm slitting (Postpress / Admin only) ───────────────
+  // Covers the machine-board path, which sets job.status = 'Slitting'
+  // directly and bypasses /status — see confirm-slitting/route.ts.
+  async function confirmSlitting() {
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/confirm-slitting`, { method: 'POST' });
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast.error(data.error ?? 'Failed to confirm slitting');
+        return;
+      }
+
+      onJobUpdated(data.job);
+      toast.success('Slitting marked complete — QC can proceed');
+    } catch {
+      toast.error('Network error. Try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const canConfirmSlitting =
+    (dept === 'Postpress' || dept === 'Admin') &&
+    job.status === 'Slitting' &&
+    !job.slitting_confirmed_at;
+
   // ── Stage picker change handler ─────────────────────────────
   async function handleStageSelect(newStage: Stage) {
     if (newStage === job.status) return;
@@ -113,12 +141,6 @@ export function useJobActions({ job, dept, onJobUpdated, onJobDeleted }: Params)
     if (newStage === 'Partial Dispatch') { setModal({ type: 'partial_dispatch' }); return; }
     if (newStage === 'Dispatched')       { setModal({ type: 'full_dispatch' });    return; }
     if (newStage === 'PO Closed')        { setModal({ type: 'close_po' });         return; }
-
-    // Advancing FROM Quality Check to a non-modal stage: capture an optional QC remark first
-    if (job.status === 'Quality Check') {
-      setModal({ type: 'qc' });
-      return;
-    }
 
     // Submit directly — the server is the source of truth for prerequisites
     // and responds 409 if the previous stage isn't complete.
@@ -242,6 +264,8 @@ export function useJobActions({ job, dept, onJobUpdated, onJobDeleted }: Params)
     confirmOverride,
     cancelOverride,
     confirmQC,
+    confirmSlitting,
+    canConfirmSlitting,
     handleDelete,
     availableStages,
     completedSet,

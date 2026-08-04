@@ -208,7 +208,7 @@ src/
 │   ├── supabase/              server.ts (RLS) + admin.ts (service role)
 │   ├── types.ts               Shared TypeScript types
 │   └── utils.ts               Formatting helpers
-└── supabase/migrations/       16 numbered SQL migrations, applied in order
+└── supabase/migrations/       18 numbered SQL migrations, applied in order
 ```
 
 ### Two Supabase clients, used deliberately
@@ -235,7 +235,7 @@ themselves inside the handler.
 
 | Table | Purpose |
 |---|---|
-| `jobs` | The order. PO, party, PM code, quantities, dates, status, printing unit |
+| `jobs` | The order. PO, party, PM code, quantities, dates, status, printing unit, Postpress's slitting confirmation |
 | `job_stage_timestamps` | When each stage was completed, per job |
 | `job_status_logs` | Every status change, with the department that made it |
 | `stage_comments` | Internal notes, attributed to author email + department |
@@ -254,7 +254,7 @@ themselves inside the handler.
 Plus two views used exclusively by the public portal: `client_job_view` and
 `client_status_log_view`.
 
-Migrations are numbered `001`–`017` and **must be applied in order**.
+Migrations are numbered `001`–`018` and **must be applied in order**.
 
 ---
 
@@ -272,6 +272,7 @@ All routes require an authenticated Supabase session unless noted.
 | `PATCH` | `/api/jobs/[id]` | Update whitelisted fields; department-checked |
 | `DELETE` | `/api/jobs/[id]` | Admin only |
 | `POST` | `/api/jobs/[id]/status` | Stage change, prerequisite-enforced |
+| `POST` | `/api/jobs/[id]/confirm-slitting` | Postpress/Admin confirm slitting done — unblocks Quality Check |
 | `GET`·`POST` | `/api/jobs/[id]/comments` | Internal notes |
 | `GET`·`POST` | `/api/jobs/[id]/print-runs` | Partial dispatch cycles |
 | `PATCH` | `/api/jobs/[id]/print-runs/[runId]/stage` | Advance one run |
@@ -328,7 +329,7 @@ pnpm install
 ### 2. Database
 
 In the Supabase dashboard → **SQL Editor**, run every file in
-`supabase/migrations/` **in numerical order**, `001` through `017`. Run them one
+`supabase/migrations/` **in numerical order**, `001` through `018`. Run them one
 at a time and confirm each succeeds before the next.
 
 Verify afterwards that Table Editor shows `jobs`, `label_stock`, `machines`,

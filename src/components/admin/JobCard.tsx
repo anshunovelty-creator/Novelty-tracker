@@ -10,7 +10,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { ChevronDown, ChevronUp, PauseCircle, Pencil, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, PauseCircle, Pencil, Trash2, CheckCircle2 } from 'lucide-react';
 import { cn, formatAdminDate, formatJobCardNumber, formatQty, getDeliveryCountdown } from '@/lib/utils';
 import { STATUS_COLORS, JOB_TYPE_BADGE, urgentBadgeClass } from '@/lib/constants/statusColors';
 import { canDeptSetStage, canDeptEditJobDetails } from '@/lib/constants/departments';
@@ -222,6 +222,25 @@ export default function JobCard({
             ? 'Saving…'
             : `Updated ${job.updated_at ? formatAdminDate(job.updated_at) : '—'}`}
         </p>
+
+        {job.status === 'Slitting' && job.slitting_confirmed_at && (
+          <p className="flex items-center justify-center gap-1 text-[11px] text-emerald-700 font-medium mt-2">
+            <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" /> Ready for QC
+          </p>
+        )}
+
+        {actions.canConfirmSlitting && (
+          <button
+            onClick={actions.confirmSlitting}
+            disabled={actions.submitting}
+            className={cn(
+              cardBtn, 'w-full mt-2',
+              'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100',
+            )}
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" /> Mark Slitting Complete
+          </button>
+        )}
       </div>
 
       {/* ── Secondary actions ────────────────────────────────── */}

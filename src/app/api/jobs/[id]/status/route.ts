@@ -118,10 +118,29 @@ export async function POST(request: NextRequest, { params }: Params) {
   // ── 5. Prerequisite check (unless On Hold or override) ───
   if (new_status !== 'On Hold' && !override_prerequisite) {
     const prereq = getPrerequisite(new_status, jobType);
-    // The prerequisite is satisfied if it's the stage being left right now —
-    // moving from stage N to N+1 completes N by definition.
-    if (prereq && prereq !== job.status) {
-      // Check if prereq stage has a timestamp
+
+    // Quality Check is a special case. Slitting is entered automatically the
+    // instant Production finishes printing (see advanceJobStageFromMachine),
+    // with no Postpress action at all — so job.status === 'Slitting' only
+    // ever means slitting has started, not that Postpress is done with it.
+    // QC needs Postpress's explicit confirmation instead of the usual
+    // "reached the stage" check. See jobUpdate.slitting_confirmed_at below
+    // for the manual-dropdown path, and POST /api/jobs/[id]/confirm-slitting
+    // for the machine-board path.
+    if (new_status === 'Quality Check') {
+      if (!job.slitting_confirmed_at) {
+        return NextResponse.json(
+          {
+            error:         'PREREQUISITE_MISSING',
+            missing_stage: 'Slitting',
+            target_stage:  new_status,
+          },
+          { status: 409 }
+        );
+      }
+    } else if (prereq && prereq !== job.status) {
+      // The prerequisite is satisfied if it's the stage being left right now —
+      // moving from stage N to N+1 completes N by definition.
       const { data: prereqTimestamp } = await admin
         .from('job_stage_timestamps')
         .select('id')
@@ -180,6 +199,16 @@ export async function POST(request: NextRequest, { params }: Params) {
   const jobUpdate: Record<string, unknown> = {
     status: new_status,
   };
+
+  if (new_status === 'Slitting') {
+    // Manually picking Slitting from the dropdown is a deliberate Postpress
+    // (or Admin) action — canDeptSetStage already restricts who can do this
+    // — so it counts as a real confirmation, same as every other stage's
+    // "the department clicked it, so it's done" semantics. This only fills
+    // the gap for the machine-board path, which bypasses this route
+    // entirely (see POST /api/jobs/[id]/confirm-slitting for that one).
+    jobUpdate.slitting_confirmed_at = now;
+  }
 
   if (new_status === 'On Hold') {
     jobUpdate.halt_remark = remark?.trim() ?? null;
