@@ -6,7 +6,7 @@
 //   • Fits one screen exactly and never scrolls — nobody scrolls a projection.
 //     Type scales on min(vw, vh) so a wide-but-short window shrinks text
 //     instead of pushing the footer off the bottom.
-//   • Refreshes every 20 s; keeps the last good board on a network hiccup and
+//   • Refreshes every 30 s; keeps the last good board on a network hiccup and
 //     says so rather than passing stale data off as live.
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -15,16 +15,15 @@ import { Maximize2, Minimize2 } from 'lucide-react';
 import { cn, formatQty } from '@/lib/utils';
 import type { MachineDisplayData, MachineDisplayItem } from '@/lib/types';
 
-// 2 s reads as instant on the floor while staying cheap: one request every 2 s
-// per screen. Going to ~50 ms would mean 20 requests/second per screen — each
-// one 3 Postgres queries plus a token check — which is thousands of queries a
-// minute for a board that changes a few times an hour. Not worth it; see the
-// Realtime note in the PR/handover if sub-second is ever needed.
-const POLL_MS  = 2_000;
-// Past this much silence the board is no longer trustworthy as "live". At a 2 s
-// cadence that is ~7 missed polls — tight enough that a dead network shows up
-// on the wall quickly instead of a frozen board looking current.
-const STALE_MS = 15_000;
+// 30 s stays well clear of Supabase bandwidth limits while still reading as
+// current on the floor — a board only changes a few times an hour. See the
+// Realtime note in the PR/handover if sub-second updates are ever needed.
+const POLL_MS  = 30_000;
+// Past this much silence the board is no longer trustworthy as "live". At a
+// 30 s cadence that is ~3 missed polls — tight enough that a dead network
+// shows up on the wall reasonably quickly instead of a frozen board looking
+// current.
+const STALE_MS = 90_000;
 // Rows that fit whole on a 16:9 screen without the last one being sliced in
 // half; the remainder collapses into a "+N more" line. Four is deliberate —
 // a clipped row on a wall display reads as a broken page.

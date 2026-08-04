@@ -4,9 +4,9 @@
 // office or corridor where you want the whole floor rather than one room.
 //   • Reuses MachineDisplay in controlled mode, so the layout and states are
 //     the same ones the room screens use — one presentation to maintain.
-//   • Fetches all machines in a single request every 2 s, so the cost does not
+//   • Fetches all machines in a single request every 30 s, so the cost does not
 //     grow with the number of machines on the wall.
-//   • Rotation is local: data refreshes every 2 s, the visible machine changes
+//   • Rotation is local: data refreshes every 30 s, the visible machine changes
 //     every 15 s, and the two are independent.
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
 import type { MachineDisplayData } from '@/lib/types';
 import MachineDisplay from './MachineDisplay';
 
-const POLL_MS   = 2_000;
+const POLL_MS   = 30_000;
 const ROTATE_MS = 15_000;
 
 export default function RotatingDisplay({ initial }: { initial: MachineDisplayData[] }) {
