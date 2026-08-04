@@ -93,6 +93,54 @@ export interface LabelStock {
   updated_at: string;
 }
 
+// ── dies ─────────────────────────────────────────────────────
+// Cutting dies used to punch label shapes. Entered by Prepress off the die
+// maker's spec sheet; every department can search and view them, only
+// Prepress and Admin can add, correct or remove an entry. Field order
+// mirrors the source spec sheet (JOB, LENGTH, WIDTH, CYLINDER, MATERIAL,
+// Ups, Gap, CORNER, SERIAL No., Die Rec. on).
+
+export interface Die {
+  id: string;
+  job_name: string;               // JOB — the product/label this die was cut for
+  length: string | null;          // LENGTH
+  width: string | null;           // WIDTH — often a combined "H x W" reading
+  cylinder: number | null;        // CYLINDER
+  material: string | null;        // MATERIAL
+  ups: number | null;             // Ups — labels per revolution
+  gap: string | null;             // Gap — e.g. "5 MM"
+  corner: string | null;          // CORNER — e.g. "SPECIAL", "ROUND"
+  serial_no: string | null;       // SERIAL No. — identifier etched on the die
+  die_received_on: string | null; // Die Rec. on — ISO date string
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── plates ───────────────────────────────────────────────────
+// Printing plates mounted on press cylinders. Same access model as dies:
+// Prepress and Admin own entry, everyone else searches and views. Field
+// order mirrors the source spec sheet (PARTY, PM CODE, ITEM NAME, ACROSS
+// SIZE (H), AROUND SIZE (W), CYLINDER, PLATE ID, PLATE DATE, LABEL PER
+// ROUND, LOCATION).
+
+export interface Plate {
+  id: string;
+  party: string;                  // PARTY
+  pm_code: string | null;         // PM CODE
+  item_name: string | null;       // ITEM NAME
+  across_size: string | null;     // ACROSS SIZE (H)
+  around_size: string | null;     // AROUND SIZE (W)
+  cylinder: number | null;        // CYLINDER
+  plate_id: string | null;        // PLATE ID — identifier etched on the plate
+  plate_date: string | null;      // PLATE DATE — ISO date string
+  label_per_round: number | null; // LABEL PER ROUND
+  location: string | null;        // LOCATION — rack / shelf / bay
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Form data for Add Job — subset of Job used in the form
 /** Printing process a unit runs. Mirrors the jobs_printing_method_check constraint. */
 export type PrintingMethod = 'Offset' | 'Flexo';

@@ -94,6 +94,17 @@ export function canDeptManageStock(dept: Department | null): boolean {
   return dept !== null && STOCK_EDIT_DEPTS.includes(dept);
 }
 
+/**
+ * Who may add, correct, or remove a die/plate reference entry.
+ * Prepress makes and owns dies and plates, so they enter and correct their
+ * own records; Admin always has full access. Everyone else searches and views.
+ */
+export const DIES_PLATES_EDIT_DEPTS: Department[] = ['Prepress', 'Admin'];
+
+export function canDeptManageDiesPlates(dept: Department | null): boolean {
+  return dept !== null && DIES_PLATES_EDIT_DEPTS.includes(dept);
+}
+
 export function canDeptSetStage(dept: Department, stage: Stage): boolean {
   const allowed = DEPT_ALLOWED_STAGES[dept];
   if (allowed === '*') return true;
