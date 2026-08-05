@@ -9,6 +9,20 @@ import type { Stage } from './constants/stages';
 import type { Department } from './constants/departments';
 import type { RunStage } from './constants/runStages';
 
+// ── team ─────────────────────────────────────────────────────
+// A login account, not a database row — Supabase Auth is the source of
+// truth (see /api/team). department is null only for a mis-configured
+// account (see parseDepartment); the admin panel itself never creates one
+// without a department.
+
+export interface Member {
+  id: string;
+  email: string;
+  department: Department | null;
+  created_at: string;
+  last_sign_in_at: string | null;
+}
+
 // ── jobs ─────────────────────────────────────────────────────
 
 export type JobType = 'New' | 'Repeat' | 'Artwork Changed';

@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Package, Scissors, Disc } from 'lucide-react';
+import { Package, Scissors, Disc, Users } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import type { Department } from '@/lib/constants/departments';
 import { Logo } from '@/components/brand/Logo';
@@ -24,6 +24,9 @@ const SHORTCUTS: Record<string, string> = {
   s: '/admin/stock',
   d: '/admin/dies',
   p: '/admin/plates',
+  // Not 't' — Ctrl/Cmd+T is "new tab" and browsers never let a page
+  // override it, so the shortcut would silently do nothing.
+  m: '/admin/team',
 };
 
 export default function AdminHeader({ dept, displayName }: Props) {
@@ -101,6 +104,18 @@ export default function AdminHeader({ dept, displayName }: Props) {
               <Disc className="h-4 w-4" aria-hidden="true" />
               Plates
             </Link>
+            {/* Team management touches login accounts directly — Admin only,
+                mirrored by the check in every /api/team route. */}
+            {dept === 'Admin' && (
+              <Link
+                href="/admin/team"
+                title="Team (Ctrl+M)"
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
+              >
+                <Users className="h-4 w-4" aria-hidden="true" />
+                Team
+              </Link>
+            )}
           </nav>
         </div>
 
