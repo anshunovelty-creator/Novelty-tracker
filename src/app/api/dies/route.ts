@@ -44,6 +44,27 @@ function resolveStatus(body: Record<string, unknown>):
   return { ok: true, status, damage_date: damageDate, damage_reason: damageReason };
 }
 
+// Field-scoped search: a whitelist, not a raw column name from the query
+// string, so a request can never point .ilike() at an arbitrary column.
+// Integer columns can't take .ilike() — Postgres has no ILIKE for integer
+// and PostgREST/supabase-js does not apply a `column::text` cast through
+// the filter builder (confirmed: it raises "operator does not exist:
+// integer ~~* unknown") — so those match on the exact number instead.
+type DieSearchField = { column: string; type: 'text' | 'int' };
+
+const DIE_SEARCH_FIELDS: Record<string, DieSearchField> = {
+  job_name:  { column: 'job_name',  type: 'text' },
+  serial_no: { column: 'serial_no', type: 'text' },
+  material:  { column: 'material',  type: 'text' },
+  corner:    { column: 'corner',    type: 'text' },
+  location:  { column: 'location',  type: 'text' },
+  length:    { column: 'length',    type: 'text' },
+  width:     { column: 'width',     type: 'text' },
+  gap:       { column: 'gap',       type: 'text' },
+  cylinder:  { column: 'cylinder',  type: 'int' },
+  ups:       { column: 'ups',       type: 'int' },
+};
+
 // ── GET ───────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -53,20 +74,33 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const search = searchParams.get('search')?.trim();
+  const field  = searchParams.get('field')?.trim();
 
   let query = supabase
     .from('dies')
     .select('*')
     .order('created_at', { ascending: false });
 
-  // Someone holding a die searches by whatever they can read off it — the
-  // job it was cut for, its material, its corner style, or its serial — or
-  // by where it should be sitting, since "where is it" is half the point.
   if (search) {
-    query = query.or(
-      `job_name.ilike.%${search}%,material.ilike.%${search}%,` +
-      `corner.ilike.%${search}%,serial_no.ilike.%${search}%,location.ilike.%${search}%`
-    );
+    const config = field ? DIE_SEARCH_FIELDS[field] : undefined;
+    if (config?.type === 'int') {
+      const n = Number(search);
+      // Not a whole number — an integer column can't contain it, so the
+      // answer is "no matches" rather than a query error.
+      if (!Number.isFinite(n)) return NextResponse.json({ dies: [] });
+      query = query.eq(config.column, Math.trunc(n));
+    } else if (config) {
+      // Picked a specific text field — search just that column.
+      query = query.ilike(config.column, `%${search}%`);
+    } else {
+      // "All fields" — someone holding a die searches by whatever they can
+      // read off it: the job it was cut for, its material, its corner
+      // style, or its serial — or where it should be sitting.
+      query = query.or(
+        `job_name.ilike.%${search}%,material.ilike.%${search}%,` +
+        `corner.ilike.%${search}%,serial_no.ilike.%${search}%,location.ilike.%${search}%`
+      );
+    }
   }
 
   const { data, error } = await query;

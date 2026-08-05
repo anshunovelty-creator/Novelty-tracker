@@ -19,6 +19,26 @@ function optionalInt(value: unknown): number | null {
   return Number.isFinite(n) ? Math.trunc(n) : null;
 }
 
+// Field-scoped search: a whitelist, not a raw column name from the query
+// string, so a request can never point .ilike() at an arbitrary column.
+// Integer columns can't take .ilike() — Postgres has no ILIKE for integer
+// and PostgREST/supabase-js does not apply a `column::text` cast through
+// the filter builder (confirmed: it raises "operator does not exist:
+// integer ~~* unknown") — so those match on the exact number instead.
+type PlateSearchField = { column: string; type: 'text' | 'int' };
+
+const PLATE_SEARCH_FIELDS: Record<string, PlateSearchField> = {
+  party:           { column: 'party',           type: 'text' },
+  plate_id:        { column: 'plate_id',        type: 'text' },
+  pm_code:         { column: 'pm_code',         type: 'text' },
+  item_name:       { column: 'item_name',       type: 'text' },
+  location:        { column: 'location',        type: 'text' },
+  across_size:     { column: 'across_size',     type: 'text' },
+  around_size:     { column: 'around_size',     type: 'text' },
+  cylinder:        { column: 'cylinder',        type: 'int' },
+  label_per_round: { column: 'label_per_round', type: 'int' },
+};
+
 // ── GET ───────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -28,19 +48,33 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const search = searchParams.get('search')?.trim();
+  const field  = searchParams.get('field')?.trim();
 
   let query = supabase
     .from('plates')
     .select('*')
     .order('created_at', { ascending: false });
 
-  // Someone standing at the rack searches by whatever they have: the party
-  // that ordered it, the PM code, the item, or the serial on the plate.
   if (search) {
-    query = query.or(
-      `party.ilike.%${search}%,pm_code.ilike.%${search}%,` +
-      `item_name.ilike.%${search}%,plate_id.ilike.%${search}%`
-    );
+    const config = field ? PLATE_SEARCH_FIELDS[field] : undefined;
+    if (config?.type === 'int') {
+      const n = Number(search);
+      // Not a whole number — an integer column can't contain it, so the
+      // answer is "no matches" rather than a query error.
+      if (!Number.isFinite(n)) return NextResponse.json({ plates: [] });
+      query = query.eq(config.column, Math.trunc(n));
+    } else if (config) {
+      // Picked a specific text field — search just that column.
+      query = query.ilike(config.column, `%${search}%`);
+    } else {
+      // "All fields" — someone standing at the rack searches by whatever
+      // they have: the party that ordered it, the PM code, the item, or
+      // the serial on the plate.
+      query = query.or(
+        `party.ilike.%${search}%,pm_code.ilike.%${search}%,` +
+        `item_name.ilike.%${search}%,plate_id.ilike.%${search}%`
+      );
+    }
   }
 
   const { data, error } = await query;

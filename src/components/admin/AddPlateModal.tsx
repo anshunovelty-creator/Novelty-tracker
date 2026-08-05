@@ -52,6 +52,14 @@ export default function AddPlateModal({ editing, onClose, onSaved }: Props) {
 
     setSaving(true);
     try {
+      // Each line the team enters is its own etched plate ID; drop blank
+      // lines from stray Enters and store the rest newline-joined.
+      const plateIdNormalized = plateId
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .join('\n');
+
       const res = await fetch(editing ? `/api/plates/${editing.id}` : '/api/plates', {
         method:  editing ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -62,7 +70,7 @@ export default function AddPlateModal({ editing, onClose, onSaved }: Props) {
           across_size:     acrossSize.trim(),
           around_size:     aroundSize.trim(),
           cylinder,
-          plate_id:        plateId.trim(),
+          plate_id:        plateIdNormalized,
           plate_date:      plateDate,
           label_per_round: labelPerRound,
           location:        location.trim(),
@@ -205,11 +213,20 @@ export default function AddPlateModal({ editing, onClose, onSaved }: Props) {
 
           <div>
             <PlateLabel>Plate ID</PlateLabel>
-            <input
+            <textarea
               value={plateId}
               onChange={(e) => setPlateId(e.target.value)}
-              placeholder="Etched serial — optional"
-              className={cn(inputCls, 'font-mono')}
+              onKeyDown={(e) => {
+                // Enter submits the form, like the single-line fields above;
+                // Shift+Enter adds a line for the next etched plate ID.
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  e.currentTarget.form?.requestSubmit();
+                }
+              }}
+              rows={3}
+              placeholder="Etched serial — optional. One per plate; Shift + Enter for another."
+              className={cn(inputCls, 'font-mono resize-y')}
             />
           </div>
         </div>

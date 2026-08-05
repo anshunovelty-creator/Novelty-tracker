@@ -75,3 +75,8 @@ export function csvDate(value: string | null | undefined): string {
   const [y, m, d] = value.slice(0, 10).split('-');
   return y && m && d ? `${d}-${m}-${y}` : '';
 }
+
+/** Today's date in IST as 'YYYY-MM-DD', for export filenames. */
+export function istDateStamp(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+}

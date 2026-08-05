@@ -10,8 +10,26 @@ import { useState, useEffect, useCallback } from 'react';
 import { Search, Plus, PackageCheck, History, Package } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatQty, formatAdminDate } from '@/lib/utils';
+import { csvTimestamp, type CsvColumn } from '@/lib/export/csv';
 import type { LabelStock, StockKind } from '@/lib/types';
 import ManualStockModal from './ManualStockModal';
+import CsvExportButton from './CsvExportButton';
+
+const STOCK_EXPORT_COLUMNS: CsvColumn<LabelStock>[] = [
+  { header: 'Kind',            value: (s) => s.kind },
+  { header: 'Job Card Number', value: (s) => s.job_card_number },
+  { header: 'PO Number',       value: (s) => s.po_number },
+  { header: 'PM Code',         value: (s) => s.pm_code },
+  { header: 'Party',           value: (s) => s.party },
+  { header: 'Job Name',        value: (s) => s.job_name },
+  { header: 'Qty',             value: (s) => s.qty },
+  { header: 'Location',        value: (s) => s.location },
+  { header: 'Remark',          value: (s) => s.remark },
+  { header: 'Dispatched',      value: (s) => s.is_dispatched },
+  { header: 'Dispatched At',   value: (s) => csvTimestamp(s.dispatched_at) },
+  { header: 'Dispatched By',   value: (s) => s.dispatched_by },
+  { header: 'Added',           value: (s) => csvTimestamp(s.created_at) },
+];
 
 // Kind reads as a chip, because "why is this here" is the first question
 // anyone asks of a pile of labels.
@@ -127,6 +145,8 @@ export default function LabelStockManager({ canManage }: { canManage: boolean })
           <History className="w-4 h-4" aria-hidden="true" />
           {showHistory ? 'Showing history' : 'Show history'}
         </button>
+
+        <CsvExportButton rows={stock} columns={STOCK_EXPORT_COLUMNS} filename="label-stock" />
 
         {canManage && (
           <button

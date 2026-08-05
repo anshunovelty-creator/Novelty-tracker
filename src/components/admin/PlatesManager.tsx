@@ -10,16 +10,49 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Search, Plus, Pencil, Trash2, Layers } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { cn, formatAdminDate, formatNumericDate } from '@/lib/utils';
+import { cn, formatAdminDate } from '@/lib/utils';
+import { csvDate, csvTimestamp, type CsvColumn } from '@/lib/export/csv';
 import type { Plate } from '@/lib/types';
 import AddPlateModal from './AddPlateModal';
+import CsvExportButton from './CsvExportButton';
+
+// Mirrors PLATE_SEARCH_FIELDS in src/app/api/plates/route.ts — the value
+// sent as ?field=. "All fields" (value 'all') skips the param, falling
+// back to the server's multi-column OR search.
+const PLATE_SEARCH_FIELDS: { value: string; label: string; placeholder: string }[] = [
+  { value: 'all',             label: 'All fields',       placeholder: 'Search party, PM code, item or plate ID' },
+  { value: 'party',           label: 'Party',            placeholder: 'Search by party' },
+  { value: 'plate_id',        label: 'Plate ID',         placeholder: 'Search by plate ID' },
+  { value: 'pm_code',         label: 'PM code',          placeholder: 'Search by PM code' },
+  { value: 'item_name',       label: 'Item name',        placeholder: 'Search by item name' },
+  { value: 'location',        label: 'Location',         placeholder: 'Search by location' },
+  { value: 'across_size',     label: 'Size (across / H)', placeholder: 'Search by across size' },
+  { value: 'around_size',     label: 'Size (around / W)', placeholder: 'Search by around size' },
+  { value: 'cylinder',        label: 'Cylinder',         placeholder: 'Search by cylinder' },
+  { value: 'label_per_round', label: 'Labels / round',   placeholder: 'Search by labels per round' },
+];
+
+const PLATE_EXPORT_COLUMNS: CsvColumn<Plate>[] = [
+  { header: 'Plate ID',        value: (p) => p.plate_id ? p.plate_id.replace(/\n/g, '; ') : null },
+  { header: 'Party',           value: (p) => p.party },
+  { header: 'PM Code',         value: (p) => p.pm_code },
+  { header: 'Item Name',       value: (p) => p.item_name },
+  { header: 'Across Size (H)', value: (p) => p.across_size },
+  { header: 'Around Size (W)', value: (p) => p.around_size },
+  { header: 'Cylinder',        value: (p) => p.cylinder },
+  { header: 'Label Per Round', value: (p) => p.label_per_round },
+  { header: 'Location',        value: (p) => p.location },
+  { header: 'Plate Date',      value: (p) => csvDate(p.plate_date) },
+  { header: 'Added',           value: (p) => csvTimestamp(p.created_at) },
+];
 
 export default function PlatesManager({ canManage }: { canManage: boolean }) {
-  const [plates,    setPlates]    = useState<Plate[]>([]);
-  const [loading,   setLoading]   = useState(true);
-  const [search,    setSearch]    = useState('');
-  const [adding,    setAdding]    = useState(false);
-  const [editing,   setEditing]   = useState<Plate | null>(null);
+  const [plates,      setPlates]      = useState<Plate[]>([]);
+  const [loading,     setLoading]     = useState(true);
+  const [search,      setSearch]      = useState('');
+  const [searchField, setSearchField] = useState('all');
+  const [adding,      setAdding]      = useState(false);
+  const [editing,     setEditing]     = useState<Plate | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [busyId,    setBusyId]    = useState<string | null>(null);
 
@@ -27,7 +60,10 @@ export default function PlatesManager({ canManage }: { canManage: boolean }) {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (search) params.set('search', search);
+      if (search) {
+        params.set('search', search);
+        if (searchField !== 'all') params.set('field', searchField);
+      }
       const res  = await fetch(`/api/plates?${params.toString()}`);
       const data = await res.json();
       if (res.ok) setPlates(data.plates ?? []);
@@ -37,7 +73,7 @@ export default function PlatesManager({ canManage }: { canManage: boolean }) {
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [search, searchField]);
 
   useEffect(() => {
     const timer = setTimeout(load, search ? 300 : 0);
@@ -67,6 +103,22 @@ export default function PlatesManager({ canManage }: { canManage: boolean }) {
     <div className="space-y-3">
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+        <select
+          value={searchField}
+          onChange={(e) => setSearchField(e.target.value)}
+          aria-label="Search field"
+          title="Narrow the search to one field"
+          className={cn(
+            'min-h-11 px-3 rounded-xl text-sm shrink-0',
+            'bg-[var(--glass-bg)] border border-[var(--glass-border)] text-[var(--glass-ink)]',
+            'focus:outline-none focus:border-emerald-300/70 focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)] transition-all',
+          )}
+        >
+          {PLATE_SEARCH_FIELDS.map((f) => (
+            <option key={f.value} value={f.value}>{f.label}</option>
+          ))}
+        </select>
+
         <div className="relative flex-1">
           <Search
             className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--glass-muted)]"
@@ -75,7 +127,7 @@ export default function PlatesManager({ canManage }: { canManage: boolean }) {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search party, PM code, item or plate ID"
+            placeholder={PLATE_SEARCH_FIELDS.find((f) => f.value === searchField)?.placeholder}
             aria-label="Search plates"
             title="Search (Ctrl+K)"
             data-global-search
@@ -87,6 +139,8 @@ export default function PlatesManager({ canManage }: { canManage: boolean }) {
             )}
           />
         </div>
+
+        <CsvExportButton rows={plates} columns={PLATE_EXPORT_COLUMNS} filename="plates" />
 
         {canManage && (
           <button
@@ -119,31 +173,30 @@ export default function PlatesManager({ canManage }: { canManage: boolean }) {
       ) : plates.length === 0 ? (
         <EmptyState hasSearch={Boolean(search)} />
       ) : (
-        <ul className="space-y-2">
+        <ul className="space-y-3">
           {plates.map((plate) => (
-            <li key={plate.id} className="rounded-xl border border-black/[0.08] bg-white p-4">
-              <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+            <li key={plate.id} className="glass rounded-xl p-4">
+              <div className="flex flex-col sm:flex-row sm:items-start gap-4">
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {plate.plate_id && (
-                      <span className="font-mono text-xs font-semibold text-[var(--glass-ink)]">
-                        {plate.plate_id.toUpperCase()}
+                  {/* Identity: one tag per etched plate ID, then party */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {plateIdsOf(plate).map((pid) => (
+                      <span
+                        key={pid}
+                        className="font-mono text-xs font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200"
+                      >
+                        {pid.toUpperCase()}
                       </span>
-                    )}
-                    {plate.pm_code && (
-                      <span className="font-mono text-xs text-[var(--glass-muted)]">
-                        PM {plate.pm_code}
-                      </span>
-                    )}
-                    {plate.plate_date && (
-                      <span className="font-mono text-xs text-[var(--glass-muted)]">
-                        {formatNumericDate(plate.plate_date)}
+                    ))}
+                    {plate.party && (
+                      <span className="text-xs font-medium text-[var(--glass-muted)]">
+                        {plate.party}
                       </span>
                     )}
                   </div>
 
-                  <p className="text-sm font-semibold text-[var(--glass-ink)] mt-1.5 break-words">
-                    {plate.party}
+                  <p className="text-sm font-mono font-semibold text-[var(--glass-ink)] mt-1.5 break-words">
+                    {plate.pm_code ?? '—'}
                   </p>
                   {plate.item_name && (
                     <p className="text-xs text-[var(--glass-muted)] mt-0.5 break-words">
@@ -151,35 +204,22 @@ export default function PlatesManager({ canManage }: { canManage: boolean }) {
                     </p>
                   )}
 
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-[var(--glass-muted)]">
-                    {(plate.across_size || plate.around_size) && (
-                      <span>
-                        Size{' '}
-                        <strong className="text-[var(--glass-ink)] font-mono">
-                          {plate.across_size ?? '—'} × {plate.around_size ?? '—'}
-                        </strong>
-                      </span>
-                    )}
-                    {plate.cylinder !== null && (
-                      <span>
-                        Cylinder{' '}
-                        <strong className="text-[var(--glass-ink)] font-mono">{plate.cylinder}</strong>
-                      </span>
-                    )}
-                    {plate.label_per_round !== null && (
-                      <span>
-                        Labels / round{' '}
-                        <strong className="text-[var(--glass-ink)] font-mono">
-                          {plate.label_per_round}
-                        </strong>
-                      </span>
-                    )}
-                    {plate.location && (
-                      <span>
-                        Location <strong className="text-[var(--glass-ink)]">{plate.location}</strong>
-                      </span>
-                    )}
-                    <span className="font-mono">Added {formatAdminDate(plate.created_at)}</span>
+                  {/* Specs: one labeled cell per field, aligned in a grid instead
+                      of a wrapping inline list — each value gets its own space. */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-3 mt-3 pt-3 border-t border-black/[0.06]">
+                    <SpecField
+                      label="Size"
+                      value={
+                        plate.across_size || plate.around_size
+                          ? `${plate.across_size ?? '—'} × ${plate.around_size ?? '—'}`
+                          : null
+                      }
+                      mono
+                    />
+                    <SpecField label="Cylinder" value={plate.cylinder?.toString()} mono />
+                    <SpecField label="Labels / round" value={plate.label_per_round?.toString()} mono />
+                    <SpecField label="Location" value={plate.location} />
+                    <SpecField label="Added" value={formatAdminDate(plate.created_at)} mono />
                   </div>
                 </div>
 
@@ -248,6 +288,30 @@ export default function PlatesManager({ canManage }: { canManage: boolean }) {
           onSaved={() => { setAdding(false); setEditing(null); load(); }}
         />
       )}
+    </div>
+  );
+}
+
+// A plate record can hold several etched IDs, one per line (entered via
+// Shift+Enter in the form) — split them out so each renders as its own tag.
+function plateIdsOf(plate: Plate): string[] {
+  if (!plate.plate_id) return [];
+  return plate.plate_id
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function SpecField({ label, value, mono }: { label: string; value?: string | null; mono?: boolean }) {
+  if (!value || value === '—') return null;
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-medium text-[var(--glass-muted)] uppercase tracking-wide">
+        {label}
+      </p>
+      <p className={cn('text-sm text-[var(--glass-ink)] font-semibold mt-0.5 truncate', mono && 'font-mono')}>
+        {value}
+      </p>
     </div>
   );
 }
