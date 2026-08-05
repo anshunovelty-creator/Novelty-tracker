@@ -10,8 +10,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { Search, Plus, Pencil, Trash2, Scissors } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatNumericDate } from '@/lib/utils';
-import type { Die } from '@/lib/types';
+import type { Die, DieStatus } from '@/lib/types';
 import AddDieModal from './AddDieModal';
+
+const STATUS_BADGE: Record<DieStatus, string> = {
+  'IN USE': 'bg-emerald-100 text-emerald-800 border border-emerald-200',
+  'EXTRA':  'bg-amber-100 text-amber-800 border border-amber-200',
+  'DAMAGE': 'bg-red-100 text-red-700 border border-red-200',
+};
 
 export default function DiesManager({ canManage }: { canManage: boolean }) {
   const [dies,      setDies]      = useState<Die[]>([]);
@@ -75,8 +81,10 @@ export default function DiesManager({ canManage }: { canManage: boolean }) {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search job, material, corner or serial no"
+            placeholder="Search job, material, corner, serial no or location"
             aria-label="Search dies"
+            title="Search (Ctrl+K)"
+            data-global-search
             className={cn(
               'w-full min-h-11 pl-9 pr-3 rounded-xl text-sm',
               'bg-[var(--glass-bg)] border border-[var(--glass-border)] text-[var(--glass-ink)]',
@@ -123,6 +131,9 @@ export default function DiesManager({ canManage }: { canManage: boolean }) {
               <div className="flex flex-col sm:flex-row sm:items-start gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
+                    <span className={cn('text-[11px] font-medium px-1.5 py-0.5 rounded', STATUS_BADGE[die.status])}>
+                      {die.status}
+                    </span>
                     {die.serial_no && (
                       <span className="font-mono text-xs font-semibold text-[var(--glass-ink)]">
                         {die.serial_no.toUpperCase()}
@@ -143,10 +154,18 @@ export default function DiesManager({ canManage }: { canManage: boolean }) {
                     <Field label="Size" value={sizeOf(die)} mono />
                     <Field label="Cylinder" value={die.cylinder?.toString()} mono />
                     <Field label="Material" value={die.material} />
-                    <Field label="Ups" value={die.ups?.toString()} mono />
-                    <Field label="Gap" value={die.gap} />
+                    <Field label="Ups per repeat" value={die.ups?.toString()} mono />
+                    <Field label="Gap across" value={die.gap} />
+                    <Field label="Location" value={die.location} />
                     <Field label="Received" value={formatNumericDate(die.die_received_on)} mono />
                   </div>
+
+                  {die.status === 'DAMAGE' && (die.damage_date || die.damage_reason) && (
+                    <p className="mt-2 text-xs text-red-700 break-words">
+                      Damaged{die.damage_date && ` ${formatNumericDate(die.damage_date)}`}
+                      {die.damage_reason && ` — ${die.damage_reason}`}
+                    </p>
+                  )}
                 </div>
 
                 {canManage && (

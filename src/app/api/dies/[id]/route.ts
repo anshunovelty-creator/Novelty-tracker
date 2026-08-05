@@ -12,11 +12,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { parseDepartment, canDeptManageDiesPlates } from '@/lib/constants/departments';
+import { DIE_STATUSES } from '@/lib/types';
 
 type Params = { params: Promise<{ id: string }> };
 
 const TEXT_FIELDS = [
-  'length', 'width', 'material', 'gap', 'corner', 'serial_no', 'die_received_on',
+  'length', 'width', 'material', 'gap', 'corner', 'serial_no', 'die_received_on', 'location',
 ] as const;
 
 const INT_FIELDS = ['cylinder', 'ups'] as const;
@@ -69,6 +70,33 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       const raw = body[field];
       const n = raw === null || raw === undefined || raw === '' ? NaN : Number(raw);
       updates[field] = Number.isFinite(n) ? Math.trunc(n) : null;
+    }
+  }
+
+  // Status and its damage fields travel together: 'DAMAGE' requires both a
+  // date and a reason, anything else clears them, so a die switched back to
+  // 'IN USE' or 'EXTRA' never carries a stale damage record.
+  if ('status' in body) {
+    const raw = typeof body.status === 'string' ? body.status.trim() : '';
+    if (!(DIE_STATUSES as string[]).includes(raw)) {
+      return NextResponse.json({ error: 'Invalid die status' }, { status: 400 });
+    }
+    updates.status = raw;
+
+    if (raw === 'DAMAGE') {
+      const damageDate   = typeof body.damage_date === 'string' ? body.damage_date.trim() : '';
+      const damageReason = typeof body.damage_reason === 'string' ? body.damage_reason.trim() : '';
+      if (!damageDate || !damageReason) {
+        return NextResponse.json(
+          { error: 'Damage date and reason are required when status is Damage' },
+          { status: 400 },
+        );
+      }
+      updates.damage_date   = damageDate;
+      updates.damage_reason = damageReason;
+    } else {
+      updates.damage_date   = null;
+      updates.damage_reason = null;
     }
   }
 

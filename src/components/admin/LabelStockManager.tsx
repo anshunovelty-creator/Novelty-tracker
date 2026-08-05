@@ -102,6 +102,8 @@ export default function LabelStockManager({ canManage }: { canManage: boolean })
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search card no, PO, PM code, party, job or location"
             aria-label="Search label stock"
+            title="Search (Ctrl+K)"
+            data-global-search
             className={cn(
               'w-full min-h-11 pl-9 pr-3 rounded-xl text-sm',
               'bg-[var(--glass-bg)] border border-[var(--glass-border)] text-[var(--glass-ink)]',

@@ -31,6 +31,8 @@ export default function FilterBar({
         type="search"
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
+        title="Search (Ctrl+K)"
+        data-global-search
       />
 
       {/* Status filter */}

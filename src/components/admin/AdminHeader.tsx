@@ -2,6 +2,7 @@
 // src/components/admin/AdminHeader.tsx
 
 import Link from 'next/link';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Package, Scissors, Disc } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -14,9 +15,45 @@ type Props = {
   displayName: string;
 };
 
+// Ctrl/Cmd + letter, site-wide. Keys are safe to claim outright: nobody types
+// a bare letter while holding Ctrl, so there's no risk of hijacking normal
+// typing in a search box or form field — only the browser's own binding for
+// that combo (print, save, bookmark, history) gets overridden.
+const SHORTCUTS: Record<string, string> = {
+  h: '/admin',
+  s: '/admin/stock',
+  d: '/admin/dies',
+  p: '/admin/plates',
+};
+
 export default function AdminHeader({ dept, displayName }: Props) {
   const router = useRouter();
   const supabase = createClient();
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+      const key = e.key.toLowerCase();
+
+      // Ctrl+K focuses whatever search box is on the current page, rather
+      // than navigating — every admin page tags its own search input with
+      // data-global-search, so there is at most one match at a time.
+      if (key === 'k') {
+        e.preventDefault();
+        const search = document.querySelector<HTMLInputElement>('[data-global-search]');
+        search?.focus();
+        search?.select();
+        return;
+      }
+
+      const dest = SHORTCUTS[key];
+      if (!dest) return;
+      e.preventDefault();
+      router.push(dest);
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [router]);
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -30,14 +67,19 @@ export default function AdminHeader({ dept, displayName }: Props) {
 
         {/* Brand + primary nav */}
         <div className="flex items-center gap-3 sm:gap-5 min-w-0">
-          <Logo onDark width={120} height={30} priority />
+          <Link href="/admin" aria-label="Go to dashboard" title="Dashboard (Ctrl+H)" className="shrink-0">
+            <Logo onDark width={120} height={30} priority />
+          </Link>
 
           {/* Label stock, dies and plates are readable by every department —
               Dispatch (stock) and Prepress (dies/plates) are the only ones
-              who can move them, enforced in /api/stock, /api/dies, /api/plates. */}
+              who can move them, enforced in /api/stock, /api/dies, /api/plates.
+              Ctrl/Cmd + letter shortcuts are wired up in the keydown handler
+              above — the titles below are just how the team discovers them. */}
           <nav aria-label="Admin sections" className="flex items-center">
             <Link
               href="/admin/stock"
+              title="Label Stock (Ctrl+S)"
               className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
             >
               <Package className="h-4 w-4" aria-hidden="true" />
@@ -45,6 +87,7 @@ export default function AdminHeader({ dept, displayName }: Props) {
             </Link>
             <Link
               href="/admin/dies"
+              title="Dies (Ctrl+D)"
               className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
             >
               <Scissors className="h-4 w-4" aria-hidden="true" />
@@ -52,6 +95,7 @@ export default function AdminHeader({ dept, displayName }: Props) {
             </Link>
             <Link
               href="/admin/plates"
+              title="Plates (Ctrl+P)"
               className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
             >
               <Disc className="h-4 w-4" aria-hidden="true" />

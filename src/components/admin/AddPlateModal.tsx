@@ -105,17 +105,16 @@ export default function AddPlateModal({ editing, onClose, onSaved }: Props) {
         </div>
 
         <div className="px-5 py-4 overflow-y-auto space-y-4">
-          <div>
-            <PlateLabel required>Party</PlateLabel>
-            <input
-              value={party}
-              onChange={(e) => setParty(e.target.value)}
-              placeholder="e.g. DHANUKA - SANAND"
-              className={inputCls}
-            />
-          </div>
-
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <PlateLabel required>Party</PlateLabel>
+              <input
+                value={party}
+                onChange={(e) => setParty(e.target.value)}
+                placeholder="e.g. DHANUKA - SANAND"
+                className={inputCls}
+              />
+            </div>
             <div>
               <PlateLabel>PM code</PlateLabel>
               <input
@@ -125,15 +124,16 @@ export default function AddPlateModal({ editing, onClose, onSaved }: Props) {
                 className={cn(inputCls, 'font-mono')}
               />
             </div>
-            <div>
-              <PlateLabel>Item name</PlateLabel>
-              <input
-                value={itemName}
-                onChange={(e) => setItemName(e.target.value)}
-                placeholder="Optional"
-                className={inputCls}
-              />
-            </div>
+          </div>
+
+          <div>
+            <PlateLabel>Item name</PlateLabel>
+            <input
+              value={itemName}
+              onChange={(e) => setItemName(e.target.value)}
+              placeholder="Optional"
+              className={inputCls}
+            />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -170,12 +170,12 @@ export default function AddPlateModal({ editing, onClose, onSaved }: Props) {
               />
             </div>
             <div>
-              <PlateLabel>Plate ID</PlateLabel>
+              <PlateLabel>Location</PlateLabel>
               <input
-                value={plateId}
-                onChange={(e) => setPlateId(e.target.value)}
-                placeholder="Etched serial — optional"
-                className={cn(inputCls, 'font-mono')}
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="Rack / shelf / bay"
+                className={inputCls}
               />
             </div>
           </div>
@@ -204,12 +204,12 @@ export default function AddPlateModal({ editing, onClose, onSaved }: Props) {
           </div>
 
           <div>
-            <PlateLabel>Location</PlateLabel>
+            <PlateLabel>Plate ID</PlateLabel>
             <input
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="Rack / shelf / bay"
-              className={inputCls}
+              value={plateId}
+              onChange={(e) => setPlateId(e.target.value)}
+              placeholder="Etched serial — optional"
+              className={cn(inputCls, 'font-mono')}
             />
           </div>
         </div>

@@ -98,7 +98,18 @@ export interface LabelStock {
 // maker's spec sheet; every department can search and view them, only
 // Prepress and Admin can add, correct or remove an entry. Field order
 // mirrors the source spec sheet (JOB, LENGTH, WIDTH, CYLINDER, MATERIAL,
-// Ups, Gap, CORNER, SERIAL No., Die Rec. on).
+// Ups, Gap, CORNER, SERIAL No., Die Rec. on), followed by the operational
+// fields added afterward (Location, Status).
+
+/**
+ * 'IN USE' — on the rack, nothing wrong with it (default).
+ * 'EXTRA'  — a spare beyond what's mounted.
+ * 'DAMAGE' — out of rotation; damage_date and damage_reason apply only
+ *            to this status, enforced together server-side.
+ */
+export type DieStatus = 'IN USE' | 'EXTRA' | 'DAMAGE';
+
+export const DIE_STATUSES: DieStatus[] = ['IN USE', 'EXTRA', 'DAMAGE'];
 
 export interface Die {
   id: string;
@@ -112,6 +123,10 @@ export interface Die {
   corner: string | null;          // CORNER — e.g. "SPECIAL", "ROUND"
   serial_no: string | null;       // SERIAL No. — identifier etched on the die
   die_received_on: string | null; // Die Rec. on — ISO date string
+  location: string | null;        // rack / shelf / bay
+  status: DieStatus;
+  damage_date: string | null;     // set only when status is 'DAMAGE'
+  damage_reason: string | null;   // set only when status is 'DAMAGE'
   created_by: string | null;
   created_at: string;
   updated_at: string;

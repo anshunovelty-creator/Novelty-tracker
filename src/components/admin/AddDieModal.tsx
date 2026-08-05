@@ -11,7 +11,7 @@ import { Check, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { ModalShell } from './modals';
-import type { Die } from '@/lib/types';
+import { DIE_STATUSES, type Die, type DieStatus } from '@/lib/types';
 
 const inputCls = cn(
   'w-full px-3 py-2 rounded-lg text-sm bg-[var(--glass-bg)] border border-[var(--glass-border)]',
@@ -41,13 +41,29 @@ export default function AddDieModal({ editing, onClose, onSaved }: Props) {
   // <input type="date"> only speaks yyyy-MM-dd; the column is a DATE, so the
   // stored value already is one.
   const [receivedOn, setReceivedOn] = useState(editing?.die_received_on ?? '');
+  const [location, setLocation] = useState(editing?.location ?? '');
+  const [status,   setStatus]   = useState<DieStatus>(editing?.status ?? 'IN USE');
+  // Only meaningful while status is 'DAMAGE' — cleared server-side otherwise.
+  const [damageDate,   setDamageDate]   = useState(editing?.damage_date ?? '');
+  const [damageReason, setDamageReason] = useState(editing?.damage_reason ?? '');
   const [saving, setSaving] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!jobName.trim()) {
-      toast.error('Enter the job this die was cut for');
+    if (!jobName.trim())    { toast.error('Enter the job this die was cut for'); return; }
+    if (!length.trim())     { toast.error('Enter the length'); return; }
+    if (!width.trim())      { toast.error('Enter the width'); return; }
+    if (!cylinder.trim())   { toast.error('Enter the cylinder'); return; }
+    if (!material.trim())   { toast.error('Enter the material'); return; }
+    if (!ups.trim())        { toast.error('Enter the ups per repeat'); return; }
+    if (!gap.trim())        { toast.error('Enter the gap across'); return; }
+    if (!corner.trim())     { toast.error('Enter the corner radius'); return; }
+    if (!serialNo.trim())   { toast.error('Enter the serial no'); return; }
+    if (!receivedOn.trim()) { toast.error('Enter the date the die was received on'); return; }
+    if (!location.trim())   { toast.error('Enter the die location'); return; }
+    if (status === 'DAMAGE' && (!damageDate.trim() || !damageReason.trim())) {
+      toast.error('Enter the damage date and reason');
       return;
     }
 
@@ -67,6 +83,10 @@ export default function AddDieModal({ editing, onClose, onSaved }: Props) {
           corner:          corner.trim(),
           serial_no:       serialNo.trim(),
           die_received_on: receivedOn,
+          location:        location.trim(),
+          status,
+          damage_date:     status === 'DAMAGE' ? damageDate.trim()   : '',
+          damage_reason:   status === 'DAMAGE' ? damageReason.trim() : '',
         }),
       });
       const data = await res.json();
@@ -118,7 +138,7 @@ export default function AddDieModal({ editing, onClose, onSaved }: Props) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <DieLabel>Length</DieLabel>
+              <DieLabel required>Length</DieLabel>
               <input
                 value={length}
                 onChange={(e) => setLength(e.target.value)}
@@ -127,7 +147,7 @@ export default function AddDieModal({ editing, onClose, onSaved }: Props) {
               />
             </div>
             <div>
-              <DieLabel>Width</DieLabel>
+              <DieLabel required>Width</DieLabel>
               <input
                 value={width}
                 onChange={(e) => setWidth(e.target.value)}
@@ -139,22 +159,22 @@ export default function AddDieModal({ editing, onClose, onSaved }: Props) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <DieLabel>Cylinder</DieLabel>
+              <DieLabel required>Cylinder</DieLabel>
               <input
                 type="number"
                 inputMode="numeric"
                 value={cylinder}
                 onChange={(e) => setCylinder(e.target.value)}
-                placeholder="Optional"
+                placeholder="e.g. 81"
                 className={cn(inputCls, 'font-mono')}
               />
             </div>
             <div>
-              <DieLabel>Material</DieLabel>
+              <DieLabel required>Material</DieLabel>
               <input
                 value={material}
                 onChange={(e) => setMaterial(e.target.value)}
-                placeholder="Optional"
+                placeholder="e.g. 0.75 CHROMO SILVER"
                 className={inputCls}
               />
             </div>
@@ -162,7 +182,7 @@ export default function AddDieModal({ editing, onClose, onSaved }: Props) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <DieLabel>Ups</DieLabel>
+              <DieLabel required>Ups per repeat</DieLabel>
               <input
                 type="number"
                 inputMode="numeric"
@@ -173,7 +193,7 @@ export default function AddDieModal({ editing, onClose, onSaved }: Props) {
               />
             </div>
             <div>
-              <DieLabel>Gap</DieLabel>
+              <DieLabel required>Gap across</DieLabel>
               <input
                 value={gap}
                 onChange={(e) => setGap(e.target.value)}
@@ -185,7 +205,7 @@ export default function AddDieModal({ editing, onClose, onSaved }: Props) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <DieLabel>Corner</DieLabel>
+              <DieLabel required>Corner radius</DieLabel>
               <input
                 value={corner}
                 onChange={(e) => setCorner(e.target.value)}
@@ -194,7 +214,7 @@ export default function AddDieModal({ editing, onClose, onSaved }: Props) {
               />
             </div>
             <div>
-              <DieLabel>Serial no</DieLabel>
+              <DieLabel required>Serial no</DieLabel>
               <input
                 value={serialNo}
                 onChange={(e) => setSerialNo(e.target.value)}
@@ -204,15 +224,62 @@ export default function AddDieModal({ editing, onClose, onSaved }: Props) {
             </div>
           </div>
 
-          <div>
-            <DieLabel>Die received on</DieLabel>
-            <input
-              type="date"
-              value={receivedOn}
-              onChange={(e) => setReceivedOn(e.target.value)}
-              className={cn(inputCls, 'font-mono')}
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <DieLabel required>Die received on</DieLabel>
+              <input
+                type="date"
+                value={receivedOn}
+                onChange={(e) => setReceivedOn(e.target.value)}
+                className={cn(inputCls, 'font-mono')}
+              />
+            </div>
+            <div>
+              <DieLabel required>Die location</DieLabel>
+              <input
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="Rack / shelf / bay"
+                className={inputCls}
+              />
+            </div>
           </div>
+
+          <div>
+            <DieLabel required>Die status</DieLabel>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value as DieStatus)}
+              className={cn(inputCls, 'appearance-none')}
+            >
+              {DIE_STATUSES.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+
+          {status === 'DAMAGE' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg border border-red-200 bg-red-50 p-3">
+              <div>
+                <DieLabel required>Damage date</DieLabel>
+                <input
+                  type="date"
+                  value={damageDate}
+                  onChange={(e) => setDamageDate(e.target.value)}
+                  className={cn(inputCls, 'font-mono')}
+                />
+              </div>
+              <div>
+                <DieLabel required>Damage reason</DieLabel>
+                <input
+                  value={damageReason}
+                  onChange={(e) => setDamageReason(e.target.value)}
+                  placeholder="e.g. Cracked during mounting"
+                  className={inputCls}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-white/12 shrink-0">

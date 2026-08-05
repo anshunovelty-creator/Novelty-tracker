@@ -77,6 +77,8 @@ export default function PlatesManager({ canManage }: { canManage: boolean }) {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search party, PM code, item or plate ID"
             aria-label="Search plates"
+            title="Search (Ctrl+K)"
+            data-global-search
             className={cn(
               'w-full min-h-11 pl-9 pr-3 rounded-xl text-sm',
               'bg-[var(--glass-bg)] border border-[var(--glass-border)] text-[var(--glass-ink)]',
