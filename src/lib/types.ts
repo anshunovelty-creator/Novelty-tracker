@@ -170,6 +170,34 @@ export interface Plate {
   updated_at: string;
 }
 
+// ── job separations ─────────────────────────────────────────
+// The Prepress worksheet that splits an incoming PO into individually
+// trackable line items ahead of job-card creation. Every department can
+// search and watch it live; only Prepress and Admin add, correct or
+// remove a row. Field order mirrors the source sheet (Sr. No., Party, Po
+// No, Po Date, PM Code, Material Name, Quantity, Unit, Job Status, Rate,
+// Order Value, JC Status, AW send to).
+
+export interface JobSeparation {
+  id: string;
+  sr_no: string | null;           // auto-assigned, e.g. AUG26-1
+  party: string;                  // Party
+  po_no: string | null;           // Po No
+  po_date: string | null;         // Po Date — ISO date string
+  pm_code: string | null;         // PM Code
+  material_name: string | null;   // Material Name
+  quantity: number | null;        // Quantity
+  unit: string | null;            // Unit — '1' | '2' | '1&2'
+  job_status: string | null;      // Job Status
+  rate: number | null;            // Rate
+  order_value: number | null;     // Order Value — server-derived, quantity × rate
+  jc_status: string | null;       // JC Status
+  aw_send_to: string | null;      // AW send to
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Form data for Add Job — subset of Job used in the form
 /** Printing process a unit runs. Mirrors the jobs_printing_method_check constraint. */
 export type PrintingMethod = 'Offset' | 'Flexo';

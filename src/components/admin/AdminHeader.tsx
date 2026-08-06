@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Package, Scissors, Disc, Users } from 'lucide-react';
+import { Package, Scissors, Disc, Users, SplitSquareHorizontal } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import type { Department } from '@/lib/constants/departments';
 import { Logo } from '@/components/brand/Logo';
@@ -24,6 +24,7 @@ const SHORTCUTS: Record<string, string> = {
   s: '/admin/stock',
   d: '/admin/dies',
   p: '/admin/plates',
+  j: '/admin/job-separation',
   // Not 't' — Ctrl/Cmd+T is "new tab" and browsers never let a page
   // override it, so the shortcut would silently do nothing.
   m: '/admin/team',
@@ -74,9 +75,10 @@ export default function AdminHeader({ dept, displayName }: Props) {
             <Logo onDark width={120} height={30} priority />
           </Link>
 
-          {/* Label stock, dies and plates are readable by every department —
-              Dispatch (stock) and Prepress (dies/plates) are the only ones
-              who can move them, enforced in /api/stock, /api/dies, /api/plates.
+          {/* Label stock, dies, plates and job separation are readable by
+              every department — Dispatch (stock) and Prepress (dies/plates/
+              job separation) are the only ones who can change them, enforced
+              in /api/stock, /api/dies, /api/plates, /api/job-separations.
               Ctrl/Cmd + letter shortcuts are wired up in the keydown handler
               above — the titles below are just how the team discovers them. */}
           <nav aria-label="Admin sections" className="flex items-center">
@@ -103,6 +105,14 @@ export default function AdminHeader({ dept, displayName }: Props) {
             >
               <Disc className="h-4 w-4" aria-hidden="true" />
               Plates
+            </Link>
+            <Link
+              href="/admin/job-separation"
+              title="Job Separation (Ctrl+J)"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
+            >
+              <SplitSquareHorizontal className="h-4 w-4" aria-hidden="true" />
+              Job Separation
             </Link>
             {/* Team management touches login accounts directly — Admin only,
                 mirrored by the check in every /api/team route. */}
