@@ -9,12 +9,12 @@
 // Value are not inputs — Sr. No. is auto-assigned on add, Order Value is
 // derived server-side from quantity × rate.
 
-import React, { useState, useId } from 'react';
+import React, { useState, useEffect, useRef, useId } from 'react';
 import { Check, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { ModalShell } from './modals';
-import type { JobSeparation } from '@/lib/types';
+import type { JobSeparation, Party } from '@/lib/types';
 
 const inputCls = cn(
   'w-full px-3 py-2 rounded-lg text-sm bg-[var(--glass-bg)] border border-[var(--glass-border)]',
@@ -33,6 +33,19 @@ export default function AddJobSeparationModal({ editing, onClose, onSaved }: Pro
   const titleId = useId();
 
   const [party,        setParty]        = useState(editing?.party ?? '');
+  // A row being edited already has a real, saved party — that counts as
+  // confirmed. New entries start unconfirmed until a suggestion is picked,
+  // so a stray typo can never reach the database as if it were a deliberate
+  // new party. Adding a party that isn't on the list yet happens only
+  // through the separate Parties manager (JobSeparationManager's "Parties"
+  // button) — not inline here.
+  const [partyConfirmed,     setPartyConfirmed]     = useState(Boolean(editing));
+  const [partySuggestions,   setPartySuggestions]   = useState<Party[]>([]);
+  const [showPartySuggestions, setShowPartySuggestions] = useState(false);
+  // Set right after picking a suggestion so the lookup effect doesn't
+  // immediately re-open the dropdown for the value it just wrote —
+  // mirrors suppressPmLookup in AddJobForm.tsx.
+  const suppressPartyLookup = useRef(false);
   const [poNo,         setPoNo]         = useState(editing?.po_no ?? '');
   // <input type="date"> only speaks yyyy-MM-dd; the column is a DATE, so the
   // stored value already is one.
@@ -54,10 +67,51 @@ export default function AddJobSeparationModal({ editing, onClose, onSaved }: Pro
       ? qtyNum * rateNum
       : null;
 
+  // Party typeahead — searches the master list as soon as the first
+  // letter is typed (min length 1, unlike the PM-code lookup's min of 2,
+  // per how the team wants to search this field).
+  useEffect(() => {
+    if (suppressPartyLookup.current) {
+      suppressPartyLookup.current = false;
+      return;
+    }
+    const q = party.trim();
+    if (!q) {
+      setPartySuggestions([]);
+      setShowPartySuggestions(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res  = await fetch(`/api/parties?search=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        if (res.ok) {
+          setPartySuggestions(data.parties ?? []);
+          setShowPartySuggestions(true);
+        }
+      } catch {
+        // Best-effort — the confirmed-party validation below still guards
+        // submission without it.
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [party]);
+
+  function selectParty(p: Party) {
+    suppressPartyLookup.current = true;
+    setParty(p.name);
+    setPartyConfirmed(true);
+    setShowPartySuggestions(false);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     if (!party.trim())        { toast.error('Enter the party'); return; }
+    if (!partyConfirmed) {
+      toast.error('Select a party from the list — add new parties from the Parties button');
+      return;
+    }
     if (!poNo.trim())         { toast.error('Enter the PO no'); return; }
     if (!materialName.trim()) { toast.error('Enter the material name'); return; }
     if (!quantity.trim())     { toast.error('Enter the quantity'); return; }
@@ -123,12 +177,43 @@ export default function AddJobSeparationModal({ editing, onClose, onSaved }: Pro
         <div className="px-5 py-4 overflow-y-auto space-y-4">
           <div>
             <JsLabel required>Party</JsLabel>
-            <input
-              value={party}
-              onChange={(e) => setParty(e.target.value)}
-              placeholder="e.g. ARYSTA"
-              className={inputCls}
-            />
+            <div className="relative">
+              <input
+                value={party}
+                onChange={(e) => { setParty(e.target.value); setPartyConfirmed(false); }}
+                onFocus={() => (partySuggestions.length > 0 || party.trim()) && setShowPartySuggestions(true)}
+                onBlur={() => setTimeout(() => setShowPartySuggestions(false), 150)}
+                placeholder="Start typing to search the party list…"
+                autoComplete="off"
+                className={inputCls}
+              />
+              {showPartySuggestions && (
+                <div className="absolute z-20 top-full left-0 right-0 mt-1 glass-strong glass rounded-lg shadow-lg overflow-hidden max-h-56 overflow-y-auto">
+                  {partySuggestions.length > 0 ? (
+                    partySuggestions.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        // onMouseDown fires before the input's onBlur closes the list
+                        onMouseDown={(e) => { e.preventDefault(); selectParty(p); }}
+                        className="w-full text-left px-3 py-2 text-sm text-[var(--glass-ink)] hover:bg-white/[0.08] transition-colors border-b border-white/10 last:border-0"
+                      >
+                        {p.name}
+                      </button>
+                    ))
+                  ) : (
+                    <p className="px-3 py-2 text-xs text-[var(--glass-muted)]">
+                      No matching party. Add it from the Parties button on the toolbar first.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+            {!partyConfirmed && party.trim() && !showPartySuggestions && (
+              <p className="text-xs text-amber-200 mt-1">
+                Select this party from the list — add new parties from the Parties button.
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

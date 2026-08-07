@@ -198,6 +198,16 @@ export interface JobSeparation {
   updated_at: string;
 }
 
+// Master list of party names — feeds the Job Separation Party typeahead
+// so entries stay spelled consistently. job_separations.party itself
+// stays free TEXT; this is a lookup list, not a foreign key.
+export interface Party {
+  id: string;
+  name: string;
+  created_by: string | null;
+  created_at: string;
+}
+
 // Form data for Add Job — subset of Job used in the form
 /** Printing process a unit runs. Mirrors the jobs_printing_method_check constraint. */
 export type PrintingMethod = 'Offset' | 'Flexo';

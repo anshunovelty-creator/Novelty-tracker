@@ -9,13 +9,24 @@
 // visibility-aware pattern the room displays use, not Supabase Realtime.
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Search, Plus, Pencil, Trash2, SplitSquareHorizontal, ArrowUp, ArrowDown } from 'lucide-react';
+import { Search, Plus, Pencil, Trash2, SplitSquareHorizontal, ArrowUp, ArrowDown, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatQty, formatNumericDate } from '@/lib/utils';
 import { csvDate, csvTimestamp, type CsvColumn } from '@/lib/export/csv';
 import type { JobSeparation } from '@/lib/types';
 import AddJobSeparationModal from './AddJobSeparationModal';
+import ManagePartiesModal from './ManagePartiesModal';
 import CsvExportButton from './CsvExportButton';
+import { SkeletonRows } from '@/components/ui/Skeleton';
+
+// Header labels for the desk table — sr. no through added, one column per
+// worksheet field, plus actions. Must stay in the same order as the <td>s
+// rendered below.
+const JOB_SEPARATION_COLUMNS = [
+  'Sr No', 'Party', 'PO No', 'PO Date', 'PM Code / Material', 'Qty', 'Unit',
+  'Rate', 'Order Value', 'Job Status', 'JC Status', 'AW', 'Added', 'Actions',
+] as const;
+const JOB_SEPARATION_COLS = JOB_SEPARATION_COLUMNS.length;
 
 // How often the list quietly re-fetches so a row someone else just added
 // shows up without a manual refresh. Loose on purpose — this is a reference
@@ -25,6 +36,18 @@ const POLL_MS = 30_000;
 // Mirrors JOB_SEPARATION_SEARCH_FIELDS in src/app/api/job-separations/route.ts
 // — the value sent as ?field=. "All fields" (value 'all') skips the param,
 // falling back to the server's multi-column OR search.
+// Mirrors DateRange in src/app/api/job-separations/route.ts — the value
+// sent as ?range=. Scopes both the default view and every search: at
+// 400-700 rows added a month, "Current month" keeps the list (and the
+// query) from growing unbounded the way "All data" eventually will.
+type DateRangeOption = 'month' | '3months' | 'all';
+
+const DATE_RANGE_OPTIONS: { value: DateRangeOption; label: string }[] = [
+  { value: 'month',    label: 'Current month' },
+  { value: '3months',  label: 'Last 3 months' },
+  { value: 'all',      label: 'All data' },
+];
+
 const JOB_SEPARATION_SEARCH_FIELDS: { value: string; label: string; placeholder: string }[] = [
   { value: 'all',           label: 'All fields',   placeholder: 'Search sr. no, party, PO no, PM code or material' },
   { value: 'sr_no',         label: 'Sr. No.',      placeholder: 'Search by sr. no' },
@@ -125,6 +148,7 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
   const [loading,     setLoading]     = useState(true);
   const [search,      setSearch]      = useState('');
   const [searchField, setSearchField] = useState('all');
+  const [range,       setRange]       = useState<DateRangeOption>('month');
   const [sortField,   setSortField]   = useState<SortField>('created_at');
   const [sortDir,     setSortDir]     = useState<SortDir>('desc');
   const [adding,      setAdding]      = useState(false);
@@ -132,6 +156,7 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
   // The row whose Delete has been armed. Deleting is two taps, never a dialog.
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busyId,     setBusyId]     = useState<string | null>(null);
+  const [managingParties, setManagingParties] = useState(false);
 
   // First load shows the skeleton; background polls should not — nobody
   // wants the whole list to flash empty every 30s while they're reading it.
@@ -141,6 +166,7 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
     if (firstLoad.current) setLoading(true);
     try {
       const params = new URLSearchParams();
+      params.set('range', range);
       if (search) {
         params.set('search', search);
         if (searchField !== 'all') params.set('field', searchField);
@@ -155,7 +181,7 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
       setLoading(false);
       firstLoad.current = false;
     }
-  }, [search, searchField]);
+  }, [search, searchField, range]);
 
   useEffect(() => {
     const timer = setTimeout(load, search ? 300 : 0);
@@ -206,6 +232,22 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
     <div className="space-y-3">
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+        <select
+          value={range}
+          onChange={(e) => setRange(e.target.value as DateRangeOption)}
+          aria-label="Date range"
+          title="Which rows to show and search"
+          className={cn(
+            'min-h-11 px-3 rounded-xl text-sm shrink-0',
+            'bg-[var(--glass-bg)] border border-[var(--glass-border)] text-[var(--glass-ink)]',
+            'focus:outline-none focus:border-emerald-300/70 focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)] transition-all',
+          )}
+        >
+          {DATE_RANGE_OPTIONS.map((r) => (
+            <option key={r.value} value={r.value}>{r.label}</option>
+          ))}
+        </select>
+
         <select
           value={searchField}
           onChange={(e) => setSearchField(e.target.value)}
@@ -278,6 +320,20 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
 
         {canManage && (
           <button
+            onClick={() => setManagingParties(true)}
+            className={cn(
+              'inline-flex items-center justify-center gap-1.5 min-h-11 px-3 rounded-xl shrink-0',
+              'text-sm font-medium border border-[var(--glass-border)] text-[var(--glass-muted)]',
+              'hover:bg-black/[0.04] hover:text-[var(--glass-ink)] transition-colors',
+            )}
+          >
+            <Users className="w-4 h-4" aria-hidden="true" />
+            Parties
+          </button>
+        )}
+
+        {canManage && (
+          <button
             onClick={() => setAdding(true)}
             className={cn(
               'inline-flex items-center justify-center gap-1.5 min-h-11 px-4 rounded-xl',
@@ -295,123 +351,287 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
           <strong className="text-[var(--glass-ink)]">{sortedRows.length}</strong>
           {' '}{sortedRows.length === 1 ? 'row' : 'rows'}
           {search && ' matching your search'}
+          {range !== 'all' && (
+            <>{' '}in {DATE_RANGE_OPTIONS.find((r) => r.value === range)?.label.toLowerCase()}</>
+          )}
         </p>
       )}
 
       {loading ? (
-        <div className="space-y-2" aria-hidden="true">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-20 rounded-xl bg-black/[0.04]" />
-          ))}
-        </div>
+        <>
+          {/* Phone: card skeleton */}
+          <div className="sm:hidden space-y-2" aria-hidden="true">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="h-20 rounded-xl bg-black/[0.04]" />
+            ))}
+          </div>
+          {/* Desk: table skeleton */}
+          <div className="hidden sm:block rounded-xl glass overflow-hidden">
+            <div className="table-scroll-wrapper max-h-[70vh] overflow-y-auto">
+              <table className="w-full min-w-[1550px] border-collapse text-sm">
+                <thead>
+                  <tr>
+                    {JOB_SEPARATION_COLUMNS.map((col) => (
+                      <th key={col} scope="col" className={cn(
+                        'sticky top-0 z-10 px-3 py-2.5 text-left text-[11px] font-semibold text-[var(--glass-muted)]',
+                        'uppercase tracking-[0.06em] whitespace-nowrap bg-[var(--glass-bg-strong)] backdrop-blur-[14px]',
+                        'border-b border-white/12',
+                        col === 'Actions' && 'text-right',
+                      )}>
+                        {col}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <SkeletonRows rows={5} cols={JOB_SEPARATION_COLS} />
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       ) : sortedRows.length === 0 ? (
-        <EmptyState hasSearch={Boolean(search)} />
+        <EmptyState hasSearch={Boolean(search)} range={range} />
       ) : (
-        <ul className="space-y-3">
-          {sortedRows.map((row) => {
-            const isRepeat = (row.aw_send_to ?? '').trim().toUpperCase() === 'REPEAT';
-            return (
-              <li key={row.id} className="glass rounded-xl p-4">
-                <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-                  <div className="min-w-0 flex-1">
-                    {/* Identity: sr. no, unit, JC status, and an AW-repeat flag */}
-                    <div className="flex flex-wrap items-center gap-2">
-                      {row.sr_no && (
-                        <span className="font-mono text-xs font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
-                          {row.sr_no}
-                        </span>
-                      )}
-                      {row.unit && (
-                        <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
-                          Unit {row.unit}
-                        </span>
-                      )}
-                      {row.jc_status && (
-                        <span className={cn(
-                          'text-[11px] font-medium px-1.5 py-0.5 rounded border',
-                          row.jc_status.trim().toUpperCase() === 'DONE'
-                            ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                            : 'bg-amber-100 text-amber-800 border-amber-200',
-                        )}>
-                          JC {row.jc_status}
-                        </span>
-                      )}
-                      {isRepeat && (
-                        <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200">
-                          AW REPEAT
-                        </span>
-                      )}
-                    </div>
+        <>
+          {/* Phone: card list */}
+          <ul className="sm:hidden space-y-3">
+            {sortedRows.map((row) => {
+              const isRepeat = (row.aw_send_to ?? '').trim().toUpperCase() === 'REPEAT';
+              return (
+                <li key={row.id} className="glass rounded-xl p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+                    <div className="min-w-0 flex-1">
+                      {/* Identity: sr. no, unit, JC status, and an AW-repeat flag */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        {row.sr_no && (
+                          <span className="font-mono text-xs font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                            {row.sr_no}
+                          </span>
+                        )}
+                        {row.unit && (
+                          <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                            Unit {row.unit}
+                          </span>
+                        )}
+                        {row.jc_status && (
+                          <span className={cn(
+                            'text-[11px] font-medium px-1.5 py-0.5 rounded border',
+                            row.jc_status.trim().toUpperCase() === 'DONE'
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                              : 'bg-amber-100 text-amber-800 border-amber-200',
+                          )}>
+                            JC {row.jc_status}
+                          </span>
+                        )}
+                        {isRepeat && (
+                          <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200">
+                            AW REPEAT
+                          </span>
+                        )}
+                      </div>
 
-                    <p className="text-sm font-semibold text-[var(--glass-ink)] mt-1.5 break-words">
-                      {row.party}
-                    </p>
-                    {row.material_name && (
-                      <p className="text-xs text-[var(--glass-muted)] mt-0.5 break-words">
-                        {row.material_name}
+                      <p className="text-sm font-semibold text-[var(--glass-ink)] mt-1.5 break-words">
+                        {row.party}
                       </p>
+                      {row.material_name && (
+                        <p className="text-xs text-[var(--glass-muted)] mt-0.5 break-words">
+                          {row.material_name}
+                        </p>
+                      )}
+
+                      {/* Specs: one labeled cell per field, aligned in a grid instead
+                          of a wrapping inline list — each value gets its own space. */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-3 mt-3 pt-3 border-t border-black/[0.06]">
+                        <SpecField label="PO No" value={row.po_no} mono />
+                        <SpecField label="PO Date" value={formatNumericDate(row.po_date)} mono />
+                        <SpecField label="PM Code" value={row.pm_code} mono />
+                        <SpecField label="Quantity" value={row.quantity !== null ? formatQty(row.quantity) : null} mono />
+                        <SpecField label="Rate" value={formatMoney(row.rate)} mono />
+                        <SpecField label="Order Value" value={formatMoney(row.order_value)} mono />
+                        <SpecField label="Job Status" value={row.job_status} />
+                        <SpecField label="Added" value={formatNumericDate(row.created_at)} mono />
+                      </div>
+                    </div>
+
+                    {canManage && (
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => { setConfirming(null); setEditing(row); }}
+                          aria-label={`Edit job separation row for ${row.party}`}
+                          className={cn(
+                            'inline-flex items-center justify-center gap-1.5 min-h-11 px-3 rounded-lg',
+                            'text-xs font-medium border border-black/[0.12] text-[var(--glass-muted)]',
+                            'hover:bg-black/[0.04] hover:text-[var(--glass-ink)] transition-colors',
+                          )}
+                        >
+                          <Pencil className="w-4 h-4" aria-hidden="true" />
+                          Edit
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            confirming === row.id ? remove(row) : setConfirming(row.id)
+                          }
+                          onBlur={() => setConfirming((id) => (id === row.id ? null : id))}
+                          disabled={busyId === row.id}
+                          aria-label={
+                            confirming === row.id
+                              ? `Confirm deleting the job separation row for ${row.party}`
+                              : `Delete the job separation row for ${row.party}`
+                          }
+                          className={cn(
+                            'inline-flex items-center justify-center gap-1.5 min-h-11 px-3 rounded-lg',
+                            'text-xs font-medium border transition-colors disabled:opacity-50 whitespace-nowrap',
+                            confirming === row.id
+                              ? 'border-red-300 bg-red-100 text-red-800 hover:bg-red-200'
+                              : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100',
+                          )}
+                        >
+                          <Trash2 className="w-4 h-4" aria-hidden="true" />
+                          {busyId === row.id
+                            ? 'Deleting…'
+                            : confirming === row.id ? 'Confirm' : 'Delete'}
+                        </button>
+                      </div>
                     )}
-
-                    {/* Specs: one labeled cell per field, aligned in a grid instead
-                        of a wrapping inline list — each value gets its own space. */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-3 mt-3 pt-3 border-t border-black/[0.06]">
-                      <SpecField label="PO No" value={row.po_no} mono />
-                      <SpecField label="PO Date" value={formatNumericDate(row.po_date)} mono />
-                      <SpecField label="PM Code" value={row.pm_code} mono />
-                      <SpecField label="Quantity" value={row.quantity !== null ? formatQty(row.quantity) : null} mono />
-                      <SpecField label="Rate" value={formatMoney(row.rate)} mono />
-                      <SpecField label="Order Value" value={formatMoney(row.order_value)} mono />
-                      <SpecField label="Job Status" value={row.job_status} />
-                      <SpecField label="Added" value={formatNumericDate(row.created_at)} mono />
-                    </div>
                   </div>
+                </li>
+              );
+            })}
+          </ul>
 
-                  {canManage && (
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        onClick={() => { setConfirming(null); setEditing(row); }}
-                        aria-label={`Edit job separation row for ${row.party}`}
-                        className={cn(
-                          'inline-flex items-center justify-center gap-1.5 min-h-11 px-3 rounded-lg',
-                          'text-xs font-medium border border-black/[0.12] text-[var(--glass-muted)]',
-                          'hover:bg-black/[0.04] hover:text-[var(--glass-ink)] transition-colors',
-                        )}
-                      >
-                        <Pencil className="w-4 h-4" aria-hidden="true" />
-                        Edit
-                      </button>
+          {/* Desk: table with a fixed header, scrolling through the rows —
+              the spreadsheet reading this worksheet was modeled on. */}
+          <div className="hidden sm:block rounded-xl glass overflow-hidden">
+            <div className="table-scroll-wrapper max-h-[70vh] overflow-y-auto">
+              <table className="w-full min-w-[1550px] border-collapse text-sm">
+                <thead>
+                  <tr>
+                    {JOB_SEPARATION_COLUMNS.map((col) => (
+                      <th key={col} scope="col" className={cn(
+                        'sticky top-0 z-10 px-3 py-2.5 text-left text-[11px] font-semibold text-[var(--glass-muted)]',
+                        'uppercase tracking-[0.06em] whitespace-nowrap bg-[var(--glass-bg-strong)] backdrop-blur-[14px]',
+                        'border-b border-white/12',
+                        col === 'Actions' && 'text-right',
+                      )}>
+                        {col}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedRows.map((row) => {
+                    const isRepeat = (row.aw_send_to ?? '').trim().toUpperCase() === 'REPEAT';
+                    return (
+                      <tr key={row.id} className="border-b border-white/8 hover:bg-black/[0.03] transition-colors">
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {canManage ? (
+                            <button
+                              type="button"
+                              onClick={() => { setConfirming(null); setEditing(row); }}
+                              aria-label={`Open details for ${row.party}`}
+                              title="Open details"
+                              className="font-mono text-xs font-semibold text-[var(--glass-ink)] underline decoration-dotted decoration-[var(--glass-muted)] underline-offset-2 hover:text-emerald-700 hover:decoration-emerald-700 transition-colors"
+                            >
+                              {row.sr_no || '—'}
+                            </button>
+                          ) : (
+                            <span className="font-mono text-xs font-semibold text-[var(--glass-ink)]">{row.sr_no || '—'}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 font-semibold text-[var(--glass-ink)] whitespace-nowrap">{row.party}</td>
+                        <td className="px-3 py-2.5 font-mono whitespace-nowrap">{row.po_no || '—'}</td>
+                        <td className="px-3 py-2.5 font-mono whitespace-nowrap">{formatNumericDate(row.po_date) || '—'}</td>
+                        <td className="px-3 py-2.5 min-w-[220px] max-w-[320px] whitespace-normal align-top">
+                          <p className="font-mono text-xs font-semibold text-[var(--glass-ink)]">{row.pm_code || '—'}</p>
+                          <p className="text-xs text-[var(--glass-muted)] mt-0.5 break-words">{row.material_name || '—'}</p>
+                        </td>
+                        <td className="px-3 py-2.5 font-mono whitespace-nowrap">{row.quantity !== null ? formatQty(row.quantity) : '—'}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">{row.unit || '—'}</td>
+                        <td className="px-3 py-2.5 font-mono whitespace-nowrap">{formatMoney(row.rate) ?? '—'}</td>
+                        <td className="px-3 py-2.5 font-mono whitespace-nowrap">{formatMoney(row.order_value) ?? '—'}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">{row.job_status || '—'}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {row.jc_status ? (
+                            <span className={cn(
+                              'text-[11px] font-medium px-1.5 py-0.5 rounded border',
+                              row.jc_status.trim().toUpperCase() === 'DONE'
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                : 'bg-amber-100 text-amber-800 border-amber-200',
+                            )}>
+                              {row.jc_status}
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {isRepeat ? (
+                            <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200">
+                              AW REPEAT
+                            </span>
+                          ) : (row.aw_send_to || '—')}
+                        </td>
+                        <td className="px-3 py-2.5 font-mono whitespace-nowrap text-[var(--glass-muted)]">{formatNumericDate(row.created_at) || '—'}</td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                          {canManage && (
+                            <div className="inline-flex items-center gap-1.5">
+                              <button
+                                onClick={() => { setConfirming(null); setEditing(row); }}
+                                aria-label={`Edit job separation row for ${row.party}`}
+                                title="Edit"
+                                className={cn(
+                                  'inline-flex items-center justify-center min-h-11 min-w-11 rounded-lg',
+                                  'border border-black/[0.12] text-[var(--glass-muted)]',
+                                  'hover:bg-black/[0.04] hover:text-[var(--glass-ink)] transition-colors',
+                                )}
+                              >
+                                <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
+                              </button>
 
-                      <button
-                        onClick={() =>
-                          confirming === row.id ? remove(row) : setConfirming(row.id)
-                        }
-                        onBlur={() => setConfirming((id) => (id === row.id ? null : id))}
-                        disabled={busyId === row.id}
-                        aria-label={
-                          confirming === row.id
-                            ? `Confirm deleting the job separation row for ${row.party}`
-                            : `Delete the job separation row for ${row.party}`
-                        }
-                        className={cn(
-                          'inline-flex items-center justify-center gap-1.5 min-h-11 px-3 rounded-lg',
-                          'text-xs font-medium border transition-colors disabled:opacity-50 whitespace-nowrap',
-                          confirming === row.id
-                            ? 'border-red-300 bg-red-100 text-red-800 hover:bg-red-200'
-                            : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100',
-                        )}
-                      >
-                        <Trash2 className="w-4 h-4" aria-hidden="true" />
-                        {busyId === row.id
-                          ? 'Deleting…'
-                          : confirming === row.id ? 'Confirm' : 'Delete'}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                              {confirming === row.id ? (
+                                <div className="inline-flex items-center gap-1">
+                                  <button
+                                    onClick={() => remove(row)}
+                                    disabled={busyId === row.id}
+                                    onBlur={() => setConfirming((id) => (id === row.id ? null : id))}
+                                    aria-label={`Confirm deleting the job separation row for ${row.party}`}
+                                    className="inline-flex items-center justify-center min-h-11 px-2.5 rounded-lg text-[11px] font-medium border border-red-300 bg-red-100 text-red-800 hover:bg-red-200 disabled:opacity-50 transition-colors whitespace-nowrap"
+                                  >
+                                    {busyId === row.id ? '…' : 'Confirm'}
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirming(null)}
+                                    disabled={busyId === row.id}
+                                    className="inline-flex items-center justify-center min-h-11 px-1.5 text-[11px] font-medium text-[var(--glass-muted)] hover:text-[var(--glass-ink)] disabled:opacity-40 transition-colors"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setConfirming(row.id)}
+                                  aria-label={`Delete the job separation row for ${row.party}`}
+                                  title="Delete"
+                                  className={cn(
+                                    'inline-flex items-center justify-center min-h-11 min-w-11 rounded-lg',
+                                    'border border-black/[0.12] text-[var(--glass-muted)]',
+                                    'hover:bg-red-50 hover:border-red-200 hover:text-red-800 transition-colors',
+                                  )}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
 
       {(adding || editing) && (
@@ -420,6 +640,10 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
           onClose={() => { setAdding(false); setEditing(null); }}
           onSaved={() => { setAdding(false); setEditing(null); load(); }}
         />
+      )}
+
+      {managingParties && (
+        <ManagePartiesModal onClose={() => setManagingParties(false)} />
       )}
     </div>
   );
@@ -439,17 +663,20 @@ function SpecField({ label, value, mono }: { label: string; value?: string | nul
   );
 }
 
-function EmptyState({ hasSearch }: { hasSearch: boolean }) {
+function EmptyState({ hasSearch, range }: { hasSearch: boolean; range: DateRangeOption }) {
+  const scope = range === 'all' ? '' : ` in ${DATE_RANGE_OPTIONS.find((r) => r.value === range)?.label.toLowerCase()}`;
   return (
     <div className="flex flex-col items-center justify-center text-center rounded-xl border border-black/[0.08] bg-white px-4 py-12">
       <SplitSquareHorizontal className="w-6 h-6 text-[var(--glass-muted)]" aria-hidden="true" />
       <p className="text-sm font-medium text-[var(--glass-ink)] mt-3">
-        {hasSearch ? 'No row matches that search.' : 'No job separation rows recorded yet.'}
+        {hasSearch ? `No row matches that search${scope}.` : `No job separation rows${scope}.`}
       </p>
       <p className="text-xs text-[var(--glass-muted)] mt-1 max-w-[42ch]">
         {hasSearch
-          ? 'Try the sr. no, party, PO no, PM code or material name.'
-          : 'Prepress adds a row here as each PO is split into job entries.'}
+          ? 'Try the sr. no, party, PO no, PM code or material name — or widen the date range above.'
+          : range === 'all'
+            ? 'Prepress adds a row here as each PO is split into job entries.'
+            : 'Try "All data" if you expected to see older rows here.'}
       </p>
     </div>
   );
