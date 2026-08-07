@@ -25,39 +25,44 @@ const inputCls = cn(
 
 type Props = {
   editing?: JobSeparation;
+  // Seeds the form from an existing row without editing it — "Duplicate"
+  // opens a fresh Add form (POST) pre-filled with these values instead of
+  // a PATCH to the source row. Ignored when `editing` is set.
+  prefill?: JobSeparation;
   onClose: () => void;
   onSaved: () => void;
 };
 
-export default function AddJobSeparationModal({ editing, onClose, onSaved }: Props) {
+export default function AddJobSeparationModal({ editing, prefill, onClose, onSaved }: Props) {
   const titleId = useId();
+  const seed = editing ?? prefill;
 
-  const [party,        setParty]        = useState(editing?.party ?? '');
-  // A row being edited already has a real, saved party — that counts as
-  // confirmed. New entries start unconfirmed until a suggestion is picked,
-  // so a stray typo can never reach the database as if it were a deliberate
-  // new party. Adding a party that isn't on the list yet happens only
-  // through the separate Parties manager (JobSeparationManager's "Parties"
-  // button) — not inline here.
-  const [partyConfirmed,     setPartyConfirmed]     = useState(Boolean(editing));
+  const [party,        setParty]        = useState(seed?.party ?? '');
+  // A row being edited (or duplicated from) already has a real, saved
+  // party — that counts as confirmed. New entries start unconfirmed until
+  // a suggestion is picked, so a stray typo can never reach the database
+  // as if it were a deliberate new party. Adding a party that isn't on the
+  // list yet happens only through the separate Parties manager
+  // (JobSeparationManager's "Parties" button) — not inline here.
+  const [partyConfirmed,     setPartyConfirmed]     = useState(Boolean(seed?.party));
   const [partySuggestions,   setPartySuggestions]   = useState<Party[]>([]);
   const [showPartySuggestions, setShowPartySuggestions] = useState(false);
   // Set right after picking a suggestion so the lookup effect doesn't
   // immediately re-open the dropdown for the value it just wrote —
   // mirrors suppressPmLookup in AddJobForm.tsx.
   const suppressPartyLookup = useRef(false);
-  const [poNo,         setPoNo]         = useState(editing?.po_no ?? '');
+  const [poNo,         setPoNo]         = useState(seed?.po_no ?? '');
   // <input type="date"> only speaks yyyy-MM-dd; the column is a DATE, so the
   // stored value already is one.
-  const [poDate,       setPoDate]       = useState(editing?.po_date ?? '');
-  const [pmCode,       setPmCode]       = useState(editing?.pm_code ?? '');
-  const [materialName, setMaterialName] = useState(editing?.material_name ?? '');
-  const [quantity,     setQuantity]     = useState(editing?.quantity?.toString() ?? '');
-  const [unit,         setUnit]         = useState(editing?.unit ?? '');
-  const [jobStatus,    setJobStatus]    = useState(editing?.job_status ?? '');
-  const [rate,         setRate]         = useState(editing?.rate?.toString() ?? '');
-  const [jcStatus,     setJcStatus]     = useState(editing?.jc_status ?? '');
-  const [awSendTo,     setAwSendTo]     = useState(editing?.aw_send_to ?? '');
+  const [poDate,       setPoDate]       = useState(seed?.po_date ?? '');
+  const [pmCode,       setPmCode]       = useState(seed?.pm_code ?? '');
+  const [materialName, setMaterialName] = useState(seed?.material_name ?? '');
+  const [quantity,     setQuantity]     = useState(seed?.quantity?.toString() ?? '');
+  const [unit,         setUnit]         = useState(seed?.unit ?? '');
+  const [jobStatus,    setJobStatus]    = useState(seed?.job_status ?? '');
+  const [rate,         setRate]         = useState(seed?.rate?.toString() ?? '');
+  const [jcStatus,     setJcStatus]     = useState(seed?.jc_status ?? '');
+  const [awSendTo,     setAwSendTo]     = useState(seed?.aw_send_to ?? '');
   const [saving, setSaving] = useState(false);
 
   const qtyNum  = Number(quantity);
@@ -161,7 +166,9 @@ export default function AddJobSeparationModal({ editing, onClose, onSaved }: Pro
             <p className="text-xs text-[var(--glass-muted)] mt-0.5">
               {editing && editing.sr_no
                 ? `${editing.sr_no} · fields follow the PO sheet, left to right`
-                : 'Sr. No. is assigned automatically · fields follow the PO sheet, left to right'}
+                : prefill
+                  ? `Duplicated from ${prefill.sr_no ?? 'previous row'} · Sr. No. is assigned automatically`
+                  : 'Sr. No. is assigned automatically · fields follow the PO sheet, left to right'}
             </p>
           </div>
           <button
@@ -312,7 +319,7 @@ export default function AddJobSeparationModal({ editing, onClose, onSaved }: Pro
               <JsLabel>Order Value</JsLabel>
               <p className={cn(inputCls, 'font-mono flex items-center bg-black/[0.03]')}>
                 {previewOrderValue !== null
-                  ? `₹${previewOrderValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  ? previewOrderValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })
                   : '—'}
               </p>
             </div>

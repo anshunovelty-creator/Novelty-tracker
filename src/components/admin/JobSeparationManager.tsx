@@ -9,7 +9,7 @@
 // visibility-aware pattern the room displays use, not Supabase Realtime.
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Search, Plus, Pencil, Trash2, SplitSquareHorizontal, ArrowUp, ArrowDown, Users } from 'lucide-react';
+import { Search, Plus, Pencil, Copy, Trash2, SplitSquareHorizontal, ArrowUp, ArrowDown, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatQty, formatNumericDate } from '@/lib/utils';
 import { csvDate, csvTimestamp, type CsvColumn } from '@/lib/export/csv';
@@ -19,12 +19,13 @@ import ManagePartiesModal from './ManagePartiesModal';
 import CsvExportButton from './CsvExportButton';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 
-// Header labels for the desk table — sr. no through added, one column per
-// worksheet field, plus actions. Must stay in the same order as the <td>s
-// rendered below.
+// Header labels for the desk table, one column per worksheet field plus
+// actions. "Added" is deliberately left out here — it's in the CSV export
+// but kept out of the table to hold off horizontal scroll on desktop.
+// Must stay in the same order as the <td>s rendered below.
 const JOB_SEPARATION_COLUMNS = [
   'Sr No', 'Party', 'PO No', 'PO Date', 'PM Code / Material', 'Qty', 'Unit',
-  'Rate', 'Order Value', 'Job Status', 'JC Status', 'AW', 'Added', 'Actions',
+  'Rate', 'Order Value', 'Job Status', 'JC Status', 'AW', 'Actions',
 ] as const;
 const JOB_SEPARATION_COLS = JOB_SEPARATION_COLUMNS.length;
 
@@ -123,7 +124,7 @@ function sortRows(rows: JobSeparation[], field: SortField, dir: SortDir): JobSep
 
 function formatMoney(value: number | null): string | null {
   if (value === null) return null;
-  return `₹${value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return value.toLocaleString('en-IN', { maximumFractionDigits: 0 });
 }
 
 const JOB_SEPARATION_EXPORT_COLUMNS: CsvColumn<JobSeparation>[] = [
@@ -153,6 +154,9 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
   const [sortDir,     setSortDir]     = useState<SortDir>('desc');
   const [adding,      setAdding]      = useState(false);
   const [editing,     setEditing]     = useState<JobSeparation | null>(null);
+  // Set when "Duplicate" is used instead of "Add row" — seeds the add form
+  // with this row's fields (a fresh POST, not a PATCH to this row).
+  const [duplicateSource, setDuplicateSource] = useState<JobSeparation | null>(null);
   // The row whose Delete has been armed. Deleting is two taps, never a dialog.
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busyId,     setBusyId]     = useState<string | null>(null);
@@ -334,7 +338,7 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
 
         {canManage && (
           <button
-            onClick={() => setAdding(true)}
+            onClick={() => { setDuplicateSource(null); setAdding(true); }}
             className={cn(
               'inline-flex items-center justify-center gap-1.5 min-h-11 px-4 rounded-xl',
               'text-sm font-medium bg-brand-primary text-white hover:bg-brand-primary/90 transition-colors',
@@ -368,7 +372,7 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
           {/* Desk: table skeleton */}
           <div className="hidden sm:block rounded-xl glass overflow-hidden">
             <div className="table-scroll-wrapper max-h-[70vh] overflow-y-auto">
-              <table className="w-full min-w-[1550px] border-collapse text-sm">
+              <table className="w-full min-w-[1400px] border-collapse text-sm">
                 <thead>
                   <tr>
                     {JOB_SEPARATION_COLUMNS.map((col) => (
@@ -505,7 +509,7 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
               the spreadsheet reading this worksheet was modeled on. */}
           <div className="hidden sm:block rounded-xl glass overflow-hidden">
             <div className="table-scroll-wrapper max-h-[70vh] overflow-y-auto">
-              <table className="w-full min-w-[1550px] border-collapse text-sm">
+              <table className="w-full min-w-[1400px] border-collapse text-sm">
                 <thead>
                   <tr>
                     {JOB_SEPARATION_COLUMNS.map((col) => (
@@ -571,21 +575,20 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
                             </span>
                           ) : (row.aw_send_to || '—')}
                         </td>
-                        <td className="px-3 py-2.5 font-mono whitespace-nowrap text-[var(--glass-muted)]">{formatNumericDate(row.created_at) || '—'}</td>
                         <td className="px-3 py-2.5 text-right whitespace-nowrap">
                           {canManage && (
                             <div className="inline-flex items-center gap-1.5">
                               <button
-                                onClick={() => { setConfirming(null); setEditing(row); }}
-                                aria-label={`Edit job separation row for ${row.party}`}
-                                title="Edit"
+                                onClick={() => { setConfirming(null); setEditing(null); setDuplicateSource(row); setAdding(true); }}
+                                aria-label={`Duplicate the job separation row for ${row.party}`}
+                                title="Duplicate"
                                 className={cn(
                                   'inline-flex items-center justify-center min-h-11 min-w-11 rounded-lg',
                                   'border border-black/[0.12] text-[var(--glass-muted)]',
                                   'hover:bg-black/[0.04] hover:text-[var(--glass-ink)] transition-colors',
                                 )}
                               >
-                                <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
+                                <Copy className="w-3.5 h-3.5" aria-hidden="true" />
                               </button>
 
                               {confirming === row.id ? (
@@ -637,8 +640,9 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
       {(adding || editing) && (
         <AddJobSeparationModal
           editing={editing ?? undefined}
-          onClose={() => { setAdding(false); setEditing(null); }}
-          onSaved={() => { setAdding(false); setEditing(null); load(); }}
+          prefill={!editing ? duplicateSource ?? undefined : undefined}
+          onClose={() => { setAdding(false); setEditing(null); setDuplicateSource(null); }}
+          onSaved={() => { setAdding(false); setEditing(null); setDuplicateSource(null); load(); }}
         />
       )}
 
