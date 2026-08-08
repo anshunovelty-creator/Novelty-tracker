@@ -208,6 +208,16 @@ export interface Party {
   created_at: string;
 }
 
+// Shared Prepress reminder checklist, surfaced as an always-visible panel
+// on the Job Separation worksheet. Checking a task complete deletes the
+// row outright — there is no "done" state to preserve.
+export interface PrepressTodo {
+  id: string;
+  task: string;
+  created_by: string | null;
+  created_at: string;
+}
+
 // Form data for Add Job — subset of Job used in the form
 /** Printing process a unit runs. Mirrors the jobs_printing_method_check constraint. */
 export type PrintingMethod = 'Offset' | 'Flexo';

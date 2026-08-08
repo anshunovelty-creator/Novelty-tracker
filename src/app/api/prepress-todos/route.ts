@@ -1,0 +1,70 @@
+// src/app/api/prepress-todos/route.ts
+// ============================================================
+// GET  /api/prepress-todos — the shared Prepress checklist (Prepress or Admin)
+// POST /api/prepress-todos — add a task (Prepress or Admin)
+// ============================================================
+
+import { NextRequest, NextResponse } from 'next/server';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { parseDepartment, canDeptManageJobSeparation } from '@/lib/constants/departments';
+
+export async function GET(_request: NextRequest) {
+  const supabase = await createServerSupabaseClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const dept = parseDepartment(user.user_metadata?.department);
+  if (!dept) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
+
+  // Same team that owns Job Separation owns this checklist — no other
+  // consumer needs it, unlike parties' open read for the typeahead.
+  if (!canDeptManageJobSeparation(dept)) {
+    return NextResponse.json(
+      { error: 'Only Prepress or Admin can view this checklist' },
+      { status: 403 }
+    );
+  }
+
+  const { data, error } = await supabase
+    .from('prepress_todos')
+    .select('*')
+    .order('created_at');
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.json({ todos: data ?? [] });
+}
+
+export async function POST(request: NextRequest) {
+  const supabase = await createServerSupabaseClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const dept = parseDepartment(user.user_metadata?.department);
+  if (!dept) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
+
+  if (!canDeptManageJobSeparation(dept)) {
+    return NextResponse.json(
+      { error: 'Only Prepress or Admin can add to this checklist' },
+      { status: 403 }
+    );
+  }
+
+  const body = await request.json();
+  const task = typeof body.task === 'string' ? body.task.trim() : '';
+  if (!task) return NextResponse.json({ error: 'Task text is required' }, { status: 400 });
+
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from('prepress_todos')
+    .insert({ task, created_by: user.email ?? dept })
+    .select()
+    .single();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.json({ todo: data }, { status: 201 });
+}

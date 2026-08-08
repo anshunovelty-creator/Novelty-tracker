@@ -16,6 +16,7 @@ import { csvDate, csvTimestamp, type CsvColumn } from '@/lib/export/csv';
 import type { JobSeparation } from '@/lib/types';
 import AddJobSeparationModal from './AddJobSeparationModal';
 import ManagePartiesModal from './ManagePartiesModal';
+import PrepressTodoPanel from './PrepressTodoPanel';
 import CsvExportButton from './CsvExportButton';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 
@@ -234,6 +235,8 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
 
   return (
     <div className="space-y-3">
+      {canManage && <PrepressTodoPanel />}
+
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-2">
         <select
