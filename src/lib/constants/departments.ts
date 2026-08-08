@@ -125,6 +125,19 @@ export function canDeptManageJobSeparation(dept: Department | null): boolean {
   return dept !== null && JOB_SEPARATION_EDIT_DEPTS.includes(dept);
 }
 
+/**
+ * Who may open Register at all — the customer follow-up CRM.
+ * Admin only, both to read and to write: unlike every other feature here,
+ * this data (customer contacts, deal values, sales notes) has no reason to
+ * be shop-floor-visible, so the gate covers GET as well as writes. Backed
+ * by RLS too (register_*_select_admin policies), not just this check.
+ */
+export const REGISTER_EDIT_DEPTS: Department[] = ['Admin'];
+
+export function canDeptManageRegister(dept: Department | null): boolean {
+  return dept !== null && REGISTER_EDIT_DEPTS.includes(dept);
+}
+
 export function canDeptSetStage(dept: Department, stage: Stage): boolean {
   const allowed = DEPT_ALLOWED_STAGES[dept];
   if (allowed === '*') return true;

@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Package, Scissors, Disc, Users, SplitSquareHorizontal } from 'lucide-react';
+import { Package, Scissors, Disc, Users, SplitSquareHorizontal, Contact } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import type { Department } from '@/lib/constants/departments';
 import { Logo } from '@/components/brand/Logo';
@@ -28,6 +28,7 @@ const SHORTCUTS: Record<string, string> = {
   // Not 't' — Ctrl/Cmd+T is "new tab" and browsers never let a page
   // override it, so the shortcut would silently do nothing.
   m: '/admin/team',
+  r: '/admin/register',
 };
 
 export default function AdminHeader({ dept, displayName }: Props) {
@@ -114,6 +115,21 @@ export default function AdminHeader({ dept, displayName }: Props) {
               <SplitSquareHorizontal className="h-4 w-4" aria-hidden="true" />
               Job Separation
             </Link>
+            {/* Follow-ups (customer CRM) holds sales/contact data with no
+                reason to be shop-floor-visible — Admin only, mirrored by
+                canDeptManageRegister in every /api/register route and by
+                RLS on the register_* tables themselves. Ordered before
+                Team on request. */}
+            {dept === 'Admin' && (
+              <Link
+                href="/admin/register"
+                title="Follow-ups (Ctrl+R)"
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
+              >
+                <Contact className="h-4 w-4" aria-hidden="true" />
+                Follow-ups
+              </Link>
+            )}
             {/* Team management touches login accounts directly — Admin only,
                 mirrored by the check in every /api/team route. */}
             {dept === 'Admin' && (

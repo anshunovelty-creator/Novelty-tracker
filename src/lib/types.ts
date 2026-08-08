@@ -220,6 +220,58 @@ export interface PrepressTodo {
   marked_read_at: string | null;
 }
 
+// Register — Admin-only customer follow-up CRM (accounts, deals moving
+// through a 5-stage pipeline, and a follow-up activity log). Migrated
+// from a prototype artifact; see 027_register_crm.sql for the schema
+// this mirrors.
+export type RegisterStage = 'enquiry' | 'artwork' | 'quotation' | 'approval' | 'po';
+export type RegisterDealStatus = 'open' | 'won' | 'lost';
+
+export interface RegisterAccount {
+  id: string;
+  name: string;
+  contact_name: string | null;
+  contact_role: string | null;
+  phone: string | null;
+  email: string | null;
+  segment: string | null;
+  city: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RegisterDeal {
+  id: string;
+  account_id: string;
+  title: string;
+  stage: RegisterStage;
+  owner: string | null;
+  qty: string | null;
+  value: number | null;
+  substrate: string | null;
+  next_action: string | null;
+  next_action_date: string | null;
+  status: RegisterDealStatus;
+  lost_reason: string | null;
+  closed_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RegisterActivity {
+  id: string;
+  account_id: string;
+  deal_id: string | null;
+  date: string;
+  type: string;
+  by: string | null;
+  note: string | null;
+  created_at: string;
+}
+
 // Form data for Add Job — subset of Job used in the form
 /** Printing process a unit runs. Mirrors the jobs_printing_method_check constraint. */
 export type PrintingMethod = 'Offset' | 'Flexo';
