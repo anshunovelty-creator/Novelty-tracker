@@ -4,13 +4,16 @@
 // launcher + panel, same interaction shape as NotesFeed's chat widget
 // (src/components/admin/NotesFeed.tsx), stacked directly above it so
 // the two don't collide. Compact sticky-note cards, chat-style add bar
-// pinned at the bottom. Checking a task off deletes it immediately, no
-// confirmation step, since completing a task is routine and low-stakes.
-// Delete is the same underlying action but reserved for "added by
-// mistake" — it gets a confirm step, and Edit exists so a typo doesn't
-// have to be deleted and retyped from scratch.
+// pinned at the bottom.
+//
+// Three actions per task: Edit fixes a typo without deleting and
+// retyping; Mark as read flags a task as actioned (card turns green)
+// without removing it, so the rest of the team can see and verify it;
+// Delete removes it for good, whether that's "added by mistake" or
+// "read, verified, done" — both end the same way, so Delete keeps its
+// confirm step either way.
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ListChecks, X, Plus, Check, Pencil, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
@@ -32,6 +35,7 @@ export default function PrepressTodoPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [confirming, setConfirming] = useState<string | null>(null);
+  const panelRef = useRef<HTMLElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -56,6 +60,21 @@ export default function PrepressTodoPanel() {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  // Close on a click/tap anywhere outside the panel — same transient-overlay
+  // logic as Escape, just for the pointer. Registered only while open, so
+  // the click that opens the panel (via the launcher button) can never
+  // immediately close it.
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [open]);
 
   function handleOpen() {
@@ -89,19 +108,31 @@ export default function PrepressTodoPanel() {
     }
   }
 
-  async function complete(todo: PrepressTodo) {
+  async function toggleRead(todo: PrepressTodo) {
+    const nextRead = !todo.marked_read_at;
     setBusyId(todo.id);
-    // Optimistic — checking a task off should feel instant, and a failed
-    // delete is rare enough to just toast and reload rather than hold the
-    // row hostage waiting on the network.
-    setTodos((prev) => prev.filter((t) => t.id !== todo.id));
+    // Optimistic — flagging a task should feel instant; a failure just
+    // reloads to fall back to the server's actual state.
+    setTodos((prev) =>
+      prev.map((t) =>
+        t.id === todo.id
+          ? { ...t, marked_read_at: nextRead ? new Date().toISOString() : null }
+          : t
+      )
+    );
     try {
-      const res = await fetch(`/api/prepress-todos/${todo.id}`, { method: 'DELETE' });
+      const res  = await fetch(`/api/prepress-todos/${todo.id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ read: nextRead }),
+      });
+      const data = await res.json();
       if (!res.ok) {
-        const data = await res.json();
-        toast.error(data.error ?? 'Failed to complete task');
+        toast.error(data.error ?? 'Failed to update task');
         load();
+        return;
       }
+      setTodos((prev) => prev.map((t) => (t.id === todo.id ? data.todo : t)));
     } catch {
       toast.error('Network error');
       load();
@@ -195,6 +226,7 @@ export default function PrepressTodoPanel() {
   // ── Panel ───────────────────────────────────────────────────────
   return (
     <section
+      ref={panelRef}
       aria-label="Prepress To-Do"
       className={cn(
         'fixed bottom-24 right-5 z-50 flex flex-col',
@@ -239,7 +271,12 @@ export default function PrepressTodoPanel() {
             return (
               <li
                 key={t.id}
-                className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 shadow-sm"
+                className={cn(
+                  'rounded-xl border px-3 py-2 shadow-sm',
+                  t.marked_read_at
+                    ? 'border-emerald-200 bg-emerald-50'
+                    : 'border-amber-200 bg-amber-50',
+                )}
               >
                 {isEditing ? (
                   <input
@@ -299,11 +336,17 @@ export default function PrepressTodoPanel() {
 
                       <button
                         type="button"
-                        onClick={() => complete(t)}
+                        onClick={() => toggleRead(t)}
                         disabled={busyId === t.id}
-                        aria-label={`Mark "${t.task}" complete`}
-                        title="Mark complete"
-                        className="inline-flex items-center justify-center min-h-9 min-w-9 rounded-lg border border-emerald-300/60 bg-emerald-400/20 text-emerald-700 hover:bg-emerald-400/30 disabled:opacity-50 transition-colors"
+                        aria-label={t.marked_read_at ? `Unmark "${t.task}" as read` : `Mark "${t.task}" as read`}
+                        aria-pressed={Boolean(t.marked_read_at)}
+                        title={t.marked_read_at ? 'Marked read — click to undo' : 'Mark as read'}
+                        className={cn(
+                          'inline-flex items-center justify-center min-h-9 min-w-9 rounded-lg border transition-colors disabled:opacity-50',
+                          t.marked_read_at
+                            ? 'border-emerald-400 bg-emerald-500 text-white hover:bg-emerald-600'
+                            : 'border-emerald-300/60 bg-emerald-400/20 text-emerald-700 hover:bg-emerald-400/30',
+                        )}
                       >
                         <Check className="w-3.5 h-3.5" aria-hidden="true" />
                       </button>

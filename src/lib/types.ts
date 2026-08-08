@@ -209,13 +209,15 @@ export interface Party {
 }
 
 // Shared Prepress reminder checklist, surfaced as an always-visible panel
-// on the Job Separation worksheet. Checking a task complete deletes the
-// row outright — there is no "done" state to preserve.
+// on the Job Separation worksheet. Marking a task read flags it (shown
+// green) so the team can verify it before someone deletes it for good —
+// deleting is the only way a row actually disappears.
 export interface PrepressTodo {
   id: string;
   task: string;
   created_by: string | null;
   created_at: string;
+  marked_read_at: string | null;
 }
 
 // Form data for Add Job — subset of Job used in the form

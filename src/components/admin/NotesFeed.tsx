@@ -82,6 +82,7 @@ export default function NotesFeed({ dept, userEmail }: Props) {
 
   // Refs, not state: the poll loop reads these without re-subscribing.
   const openRef = useRef(false);
+  const panelRef = useRef<HTMLElement>(null);
   // Newest note id we have already fired a desktop notification for.
   // null until the first poll completes, so a page load never notifies
   // about the backlog. Doubles as the "is this the first poll" flag,
@@ -214,6 +215,21 @@ export default function NotesFeed({ dept, userEmail }: Props) {
     return () => document.removeEventListener('keydown', onKey);
   }, [open]);
 
+  // Close on a click/tap anywhere outside the panel — same transient-overlay
+  // logic as Escape, just for the pointer. Registered only while open, so
+  // the click that opens the panel (via the launcher button) can never
+  // immediately close it.
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [open]);
+
   function handleOpen() {
     setOpen(true);
     poll(); // fetch fresh on open
@@ -264,6 +280,7 @@ export default function NotesFeed({ dept, userEmail }: Props) {
   // ── Panel ───────────────────────────────────────────────────
   return (
     <section
+      ref={panelRef}
       aria-label="Internal notes"
       className={cn(
         'fixed bottom-5 right-5 z-50 flex flex-col',

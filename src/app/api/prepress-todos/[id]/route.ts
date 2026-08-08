@@ -1,11 +1,13 @@
 // src/app/api/prepress-todos/[id]/route.ts
 // ============================================================
-// PATCH  /api/prepress-todos/[id] — correct a task's text (fix a typo).
-// DELETE /api/prepress-todos/[id] — remove a task, whether because it's
-//        done or because it was added by mistake. There is no "done"
-//        state to preserve; both cases just delete the row — the panel
-//        distinguishes them in the UI (one-tap Done vs confirm-first
-//        Delete), not in what happens here.
+// PATCH  /api/prepress-todos/[id] — correct a task's text (fix a typo),
+//        and/or toggle its "marked read" state (body: { task } and/or
+//        { read }). Marked-read just flags the row (shown green) — it
+//        stays in the list for the team to verify.
+// DELETE /api/prepress-todos/[id] — remove a task for good, whether
+//        because it was added by mistake or because it's read, verified,
+//        and done with. There is no separate "done" state to preserve
+//        beyond marked-read; deleting is the only way a row disappears.
 // Prepress or Admin only.
 // ============================================================
 
@@ -34,13 +36,26 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 
   const body = await request.json();
-  const task = typeof body.task === 'string' ? body.task.trim() : '';
-  if (!task) return NextResponse.json({ error: 'Task text is required' }, { status: 400 });
+  const updates: { task?: string; marked_read_at?: string | null } = {};
+
+  if (typeof body.task === 'string') {
+    const task = body.task.trim();
+    if (!task) return NextResponse.json({ error: 'Task text is required' }, { status: 400 });
+    updates.task = task;
+  }
+
+  if (typeof body.read === 'boolean') {
+    updates.marked_read_at = body.read ? new Date().toISOString() : null;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
+  }
 
   const admin = createAdminClient();
   const { data, error } = await admin
     .from('prepress_todos')
-    .update({ task })
+    .update(updates)
     .eq('id', id)
     .select()
     .single();
