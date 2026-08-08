@@ -5,11 +5,19 @@
 // - /display/* → production-room wall displays; also require a session
 // - /track/* → public, no auth required
 // - /api/cron/* → validated by CRON_SECRET header, no auth session needed
+// - /api/* (mutating methods) → rejects the read-only Viewer department;
+//   see the Viewer note in lib/constants/departments.ts. Individual routes
+//   still do their own department checks — this is a backstop, not the
+//   only gate — because a few routes (e.g. POST /api/jobs) don't check
+//   department at all today and would otherwise let Viewer write there.
 // - / → redirects authenticated users to /admin, unauthenticated to /track
 // ============================================================
 
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { parseDepartment } from '@/lib/constants/departments';
+
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -23,8 +31,42 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Public routes — no auth check needed
-  if (pathname.startsWith('/track') || pathname.startsWith('/api/')) {
+  // Public tracking portal — no auth required
+  if (pathname.startsWith('/track')) {
+    return NextResponse.next();
+  }
+
+  // Every other /api/* route checks its own session, but a mutating call
+  // (anything but a read) gets one extra check here: reject it outright if
+  // the caller is a Viewer, regardless of whether the route remembered to
+  // check department itself. An unauthenticated or non-Viewer request just
+  // falls through to the route's own handling, unchanged.
+  if (pathname.startsWith('/api/')) {
+    if (SAFE_METHODS.has(request.method)) return NextResponse.next();
+
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll();
+          },
+          setAll() {
+            // No page response to attach refreshed cookies to on an API
+            // request — the route handler's own client refreshes the
+            // session cookie when needed.
+          },
+        },
+      }
+    );
+    const { data: { user } } = await supabase.auth.getUser();
+    if (parseDepartment(user?.user_metadata?.department) === 'Viewer') {
+      return NextResponse.json(
+        { error: 'Viewers have read-only access' },
+        { status: 403 }
+      );
+    }
     return NextResponse.next();
   }
 

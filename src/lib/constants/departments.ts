@@ -14,6 +14,13 @@ export const DEPARTMENTS = [
   'Postpress',
   'Dispatch',
   'Admin',
+  // Read-only: sees every page and every job, same as Admin, but is never
+  // added to a *_EDIT_DEPTS allow-list below and DEPT_ALLOWED_STAGES gives
+  // it no stages — so every write path that already gates on department
+  // rejects it by construction. Middleware also blocks it from mutating
+  // methods on /api/* as a second, centralized backstop for the handful of
+  // routes that don't (yet) check department themselves.
+  'Viewer',
 ] as const;
 
 export type Department = typeof DEPARTMENTS[number];
@@ -51,6 +58,7 @@ export const DEPT_ALLOWED_STAGES: Record<Department, Stage[] | '*'> = {
     'Dispatched',
   ],
   Admin: '*',
+  Viewer: [],
 };
 
 /**
@@ -131,6 +139,7 @@ export const DEPT_DISPLAY_NAME: Record<Department, string> = {
   Postpress:  'Postpress Team',
   Dispatch:   'Dispatch Team',
   Admin:      'Admin',
+  Viewer:     'Viewer (read-only)',
 };
 
 /**
