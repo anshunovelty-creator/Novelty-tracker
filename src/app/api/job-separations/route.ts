@@ -67,6 +67,19 @@ function rangeStartISO(range: DateRange): string | null {
   return istMonthStartUTC(range === '3months' ? 2 : 0).toISOString();
 }
 
+// Caps the payload the same way `range` caps the query — "Current month"
+// stays under this on its own, but "All data" would otherwise return every
+// row in the table (and grow every year). One extra row is requested past
+// the limit purely to tell the client whether "Load more" should show.
+const DEFAULT_LIMIT = 500;
+const MAX_LIMIT = 2000;
+
+function parseLimit(raw: string | null): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_LIMIT;
+  return Math.min(Math.trunc(n), MAX_LIMIT);
+}
+
 // ── GET ───────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -80,11 +93,13 @@ export async function GET(request: NextRequest) {
   const rangeParam = searchParams.get('range');
   const range: DateRange =
     rangeParam === '3months' || rangeParam === 'all' ? rangeParam : 'month';
+  const limit = parseLimit(searchParams.get('limit'));
 
   let query = supabase
     .from('job_separations')
     .select('*')
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(limit + 1);
 
   const start = rangeStartISO(range);
   if (start) query = query.gte('created_at', start);
@@ -114,7 +129,13 @@ export async function GET(request: NextRequest) {
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ job_separations: data ?? [] });
+  const rows = data ?? [];
+  const hasMore = rows.length > limit;
+
+  return NextResponse.json({
+    job_separations: hasMore ? rows.slice(0, limit) : rows,
+    hasMore,
+  });
 }
 
 // ── POST ──────────────────────────────────────────────────────

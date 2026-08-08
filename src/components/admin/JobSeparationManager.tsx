@@ -35,6 +35,12 @@ const JOB_SEPARATION_COLS = JOB_SEPARATION_COLUMNS.length;
 // worksheet, not a wall display — and paused while the tab isn't visible.
 const POLL_MS = 30_000;
 
+// Mirrors DEFAULT_LIMIT in src/app/api/job-separations/route.ts. "Current
+// month" (400-700 rows) fits in one page today; "All data" won't once it
+// covers years of history, so it's capped the same way and grown via
+// "Load more" instead of fetched in one shot.
+const PAGE_SIZE = 500;
+
 // Mirrors JOB_SEPARATION_SEARCH_FIELDS in src/app/api/job-separations/route.ts
 // — the value sent as ?field=. "All fields" (value 'all') skips the param,
 // falling back to the server's multi-column OR search.
@@ -162,6 +168,9 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busyId,     setBusyId]     = useState<string | null>(null);
   const [managingParties, setManagingParties] = useState(false);
+  const [limit,       setLimit]       = useState(PAGE_SIZE);
+  const [hasMore,     setHasMore]     = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // First load shows the skeleton; background polls should not — nobody
   // wants the whole list to flash empty every 30s while they're reading it.
@@ -172,26 +181,41 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
     try {
       const params = new URLSearchParams();
       params.set('range', range);
+      params.set('limit', String(limit));
       if (search) {
         params.set('search', search);
         if (searchField !== 'all') params.set('field', searchField);
       }
       const res  = await fetch(`/api/job-separations?${params.toString()}`);
       const data = await res.json();
-      if (res.ok) setRows(data.job_separations ?? []);
-      else if (firstLoad.current) toast.error(data.error ?? 'Failed to load job separation rows');
+      if (res.ok) {
+        setRows(data.job_separations ?? []);
+        setHasMore(Boolean(data.hasMore));
+      } else if (firstLoad.current) toast.error(data.error ?? 'Failed to load job separation rows');
     } catch {
       if (firstLoad.current) toast.error('Network error');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
       firstLoad.current = false;
     }
+  }, [search, searchField, range, limit]);
+
+  // A new search/field/range starts back at page one — the limit a previous
+  // "Load more" click reached doesn't carry over to an unrelated query.
+  useEffect(() => {
+    setLimit(PAGE_SIZE);
   }, [search, searchField, range]);
 
   useEffect(() => {
     const timer = setTimeout(load, search ? 300 : 0);
     return () => clearTimeout(timer);
   }, [load, search]);
+
+  function loadMore() {
+    setLoadingMore(true);
+    setLimit((l) => l + PAGE_SIZE);
+  }
 
   // Quiet background refresh — paused while the tab isn't visible, and
   // caught up immediately the moment it becomes visible again.
@@ -356,10 +380,14 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
       {!loading && sortedRows.length > 0 && (
         <p className="text-sm text-[var(--glass-muted)]">
           <strong className="text-[var(--glass-ink)]">{sortedRows.length}</strong>
+          {hasMore && '+'}
           {' '}{sortedRows.length === 1 ? 'row' : 'rows'}
           {search && ' matching your search'}
           {range !== 'all' && (
             <>{' '}in {DATE_RANGE_OPTIONS.find((r) => r.value === range)?.label.toLowerCase()}</>
+          )}
+          {hasMore && (
+            <>{' '}— more match below; sort and CSV export cover only what&rsquo;s loaded, use &ldquo;Load more&rdquo; or narrow the search to reach the rest</>
           )}
         </p>
       )}
@@ -637,6 +665,22 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
               </table>
             </div>
           </div>
+
+          {hasMore && (
+            <div className="flex justify-center pt-1">
+              <button
+                onClick={loadMore}
+                disabled={loadingMore}
+                className={cn(
+                  'inline-flex items-center justify-center gap-1.5 min-h-11 px-4 rounded-xl',
+                  'text-sm font-medium border border-[var(--glass-border)] text-[var(--glass-muted)]',
+                  'hover:bg-black/[0.04] hover:text-[var(--glass-ink)] transition-colors disabled:opacity-50',
+                )}
+              >
+                {loadingMore ? 'Loading…' : `Load ${PAGE_SIZE} more rows`}
+              </button>
+            </div>
+          )}
         </>
       )}
 
