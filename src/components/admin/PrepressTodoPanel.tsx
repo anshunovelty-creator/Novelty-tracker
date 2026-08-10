@@ -14,11 +14,16 @@
 // confirm step either way.
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ListChecks, X, Plus, Check, Pencil, Trash2, History, RotateCcw, Search, Download } from 'lucide-react';
+import { ListChecks, X, Plus, Check, Pencil, Trash2, History, RotateCcw, Search, Download, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatAdminDate } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import type { PrepressTodo, PrepressTodoLog } from '@/lib/types';
+
+// prepress_todo_logs is auto-trimmed to its 1000 most recent rows
+// (029_prepress_todo_logs_trim.sql) — this is where the panel starts
+// nudging the team to export & clear before older rows silently roll off.
+const LOG_WARN_THRESHOLD = 900;
 
 const LOG_META: Record<PrepressTodoLog['action'], { label: string; icon: typeof Plus; cls: string }> = {
   created:   { label: 'Added',     icon: Plus,      cls: 'border-sky-200 bg-sky-50 text-sky-800' },
@@ -46,11 +51,23 @@ export default function PrepressTodoPanel() {
   const [confirming, setConfirming] = useState<string | null>(null);
   const [view, setView] = useState<'list' | 'history'>('list');
   const [logs, setLogs] = useState<PrepressTodoLog[]>([]);
+  const [logTotal, setLogTotal] = useState<number | null>(null);
   const [logsLoading, setLogsLoading] = useState(false);
   const [logQuery, setLogQuery] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Read inside the realtime debounce callback below, which only depends on
+  // `load` — refs keep it seeing the current view/search without resubscribing
+  // the channel on every keystroke or tab switch.
+  const viewRef = useRef(view);
+  const logQueryRef = useRef(logQuery);
+  const exportMenuOpenRef = useRef(exportMenuOpen);
+  useEffect(() => { viewRef.current = view; }, [view]);
+  useEffect(() => { logQueryRef.current = logQuery; }, [logQuery]);
+  useEffect(() => { exportMenuOpenRef.current = exportMenuOpen; }, [exportMenuOpen]);
 
   const load = useCallback(async () => {
     try {
@@ -68,6 +85,29 @@ export default function PrepressTodoPanel() {
   // Load in the background even while closed, so the launcher's pending
   // count is right the moment someone opens it — same as NotesFeed's unread badge.
   useEffect(() => { load(); }, [load]);
+
+  // `total` is the unfiltered table count (not the search-filtered result
+  // size) — what drives the live counter and the near-1000-cap warning.
+  // Declared above the realtime effect below so that effect's dependency
+  // array can reference it without a temporal-dead-zone error.
+  const loadLogs = useCallback(async (q: string) => {
+    setLogsLoading(true);
+    try {
+      const url = q ? `/api/prepress-todos/logs?q=${encodeURIComponent(q)}` : '/api/prepress-todos/logs';
+      const res  = await fetch(url);
+      const data = await res.json();
+      if (res.ok) {
+        setLogs(data.logs ?? []);
+        setLogTotal(typeof data.total === 'number' ? data.total : null);
+      } else {
+        toast.error(data.error ?? 'Failed to load history');
+      }
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setLogsLoading(false);
+    }
+  }, []);
 
   // Realtime is used purely as a "something changed" poke, not as the data
   // source itself — one Postgres change event schedules a single refetch
@@ -89,6 +129,11 @@ export default function PrepressTodoPanel() {
           refreshTimer.current = setTimeout(() => {
             refreshTimer.current = null;
             load();
+            // Every log row is a side effect of a prepress_todos mutation, so
+            // this same "something changed" signal doubles as the trigger to
+            // refresh the History view's log list and live counter — no
+            // separate channel needed on prepress_todo_logs itself.
+            if (viewRef.current === 'history') loadLogs(logQueryRef.current.trim());
           }, 2000);
         }
       )
@@ -98,15 +143,36 @@ export default function PrepressTodoPanel() {
       if (refreshTimer.current) clearTimeout(refreshTimer.current);
       supabase.removeChannel(channel);
     };
-  }, [load]);
+  }, [load, loadLogs]);
 
-  // Close on Escape — a transient overlay, not a route.
+  // Close on Escape — a transient overlay, not a route. The export menu is
+  // itself a smaller transient overlay nested inside, so Escape closes that
+  // first and only closes the whole panel on a second press.
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (exportMenuOpenRef.current) { setExportMenuOpen(false); return; }
+      setOpen(false);
+    };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [open]);
+
+  // Close the export menu on an outside click — scoped to its own ref so it
+  // doesn't fight with the panel's own outside-click-closes-panel handler
+  // below (a click on the menu is still "inside" panelRef, so the panel
+  // itself stays open).
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [exportMenuOpen]);
 
   // Close on a click/tap anywhere outside the panel — same transient-overlay
   // logic as Escape, just for the pointer. Registered only while open, so
@@ -128,21 +194,6 @@ export default function PrepressTodoPanel() {
     load();
   }
 
-  const loadLogs = useCallback(async (q: string) => {
-    setLogsLoading(true);
-    try {
-      const url = q ? `/api/prepress-todos/logs?q=${encodeURIComponent(q)}` : '/api/prepress-todos/logs';
-      const res  = await fetch(url);
-      const data = await res.json();
-      if (res.ok) setLogs(data.logs ?? []);
-      else toast.error(data.error ?? 'Failed to load history');
-    } catch {
-      toast.error('Network error');
-    } finally {
-      setLogsLoading(false);
-    }
-  }, []);
-
   // Debounced search — same 250ms shape as the party typeahead
   // (AddJobSeparationModal). Also fires the initial load when the view
   // switches to 'history', so there's one fetch path, not two.
@@ -152,16 +203,22 @@ export default function PrepressTodoPanel() {
     return () => clearTimeout(timer);
   }, [view, logQuery, loadLogs]);
 
-  // Exports the full 1000-row retention pool (wider than the 150 shown
-  // on screen — see 029_prepress_todo_logs_trim.sql), respecting the
-  // active search so a filtered view exports just that slice.
-  async function exportLogs() {
+  // Exports the full 1000-row retention pool (wider than the 150 shown on
+  // screen — see 029_prepress_todo_logs_trim.sql), respecting the active
+  // search so a filtered view exports just that slice. `clear` deletes
+  // exactly the exported rows server-side afterward, so the team can
+  // archive monthly without ending up with duplicate rows across exports.
+  async function exportLogs(clear: boolean) {
     if (exporting) return;
     setExporting(true);
+    setExportMenuOpen(false);
     try {
       const q   = logQuery.trim();
-      const url = q ? `/api/prepress-todos/logs/export?q=${encodeURIComponent(q)}` : '/api/prepress-todos/logs/export';
-      const res = await fetch(url);
+      const res = await fetch('/api/prepress-todos/logs/export', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ q: q || undefined, clear }),
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         toast.error(data?.error ?? 'Export failed');
@@ -177,7 +234,8 @@ export default function PrepressTodoPanel() {
       link.click();
       link.remove();
       URL.revokeObjectURL(objUrl);
-      toast.success('History exported');
+      toast.success(clear ? 'History exported and cleared' : 'History exported');
+      if (clear) loadLogs(logQuery.trim());
     } catch {
       toast.error('Network error');
     } finally {
@@ -350,9 +408,16 @@ export default function PrepressTodoPanel() {
             <ListChecks className="h-4 w-4" aria-hidden="true" />
             To-Do
           </h2>
-          <span className="text-[11px] text-white/70">
+          <span
+            className={cn(
+              'text-[11px]',
+              view === 'history' && logTotal !== null && logTotal >= LOG_WARN_THRESHOLD
+                ? 'text-amber-300 font-medium'
+                : 'text-white/70',
+            )}
+          >
             {view === 'history'
-              ? 'History'
+              ? logTotal !== null ? `${logTotal}/1000 logs` : 'History'
               : loading ? '' : todos.length === 0 ? 'All clear' : `${todos.length} pending`}
           </span>
         </div>
@@ -396,17 +461,54 @@ export default function PrepressTodoPanel() {
               )}
             />
           </div>
-          <button
-            type="button"
-            onClick={exportLogs}
-            disabled={exporting}
-            aria-label="Export history as CSV"
-            title="Export history as CSV (last 1000)"
-            className={cn(iconBtnCls, '!min-h-9 !min-w-9 bg-white shrink-0')}
-          >
-            <Download className="w-3.5 h-3.5" aria-hidden="true" />
-          </button>
+          <div className="relative shrink-0" ref={exportMenuRef}>
+            <button
+              type="button"
+              onClick={() => setExportMenuOpen((v) => !v)}
+              disabled={exporting}
+              aria-label="Export history as CSV"
+              aria-haspopup="true"
+              aria-expanded={exportMenuOpen}
+              title="Export history as CSV (last 1000)"
+              className={cn(iconBtnCls, '!min-h-9 !min-w-9 bg-white')}
+            >
+              <Download className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+            {exportMenuOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 top-full mt-1 z-10 w-48 rounded-lg border border-brand-border bg-white shadow-lg overflow-hidden"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => exportLogs(false)}
+                  disabled={exporting}
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-brand-ink hover:bg-brand-bg disabled:opacity-50 transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                  Download only
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => exportLogs(true)}
+                  disabled={exporting}
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-red-700 hover:bg-red-50 border-t border-brand-border disabled:opacity-50 transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                  Download &amp; clear
+                </button>
+              </div>
+            )}
+          </div>
         </div>
+        {logTotal !== null && logTotal >= LOG_WARN_THRESHOLD && (
+          <div className="mx-2.5 mt-2 flex items-start gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800 shrink-0">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" aria-hidden="true" />
+            <span>Nearing the 1000-log limit ({logTotal}/1000) — export soon before older entries roll off.</span>
+          </div>
+        )}
         <ul className="flex-1 overflow-y-auto px-2.5 py-2.5 space-y-2">
           {logsLoading ? (
             <li className="space-y-2" aria-hidden="true">

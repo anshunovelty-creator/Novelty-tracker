@@ -1,15 +1,25 @@
 // src/app/api/prepress-todos/logs/export/route.ts
 // ============================================================
-// GET /api/prepress-todos/logs/export[?q=foo] — CSV download of the
+// POST /api/prepress-todos/logs/export
+//      body: { q?: string, clear?: boolean } — CSV download of the
 // checklist's audit trail. Pulls up to the full 1000-row retention
 // pool (029_prepress_todo_logs_trim.sql) rather than the 150 the
 // panel's History view shows on screen, so the team can archive
 // everything before older rows roll off the auto-trim. Prepress or
 // Admin only, same gate as the checklist itself.
+//
+// A side-effecting export (`clear: true`) is a POST rather than a GET:
+// after the CSV is built, it deletes exactly the rows just exported (by
+// id, via the service-role client — the table's RLS only grants
+// authenticated SELECT) so the team can archive monthly without ending
+// up with duplicate rows across exports. Deleting by the fetched ids
+// rather than a blanket "delete everything" also means any row inserted
+// mid-request survives.
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { parseDepartment, canDeptManageJobSeparation } from '@/lib/constants/departments';
 import { toCsv, csvTimestamp, istDateStamp, type CsvColumn } from '@/lib/export/csv';
 import type { PrepressTodoLog } from '@/lib/types';
@@ -30,7 +40,7 @@ const COLUMNS: CsvColumn<PrepressTodoLog>[] = [
   { header: 'When',        value: (l) => csvTimestamp(l.created_at) },
 ];
 
-export async function GET(request: NextRequest) {
+export async function POST(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
 
   const { data: { user } } = await supabase.auth.getUser();
@@ -46,7 +56,9 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const q = new URL(request.url).searchParams.get('q')?.trim();
+  const body  = await request.json().catch(() => ({}));
+  const q     = typeof body.q === 'string' ? body.q.trim() : '';
+  const clear = body.clear === true;
 
   let query = supabase
     .from('prepress_todo_logs')
@@ -65,6 +77,18 @@ export async function GET(request: NextRequest) {
   const csv      = toCsv(data ?? [], COLUMNS);
   const filename = `prepress-todo-history-${istDateStamp()}.csv`;
 
+  let clearedCount = 0;
+  if (clear && data && data.length > 0) {
+    const admin = createAdminClient();
+    const ids   = data.map((l) => l.id);
+    const { error: deleteError } = await admin.from('prepress_todo_logs').delete().in('id', ids);
+    if (deleteError) {
+      console.error('prepress_todo_logs clear-after-export failed:', deleteError);
+    } else {
+      clearedCount = ids.length;
+    }
+  }
+
   return new NextResponse(csv, {
     status: 200,
     headers: {
@@ -72,7 +96,8 @@ export async function GET(request: NextRequest) {
       'Content-Disposition': `attachment; filename="${filename}"`,
       'Cache-Control':       'no-store',
       'X-Export-Filename':   filename,
-      'Access-Control-Expose-Headers': 'X-Export-Filename',
+      'X-Cleared-Count':     String(clearedCount),
+      'Access-Control-Expose-Headers': 'X-Export-Filename, X-Cleared-Count',
     },
   });
 }

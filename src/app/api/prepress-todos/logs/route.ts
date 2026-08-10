@@ -7,8 +7,11 @@
 // Prepress/Admin gate as the checklist itself. Read-only — writes
 // happen as a side effect of the checklist's own POST/PATCH/DELETE
 // handlers, not through this route. The table itself is capped at its
-// 150 most recent rows by a trigger (029_prepress_todo_logs_trim.sql),
-// so this never needs to page.
+// 1000 most recent rows by a trigger (029_prepress_todo_logs_trim.sql);
+// `total` below is that unfiltered table count (not the search-filtered
+// result size), so the panel can warn the team as it nears the cap and
+// point them at /api/prepress-todos/logs/export before older rows
+// silently roll off.
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -47,9 +50,13 @@ export async function GET(request: NextRequest) {
     query = query.or(`task.ilike.${pattern},actor_email.ilike.${pattern},actor_department.ilike.${pattern}`);
   }
 
-  const { data, error } = await query;
+  const [{ data, error }, { count, error: countError }] = await Promise.all([
+    query,
+    supabase.from('prepress_todo_logs').select('*', { count: 'exact', head: true }),
+  ]);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (countError) return NextResponse.json({ error: countError.message }, { status: 500 });
 
-  return NextResponse.json({ logs: data ?? [] });
+  return NextResponse.json({ logs: data ?? [], total: count ?? 0 });
 }
