@@ -14,7 +14,7 @@
 // confirm step either way.
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ListChecks, X, Plus, Check, Pencil, Trash2, History, RotateCcw, Search, Download, AlertTriangle } from 'lucide-react';
+import { ListChecks, X, Plus, Check, Pencil, Trash2, History, RotateCcw, Search, Download, AlertTriangle, ChevronLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatAdminDate } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
@@ -403,37 +403,53 @@ export default function PrepressTodoPanel() {
       )}
     >
       <header className="flex items-center justify-between gap-2 px-4 h-12 bg-brand-header text-white shrink-0">
-        <div className="flex items-baseline gap-2 min-w-0">
-          <h2 className="text-sm font-semibold flex items-center gap-1.5">
-            <ListChecks className="h-4 w-4" aria-hidden="true" />
-            To-Do
-          </h2>
-          <span
-            className={cn(
-              'text-[11px]',
-              view === 'history' && logTotal !== null && logTotal >= LOG_WARN_THRESHOLD
-                ? 'text-amber-300 font-medium'
-                : 'text-white/70',
-            )}
-          >
-            {view === 'history'
-              ? logTotal !== null ? `${logTotal}/1000 logs` : 'History'
-              : loading ? '' : todos.length === 0 ? 'All clear' : `${todos.length} pending`}
-          </span>
+        <div className="flex items-center gap-1.5 min-w-0">
+          {/* Drill-down wayfinding: History replaces the icon with an explicit
+              back chevron and the title itself changes — the header always
+              names the screen you're on, same pattern as a mobile settings
+              drill-down, rather than one icon silently toggling meaning. */}
+          {view === 'history' ? (
+            <button
+              type="button"
+              onClick={toggleView}
+              aria-label="Back to checklist"
+              title="Back to checklist"
+              className="flex items-center justify-center p-2 -ml-1.5 rounded-lg text-white/75 hover:text-white hover:bg-white/10 transition-colors shrink-0"
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+            </button>
+          ) : (
+            <ListChecks className="h-4 w-4 shrink-0" aria-hidden="true" />
+          )}
+          <div className="flex items-baseline gap-2 min-w-0">
+            <h2 className="text-sm font-semibold">{view === 'history' ? 'History' : 'To-Do'}</h2>
+            <span
+              className={cn(
+                'text-[11px]',
+                view === 'history' && logTotal !== null && logTotal >= LOG_WARN_THRESHOLD
+                  ? 'text-amber-300 font-medium'
+                  : 'text-white/70',
+              )}
+            >
+              {view === 'history'
+                ? logTotal !== null ? `${logTotal}/1000 logs` : ''
+                : loading ? '' : todos.length === 0 ? 'All clear' : `${todos.length} pending`}
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-0.5 shrink-0">
-          <button
-            onClick={toggleView}
-            aria-label={view === 'list' ? 'View history' : 'Back to checklist'}
-            title={view === 'list' ? 'History' : 'Back to checklist'}
-            aria-pressed={view === 'history'}
-            className={cn(
-              'p-2 rounded-lg transition-colors',
-              view === 'history' ? 'bg-white/15 text-white' : 'text-white/75 hover:text-white hover:bg-white/10',
-            )}
-          >
-            <History className="h-4 w-4" aria-hidden="true" />
-          </button>
+        <div className="flex items-center gap-1 shrink-0">
+          {view === 'list' && (
+            <button
+              type="button"
+              onClick={toggleView}
+              aria-label="View history"
+              title="View history"
+              className="flex items-center gap-1 py-2 pl-2 pr-2.5 rounded-lg text-white/75 hover:text-white hover:bg-white/10 transition-colors text-[11px] font-medium"
+            >
+              <History className="h-3.5 w-3.5" aria-hidden="true" />
+              History
+            </button>
+          )}
           <button
             onClick={() => setOpen(false)}
             aria-label="Close checklist"
@@ -444,107 +460,26 @@ export default function PrepressTodoPanel() {
         </div>
       </header>
 
-      {view === 'history' ? (
-        <>
-        <div className="flex items-center gap-1.5 px-2.5 pt-2.5 shrink-0">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-brand-muted pointer-events-none" aria-hidden="true" />
-            <input
-              value={logQuery}
-              onChange={(e) => setLogQuery(e.target.value)}
-              placeholder="Search history…"
-              aria-label="Search checklist history"
-              className={cn(
-                'w-full min-h-9 pl-8 pr-3 py-1.5 rounded-lg text-xs bg-brand-bg border border-brand-border',
-                'text-brand-ink placeholder:text-brand-muted',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
-              )}
-            />
-          </div>
-          <div className="relative shrink-0" ref={exportMenuRef}>
-            <button
-              type="button"
-              onClick={() => setExportMenuOpen((v) => !v)}
-              disabled={exporting}
-              aria-label="Export history as CSV"
-              aria-haspopup="true"
-              aria-expanded={exportMenuOpen}
-              title="Export history as CSV (last 1000)"
-              className={cn(iconBtnCls, '!min-h-9 !min-w-9 bg-white')}
-            >
-              <Download className="w-3.5 h-3.5" aria-hidden="true" />
-            </button>
-            {exportMenuOpen && (
-              <div
-                role="menu"
-                className="absolute right-0 top-full mt-1 z-10 w-48 rounded-lg border border-brand-border bg-white shadow-lg overflow-hidden"
-              >
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => exportLogs(false)}
-                  disabled={exporting}
-                  className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-brand-ink hover:bg-brand-bg disabled:opacity-50 transition-colors"
-                >
-                  <Download className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                  Download only
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => exportLogs(true)}
-                  disabled={exporting}
-                  className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-red-700 hover:bg-red-50 border-t border-brand-border disabled:opacity-50 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                  Download &amp; clear
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-        {logTotal !== null && logTotal >= LOG_WARN_THRESHOLD && (
-          <div className="mx-2.5 mt-2 flex items-start gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800 shrink-0">
-            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" aria-hidden="true" />
-            <span>Nearing the 1000-log limit ({logTotal}/1000) — export soon before older entries roll off.</span>
-          </div>
-        )}
-        <ul className="flex-1 overflow-y-auto px-2.5 py-2.5 space-y-2">
-          {logsLoading ? (
-            <li className="space-y-2" aria-hidden="true">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="h-12 rounded-xl bg-brand-bg" />
-              ))}
-            </li>
-          ) : logs.length === 0 ? (
-            <li className="px-2 py-8 text-center text-xs text-brand-muted">
-              {logQuery.trim() ? 'No matching activity.' : 'No activity yet.'}
-            </li>
-          ) : (
-            logs.map((l) => {
-              const meta = LOG_META[l.action];
-              const Icon = meta.icon;
-              const who = l.actor_email
-                ? l.actor_department ? `${l.actor_email} (${l.actor_department})` : l.actor_email
-                : l.actor_department ?? 'Unknown';
-              return (
-                <li key={l.id} className={cn('rounded-xl border px-3 py-2', meta.cls)}>
-                  <div className="flex items-center gap-1.5">
-                    <Icon className="w-3 h-3 shrink-0" aria-hidden="true" />
-                    <span className="text-[11px] font-semibold">{meta.label}</span>
-                  </div>
-                  <p className="mt-1 text-xs text-brand-ink break-words leading-snug">{l.task}</p>
-                  <p className="mt-1 text-[10px] text-brand-muted break-words">
-                    {who} · {formatAdminDate(l.created_at)}
-                  </p>
-                </li>
-              );
-            })
+      {/* Both screens stay mounted side by side in a 200%-wide strip that
+          translates by one screen-width — a lightweight "push navigation"
+          transition (matches the header's back/History affordances above)
+          rather than an abrupt content swap. `inert` on the off-screen pane
+          keeps keyboard focus and screen readers from reaching content
+          that's translated out of view. motion-reduce drops the animation
+          to an instant cut per DESIGN.md's reduced-motion requirement. */}
+      <div className="relative flex-1 overflow-hidden">
+        <div
+          className={cn(
+            'flex h-full w-[200%] transition-transform duration-300 ease-out motion-reduce:transition-none',
+            view === 'history' ? '-translate-x-1/2' : 'translate-x-0',
           )}
-        </ul>
-        </>
-      ) : (
-      <ul className="flex-1 overflow-y-auto px-2.5 py-2.5 space-y-2">
+        >
+          <div
+            className="w-1/2 h-full shrink-0 overflow-hidden"
+            aria-hidden={view === 'history'}
+            inert={view === 'history' ? true : undefined}
+          >
+      <ul className="h-full overflow-y-auto px-2.5 py-2.5 space-y-2">
         {loading ? (
           <li className="space-y-2" aria-hidden="true">
             {Array.from({ length: 2 }).map((_, i) => (
@@ -648,7 +583,112 @@ export default function PrepressTodoPanel() {
           })
         )}
       </ul>
-      )}
+          </div>
+
+          <div
+            className="w-1/2 h-full shrink-0 flex flex-col overflow-hidden"
+            aria-hidden={view === 'list'}
+            inert={view === 'list' ? true : undefined}
+          >
+            <div className="flex items-center gap-1.5 px-2.5 pt-2.5 shrink-0">
+              <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-brand-muted pointer-events-none" aria-hidden="true" />
+                <input
+                  value={logQuery}
+                  onChange={(e) => setLogQuery(e.target.value)}
+                  placeholder="Search history…"
+                  aria-label="Search checklist history"
+                  className={cn(
+                    'w-full min-h-9 pl-8 pr-3 py-1.5 rounded-lg text-xs bg-brand-bg border border-brand-border',
+                    'text-brand-ink placeholder:text-brand-muted',
+                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
+                  )}
+                />
+              </div>
+              <div className="relative shrink-0" ref={exportMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setExportMenuOpen((v) => !v)}
+                  disabled={exporting}
+                  aria-label="Export history as CSV"
+                  aria-haspopup="true"
+                  aria-expanded={exportMenuOpen}
+                  title="Export history as CSV (last 1000)"
+                  className={cn(iconBtnCls, '!min-h-9 !min-w-9 bg-white')}
+                >
+                  <Download className="w-3.5 h-3.5" aria-hidden="true" />
+                </button>
+                {exportMenuOpen && (
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-full mt-1 z-10 w-48 rounded-lg border border-brand-border bg-white shadow-lg overflow-hidden"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => exportLogs(false)}
+                      disabled={exporting}
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-brand-ink hover:bg-brand-bg disabled:opacity-50 transition-colors"
+                    >
+                      <Download className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                      Download only
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => exportLogs(true)}
+                      disabled={exporting}
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-red-700 hover:bg-red-50 border-t border-brand-border disabled:opacity-50 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                      Download &amp; clear
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+            {logTotal !== null && logTotal >= LOG_WARN_THRESHOLD && (
+              <div className="mx-2.5 mt-2 flex items-start gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800 shrink-0">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" aria-hidden="true" />
+                <span>Nearing the 1000-log limit ({logTotal}/1000) — export soon before older entries roll off.</span>
+              </div>
+            )}
+            <ul className="flex-1 overflow-y-auto px-2.5 py-2.5 space-y-2">
+              {logsLoading ? (
+                <li className="space-y-2" aria-hidden="true">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="h-12 rounded-xl bg-brand-bg" />
+                  ))}
+                </li>
+              ) : logs.length === 0 ? (
+                <li className="px-2 py-8 text-center text-xs text-brand-muted">
+                  {logQuery.trim() ? 'No matching activity.' : 'No activity yet.'}
+                </li>
+              ) : (
+                logs.map((l) => {
+                  const meta = LOG_META[l.action];
+                  const Icon = meta.icon;
+                  const who = l.actor_email
+                    ? l.actor_department ? `${l.actor_email} (${l.actor_department})` : l.actor_email
+                    : l.actor_department ?? 'Unknown';
+                  return (
+                    <li key={l.id} className={cn('rounded-xl border px-3 py-2', meta.cls)}>
+                      <div className="flex items-center gap-1.5">
+                        <Icon className="w-3 h-3 shrink-0" aria-hidden="true" />
+                        <span className="text-[11px] font-semibold">{meta.label}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-brand-ink break-words leading-snug">{l.task}</p>
+                      <p className="mt-1 text-[10px] text-brand-muted break-words">
+                        {who} · {formatAdminDate(l.created_at)}
+                      </p>
+                    </li>
+                  );
+                })
+              )}
+            </ul>
+          </div>
+        </div>
+      </div>
 
       {/* Chat-style compose bar, pinned at the bottom — hidden while viewing history. */}
       {view === 'list' && (
