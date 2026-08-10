@@ -14,10 +14,18 @@
 // confirm step either way.
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ListChecks, X, Plus, Check, Pencil, Trash2 } from 'lucide-react';
+import { ListChecks, X, Plus, Check, Pencil, Trash2, History, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { cn } from '@/lib/utils';
-import type { PrepressTodo } from '@/lib/types';
+import { cn, formatAdminDate } from '@/lib/utils';
+import type { PrepressTodo, PrepressTodoLog } from '@/lib/types';
+
+const LOG_META: Record<PrepressTodoLog['action'], { label: string; icon: typeof Plus; cls: string }> = {
+  created:   { label: 'Added',     icon: Plus,      cls: 'border-sky-200 bg-sky-50 text-sky-800' },
+  completed: { label: 'Completed', icon: Check,     cls: 'border-emerald-200 bg-emerald-50 text-emerald-800' },
+  reopened:  { label: 'Reopened',  icon: RotateCcw, cls: 'border-amber-200 bg-amber-50 text-amber-800' },
+  edited:    { label: 'Edited',    icon: Pencil,    cls: 'border-slate-200 bg-slate-50 text-slate-800' },
+  deleted:   { label: 'Deleted',   icon: Trash2,    cls: 'border-red-200 bg-red-50 text-red-800' },
+};
 
 const iconBtnCls = cn(
   'inline-flex items-center justify-center min-h-11 min-w-11 rounded-lg',
@@ -35,6 +43,9 @@ export default function PrepressTodoPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [view, setView] = useState<'list' | 'history'>('list');
+  const [logs, setLogs] = useState<PrepressTodoLog[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
 
   const load = useCallback(async () => {
@@ -80,6 +91,30 @@ export default function PrepressTodoPanel() {
   function handleOpen() {
     setOpen(true);
     load();
+  }
+
+  const loadLogs = useCallback(async () => {
+    setLogsLoading(true);
+    try {
+      const res  = await fetch('/api/prepress-todos/logs');
+      const data = await res.json();
+      if (res.ok) setLogs(data.logs ?? []);
+      else toast.error(data.error ?? 'Failed to load history');
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setLogsLoading(false);
+    }
+  }, []);
+
+  function toggleView() {
+    setConfirming(null);
+    setEditingId(null);
+    setView((v) => {
+      const next = v === 'list' ? 'history' : 'list';
+      if (next === 'history') loadLogs();
+      return next;
+    });
   }
 
   async function addTask(e: React.FormEvent) {
@@ -242,18 +277,69 @@ export default function PrepressTodoPanel() {
             To-Do
           </h2>
           <span className="text-[11px] text-white/70">
-            {loading ? '' : todos.length === 0 ? 'All clear' : `${todos.length} pending`}
+            {view === 'history'
+              ? 'History'
+              : loading ? '' : todos.length === 0 ? 'All clear' : `${todos.length} pending`}
           </span>
         </div>
-        <button
-          onClick={() => setOpen(false)}
-          aria-label="Close checklist"
-          className="p-2 rounded-lg text-white/75 hover:text-white hover:bg-white/10 transition-colors"
-        >
-          <X className="h-4 w-4" aria-hidden="true" />
-        </button>
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            onClick={toggleView}
+            aria-label={view === 'list' ? 'View history' : 'Back to checklist'}
+            title={view === 'list' ? 'History' : 'Back to checklist'}
+            aria-pressed={view === 'history'}
+            className={cn(
+              'p-2 rounded-lg transition-colors',
+              view === 'history' ? 'bg-white/15 text-white' : 'text-white/75 hover:text-white hover:bg-white/10',
+            )}
+          >
+            <History className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <button
+            onClick={() => setOpen(false)}
+            aria-label="Close checklist"
+            className="p-2 rounded-lg text-white/75 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
       </header>
 
+      {view === 'history' ? (
+        <ul className="flex-1 overflow-y-auto px-2.5 py-2.5 space-y-2">
+          {logsLoading ? (
+            <li className="space-y-2" aria-hidden="true">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-12 rounded-xl bg-brand-bg" />
+              ))}
+            </li>
+          ) : logs.length === 0 ? (
+            <li className="px-2 py-8 text-center text-xs text-brand-muted">
+              No activity yet.
+            </li>
+          ) : (
+            logs.map((l) => {
+              const meta = LOG_META[l.action];
+              const Icon = meta.icon;
+              const who = l.actor_email
+                ? l.actor_department ? `${l.actor_email} (${l.actor_department})` : l.actor_email
+                : l.actor_department ?? 'Unknown';
+              return (
+                <li key={l.id} className={cn('rounded-xl border px-3 py-2', meta.cls)}>
+                  <div className="flex items-center gap-1.5">
+                    <Icon className="w-3 h-3 shrink-0" aria-hidden="true" />
+                    <span className="text-[11px] font-semibold">{meta.label}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-brand-ink break-words leading-snug">{l.task}</p>
+                  <p className="mt-1 text-[10px] text-brand-muted break-words">
+                    {who} · {formatAdminDate(l.created_at)}
+                  </p>
+                </li>
+              );
+            })
+          )}
+        </ul>
+      ) : (
       <ul className="flex-1 overflow-y-auto px-2.5 py-2.5 space-y-2">
         {loading ? (
           <li className="space-y-2" aria-hidden="true">
@@ -358,37 +444,40 @@ export default function PrepressTodoPanel() {
           })
         )}
       </ul>
+      )}
 
-      {/* Chat-style compose bar, pinned at the bottom. */}
-      <form
-        onSubmit={addTask}
-        className="flex items-center gap-2 px-3 py-2.5 border-t border-brand-border bg-brand-surface shrink-0"
-      >
-        <input
-          value={newTask}
-          onChange={(e) => setNewTask(e.target.value)}
-          placeholder="Add a task…"
-          aria-label="Add a checklist task"
-          className={cn(
-            'flex-1 min-h-11 px-3.5 py-2 rounded-full text-sm bg-brand-bg border border-brand-border',
-            'text-brand-ink placeholder:text-brand-muted',
-            'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
-          )}
-        />
-        <button
-          type="submit"
-          disabled={adding || !newTask.trim()}
-          aria-label="Add task"
-          title="Add task"
-          className={cn(
-            'h-11 w-11 rounded-full shrink-0 flex items-center justify-center',
-            'bg-brand-primary text-white hover:bg-brand-primary-hover',
-            'disabled:opacity-40 transition-colors',
-          )}
+      {/* Chat-style compose bar, pinned at the bottom — hidden while viewing history. */}
+      {view === 'list' && (
+        <form
+          onSubmit={addTask}
+          className="flex items-center gap-2 px-3 py-2.5 border-t border-brand-border bg-brand-surface shrink-0"
         >
-          <Plus className="w-4 h-4" aria-hidden="true" />
-        </button>
-      </form>
+          <input
+            value={newTask}
+            onChange={(e) => setNewTask(e.target.value)}
+            placeholder="Add a task…"
+            aria-label="Add a checklist task"
+            className={cn(
+              'flex-1 min-h-11 px-3.5 py-2 rounded-full text-sm bg-brand-bg border border-brand-border',
+              'text-brand-ink placeholder:text-brand-muted',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
+            )}
+          />
+          <button
+            type="submit"
+            disabled={adding || !newTask.trim()}
+            aria-label="Add task"
+            title="Add task"
+            className={cn(
+              'h-11 w-11 rounded-full shrink-0 flex items-center justify-center',
+              'bg-brand-primary text-white hover:bg-brand-primary-hover',
+              'disabled:opacity-40 transition-colors',
+            )}
+          >
+            <Plus className="w-4 h-4" aria-hidden="true" />
+          </button>
+        </form>
+      )}
     </section>
   );
 }

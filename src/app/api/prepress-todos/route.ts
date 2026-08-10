@@ -66,5 +66,14 @@ export async function POST(request: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  const { error: logError } = await admin.from('prepress_todo_logs').insert({
+    todo_id: data.id,
+    task: data.task,
+    action: 'created',
+    actor_department: dept,
+    actor_email: user.email ?? null,
+  });
+  if (logError) console.error('prepress_todo_logs insert (created) failed:', logError);
+
   return NextResponse.json({ todo: data }, { status: 201 });
 }

@@ -62,6 +62,17 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  const logs: { todo_id: string; task: string; action: string; actor_department: string; actor_email: string | null }[] = [];
+  const base = { todo_id: id, task: data.task, actor_department: dept, actor_email: user.email ?? null };
+  if (updates.task !== undefined) logs.push({ ...base, action: 'edited' });
+  if (updates.marked_read_at !== undefined) {
+    logs.push({ ...base, action: updates.marked_read_at ? 'completed' : 'reopened' });
+  }
+  if (logs.length > 0) {
+    const { error: logError } = await admin.from('prepress_todo_logs').insert(logs);
+    if (logError) console.error('prepress_todo_logs insert (update) failed:', logError);
+  }
+
   return NextResponse.json({ todo: data });
 }
 
@@ -83,10 +94,19 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient();
-  const { data, error } = await admin.from('prepress_todos').delete().eq('id', id).select('id');
+  const { data, error } = await admin.from('prepress_todos').delete().eq('id', id).select('id, task');
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data?.length) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+
+  const { error: logError } = await admin.from('prepress_todo_logs').insert({
+    todo_id: id,
+    task: data[0].task,
+    action: 'deleted',
+    actor_department: dept,
+    actor_email: user.email ?? null,
+  });
+  if (logError) console.error('prepress_todo_logs insert (deleted) failed:', logError);
 
   return NextResponse.json({ ok: true });
 }

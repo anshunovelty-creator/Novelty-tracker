@@ -220,6 +220,17 @@ export interface PrepressTodo {
   marked_read_at: string | null;
 }
 
+/** Audit trail row for prepress_todos — see 028_prepress_todo_logs.sql. */
+export interface PrepressTodoLog {
+  id: string;
+  todo_id: string | null;
+  task: string;
+  action: 'created' | 'completed' | 'reopened' | 'edited' | 'deleted';
+  actor_department: string | null;
+  actor_email: string | null;
+  created_at: string;
+}
+
 // Register — Admin-only customer follow-up CRM (accounts, deals moving
 // through a 5-stage pipeline, and a follow-up activity log). Migrated
 // from a prototype artifact; see 027_register_crm.sql for the schema
