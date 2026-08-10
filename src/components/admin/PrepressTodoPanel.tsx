@@ -17,6 +17,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ListChecks, X, Plus, Check, Pencil, Trash2, History, RotateCcw, Search, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatAdminDate } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
 import type { PrepressTodo, PrepressTodoLog } from '@/lib/types';
 
 const LOG_META: Record<PrepressTodoLog['action'], { label: string; icon: typeof Plus; cls: string }> = {
@@ -49,6 +50,7 @@ export default function PrepressTodoPanel() {
   const [logQuery, setLogQuery] = useState('');
   const [exporting, setExporting] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -66,6 +68,37 @@ export default function PrepressTodoPanel() {
   // Load in the background even while closed, so the launcher's pending
   // count is right the moment someone opens it — same as NotesFeed's unread badge.
   useEffect(() => { load(); }, [load]);
+
+  // Realtime is used purely as a "something changed" poke, not as the data
+  // source itself — one Postgres change event schedules a single refetch
+  // 2s later, and a burst of edits (someone adding several tasks in a row)
+  // resets that same timer instead of stacking up refetches. This is the
+  // opposite trade-off from the machine room displays (see
+  // room-display-refresh-is-polled-not-realtime memory): no periodic
+  // polling at all here, just an on-change nudge, since prepress_todos
+  // already has an open SELECT policy for every authenticated user.
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel('prepress_todos_changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'prepress_todos' },
+        () => {
+          if (refreshTimer.current) clearTimeout(refreshTimer.current);
+          refreshTimer.current = setTimeout(() => {
+            refreshTimer.current = null;
+            load();
+          }, 2000);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      supabase.removeChannel(channel);
+    };
+  }, [load]);
 
   // Close on Escape — a transient overlay, not a route.
   useEffect(() => {
@@ -471,10 +504,10 @@ export default function PrepressTodoPanel() {
                           onBlur={() => setConfirming((id) => (id === t.id ? null : id))}
                           disabled={busyId === t.id}
                           aria-label={`Confirm deleting "${t.task}"`}
-                          title="Confirm delete"
-                          className="inline-flex items-center justify-center min-h-9 min-w-9 rounded-lg border border-red-300 bg-red-100 text-red-800 hover:bg-red-200 disabled:opacity-50 transition-colors"
+                          title="Click again to permanently delete"
+                          className="inline-flex items-center justify-center min-h-9 px-2.5 rounded-lg border border-red-300 bg-red-100 text-red-800 hover:bg-red-200 disabled:opacity-50 transition-colors text-[11px] font-semibold whitespace-nowrap"
                         >
-                          <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                          Confirm
                         </button>
                       ) : (
                         <button
