@@ -14,7 +14,7 @@
 // confirm step either way.
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ListChecks, X, Plus, Check, Pencil, Trash2, History, RotateCcw } from 'lucide-react';
+import { ListChecks, X, Plus, Check, Pencil, Trash2, History, RotateCcw, Search, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatAdminDate } from '@/lib/utils';
 import type { PrepressTodo, PrepressTodoLog } from '@/lib/types';
@@ -46,6 +46,8 @@ export default function PrepressTodoPanel() {
   const [view, setView] = useState<'list' | 'history'>('list');
   const [logs, setLogs] = useState<PrepressTodoLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
+  const [logQuery, setLogQuery] = useState('');
+  const [exporting, setExporting] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
 
   const load = useCallback(async () => {
@@ -93,10 +95,11 @@ export default function PrepressTodoPanel() {
     load();
   }
 
-  const loadLogs = useCallback(async () => {
+  const loadLogs = useCallback(async (q: string) => {
     setLogsLoading(true);
     try {
-      const res  = await fetch('/api/prepress-todos/logs');
+      const url = q ? `/api/prepress-todos/logs?q=${encodeURIComponent(q)}` : '/api/prepress-todos/logs';
+      const res  = await fetch(url);
       const data = await res.json();
       if (res.ok) setLogs(data.logs ?? []);
       else toast.error(data.error ?? 'Failed to load history');
@@ -107,14 +110,52 @@ export default function PrepressTodoPanel() {
     }
   }, []);
 
+  // Debounced search — same 250ms shape as the party typeahead
+  // (AddJobSeparationModal). Also fires the initial load when the view
+  // switches to 'history', so there's one fetch path, not two.
+  useEffect(() => {
+    if (view !== 'history') return;
+    const timer = setTimeout(() => loadLogs(logQuery.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [view, logQuery, loadLogs]);
+
+  // Exports the full 1000-row retention pool (wider than the 150 shown
+  // on screen — see 029_prepress_todo_logs_trim.sql), respecting the
+  // active search so a filtered view exports just that slice.
+  async function exportLogs() {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const q   = logQuery.trim();
+      const url = q ? `/api/prepress-todos/logs/export?q=${encodeURIComponent(q)}` : '/api/prepress-todos/logs/export';
+      const res = await fetch(url);
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        toast.error(data?.error ?? 'Export failed');
+        return;
+      }
+      const blob = await res.blob();
+      const name = res.headers.get('X-Export-Filename') ?? 'prepress-todo-history.csv';
+      const objUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objUrl;
+      link.download = name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objUrl);
+      toast.success('History exported');
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setExporting(false);
+    }
+  }
+
   function toggleView() {
     setConfirming(null);
     setEditingId(null);
-    setView((v) => {
-      const next = v === 'list' ? 'history' : 'list';
-      if (next === 'history') loadLogs();
-      return next;
-    });
+    setView((v) => (v === 'list' ? 'history' : 'list'));
   }
 
   async function addTask(e: React.FormEvent) {
@@ -306,6 +347,33 @@ export default function PrepressTodoPanel() {
       </header>
 
       {view === 'history' ? (
+        <>
+        <div className="flex items-center gap-1.5 px-2.5 pt-2.5 shrink-0">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-brand-muted pointer-events-none" aria-hidden="true" />
+            <input
+              value={logQuery}
+              onChange={(e) => setLogQuery(e.target.value)}
+              placeholder="Search history…"
+              aria-label="Search checklist history"
+              className={cn(
+                'w-full min-h-9 pl-8 pr-3 py-1.5 rounded-lg text-xs bg-brand-bg border border-brand-border',
+                'text-brand-ink placeholder:text-brand-muted',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
+              )}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={exportLogs}
+            disabled={exporting}
+            aria-label="Export history as CSV"
+            title="Export history as CSV (last 1000)"
+            className={cn(iconBtnCls, '!min-h-9 !min-w-9 bg-white shrink-0')}
+          >
+            <Download className="w-3.5 h-3.5" aria-hidden="true" />
+          </button>
+        </div>
         <ul className="flex-1 overflow-y-auto px-2.5 py-2.5 space-y-2">
           {logsLoading ? (
             <li className="space-y-2" aria-hidden="true">
@@ -315,7 +383,7 @@ export default function PrepressTodoPanel() {
             </li>
           ) : logs.length === 0 ? (
             <li className="px-2 py-8 text-center text-xs text-brand-muted">
-              No activity yet.
+              {logQuery.trim() ? 'No matching activity.' : 'No activity yet.'}
             </li>
           ) : (
             logs.map((l) => {
@@ -339,6 +407,7 @@ export default function PrepressTodoPanel() {
             })
           )}
         </ul>
+        </>
       ) : (
       <ul className="flex-1 overflow-y-auto px-2.5 py-2.5 space-y-2">
         {loading ? (
