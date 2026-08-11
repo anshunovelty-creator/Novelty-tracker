@@ -58,6 +58,8 @@ export default function PrepressTodoPanel() {
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
+  const newTaskRef = useRef<HTMLTextAreaElement>(null);
+  const editRef = useRef<HTMLTextAreaElement>(null);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Read inside the realtime debounce callback below, which only depends on
   // `load` — refs keep it seeing the current view/search without resubscribing
@@ -68,6 +70,23 @@ export default function PrepressTodoPanel() {
   useEffect(() => { viewRef.current = view; }, [view]);
   useEffect(() => { logQueryRef.current = logQuery; }, [logQuery]);
   useEffect(() => { exportMenuOpenRef.current = exportMenuOpen; }, [exportMenuOpen]);
+
+  // Grow the compose/edit boxes with their content (capped by max-h-28 in
+  // the className, which takes over with its own scroll past that) — same
+  // shape as a chat app's message box, so Shift+Enter for a new line reads
+  // as "make more room" rather than jumping a scrollbar into a single line.
+  useEffect(() => {
+    const el = newTaskRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [newTask]);
+  useEffect(() => {
+    const el = editRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [editValue, editingId]);
 
   const load = useCallback(async () => {
     try {
@@ -396,7 +415,7 @@ export default function PrepressTodoPanel() {
       ref={panelRef}
       aria-label="Prepress To-Do"
       className={cn(
-        'fixed bottom-24 right-5 z-50 flex flex-col',
+        'fixed bottom-24 right-5 z-50 grid grid-rows-[auto_minmax(0,1fr)_auto]',
         'w-[min(90vw,320px)] max-h-[min(70vh,460px)]',
         'bg-brand-surface border border-brand-border rounded-2xl',
         'shadow-2xl shadow-black/20 overflow-hidden',
@@ -467,7 +486,7 @@ export default function PrepressTodoPanel() {
           keeps keyboard focus and screen readers from reaching content
           that's translated out of view. motion-reduce drops the animation
           to an instant cut per DESIGN.md's reduced-motion requirement. */}
-      <div className="relative flex-1 overflow-hidden">
+      <div className="relative flex-1 min-h-0 overflow-hidden">
         <div
           className={cn(
             'flex h-full w-[200%] transition-transform duration-300 ease-out motion-reduce:transition-none',
@@ -504,24 +523,30 @@ export default function PrepressTodoPanel() {
                 )}
               >
                 {isEditing ? (
-                  <input
+                  <textarea
+                    ref={editRef}
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') saveEdit(t);
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        saveEdit(t);
+                      }
                       if (e.key === 'Escape') setEditingId(null);
                     }}
                     onBlur={() => saveEdit(t)}
                     autoFocus
+                    rows={1}
                     aria-label={`Edit task "${t.task}"`}
                     className={cn(
-                      'w-full min-h-9 px-2 py-1 rounded-lg text-xs bg-white border border-amber-300',
-                      'text-brand-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
+                      'w-full min-h-9 max-h-28 px-2 py-1 rounded-lg text-xs bg-white border border-amber-300',
+                      'text-brand-ink resize-none overflow-y-auto leading-snug',
+                      'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
                     )}
                   />
                 ) : (
                   <>
-                    <p className="text-xs text-brand-ink break-words leading-snug">{t.task}</p>
+                    <p className="text-xs text-brand-ink break-words leading-snug whitespace-pre-wrap">{t.task}</p>
                     <div className="mt-1.5 flex items-center justify-end gap-1">
                       <button
                         type="button"
@@ -653,7 +678,7 @@ export default function PrepressTodoPanel() {
                 <span>Nearing the 1000-log limit ({logTotal}/1000) — export soon before older entries roll off.</span>
               </div>
             )}
-            <ul className="flex-1 overflow-y-auto px-2.5 py-2.5 space-y-2">
+            <ul className="flex-1 min-h-0 overflow-y-auto px-2.5 py-2.5 space-y-2">
               {logsLoading ? (
                 <li className="space-y-2" aria-hidden="true">
                   {Array.from({ length: 3 }).map((_, i) => (
@@ -677,7 +702,7 @@ export default function PrepressTodoPanel() {
                         <Icon className="w-3 h-3 shrink-0" aria-hidden="true" />
                         <span className="text-[11px] font-semibold">{meta.label}</span>
                       </div>
-                      <p className="mt-1 text-xs text-brand-ink break-words leading-snug">{l.task}</p>
+                      <p className="mt-1 text-xs text-brand-ink break-words leading-snug whitespace-pre-wrap">{l.task}</p>
                       <p className="mt-1 text-[10px] text-brand-muted break-words">
                         {who} · {formatAdminDate(l.created_at)}
                       </p>
@@ -694,16 +719,24 @@ export default function PrepressTodoPanel() {
       {view === 'list' && (
         <form
           onSubmit={addTask}
-          className="flex items-center gap-2 px-3 py-2.5 border-t border-brand-border bg-brand-surface shrink-0"
+          className="flex items-end gap-2 px-3 py-2.5 border-t border-brand-border bg-brand-surface shrink-0"
         >
-          <input
+          <textarea
+            ref={newTaskRef}
             value={newTask}
             onChange={(e) => setNewTask(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                e.currentTarget.form?.requestSubmit();
+              }
+            }}
             placeholder="Add a task…"
             aria-label="Add a checklist task"
+            rows={1}
             className={cn(
-              'flex-1 min-h-11 px-3.5 py-2 rounded-full text-sm bg-brand-bg border border-brand-border',
-              'text-brand-ink placeholder:text-brand-muted',
+              'flex-1 min-h-11 max-h-28 px-3.5 py-2.5 rounded-2xl text-sm bg-brand-bg border border-brand-border',
+              'text-brand-ink placeholder:text-brand-muted resize-none overflow-y-auto leading-snug',
               'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
             )}
           />
