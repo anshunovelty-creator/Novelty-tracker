@@ -610,3 +610,106 @@ export interface StatusChangePayload {
   extra_label_location?: string;
   extra_label_remark?: string;
 }
+
+// ── Bill of Material (BOM) ──────────────────────────────────────
+// Production's material requisitions and the owner's answer to them.
+// Mirrors supabase/migrations/031_bom_requests.sql.
+
+/** The owner's answer on a single material line. */
+export type BomDecision =
+  | 'pending'      // not yet answered
+  | 'ordered'      // ordering it as asked
+  | 'partial'      // ordering less than asked — see approved_quantity
+  | 'alternative'  // not this, use alternative_material instead
+  | 'rejected';    // not ordering, no substitute
+
+/**
+ * Request-level status. Never set by hand — rolled up from the items by the
+ * recalc_bom_request_status trigger, except 'cancelled', which the raiser or
+ * Admin sets and the rollup will not overwrite.
+ */
+export type BomRequestStatus =
+  | 'pending'
+  | 'in_review'
+  | 'ordered'
+  | 'partially_fulfilled'
+  | 'rejected'
+  | 'cancelled';
+
+export type BomPriority = 'normal' | 'urgent';
+
+export interface BomRequestItem {
+  id:                   string;
+  request_id:           string;
+  position:             number;
+  material:             string;
+  specification:        string | null;
+  size:                 string | null;
+  quantity:             number | null;
+  unit:                 string | null;
+  note:                 string | null;
+  decision:             BomDecision;
+  approved_quantity:    number | null;  // set when decision = 'partial'
+  alternative_material: string | null;  // set when decision = 'alternative'
+  decision_note:        string | null;
+  decided_at:           string | null;
+  decided_by:           string | null;
+  created_at:           string;
+  updated_at:           string;
+}
+
+export interface BomRequest {
+  id:                   string;
+  ref:                  string;         // 'BOM-0042'
+  job_po:               string | null;  // free text, not a jobs FK
+  party:                string | null;
+  needed_by:            string | null;  // ISO date, 'YYYY-MM-DD'
+  priority:             BomPriority;
+  note:                 string | null;
+  status:               BomRequestStatus;
+  raised_by_department: string;
+  raised_by:            string | null;
+  cancelled_at:         string | null;
+  cancelled_by:         string | null;
+  created_at:           string;
+  updated_at:           string;
+}
+
+/**
+ * One entry in the material catalogue (bom_materials) — the single spelling
+ * of a material, plus whatever spec/size/unit it was last requested with so
+ * picking it can fill the rest of the line in.
+ */
+export interface BomMaterial {
+  id:            string;
+  name:          string;
+  name_key:      string;   // generated: lower(btrim(name)), unique
+  specification: string | null;
+  default_size:  string | null;
+  default_unit:  string | null;
+  created_by:    string | null;
+  created_at:    string;
+  updated_at:    string;
+}
+
+/** What GET /api/bom-requests returns — the header with its lines attached. */
+export interface BomRequestWithItems extends BomRequest {
+  items: BomRequestItem[];
+}
+
+/** What the raise-request form posts to POST /api/bom-requests. */
+export interface BomRequestInput {
+  job_po?:    string | null;
+  party?:     string | null;
+  needed_by?: string | null;
+  priority?:  BomPriority;
+  note?:      string | null;
+  items: {
+    material:       string;
+    specification?: string | null;
+    size?:          string | null;
+    quantity?:      number | null;
+    unit?:          string | null;
+    note?:          string | null;
+  }[];
+}

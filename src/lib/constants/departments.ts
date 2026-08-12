@@ -138,6 +138,34 @@ export function canDeptManageRegister(dept: Department | null): boolean {
   return dept !== null && REGISTER_EDIT_DEPTS.includes(dept);
 }
 
+/**
+ * Who may open the Bill of Material section at all — the material
+ * requisitions Production used to raise by mailing the owner.
+ *
+ * Production and Admin only, and like Register the gate covers reads as
+ * well as writes: no other department has a reason to see what stock is
+ * being asked for or what the owner approved. Backed by RLS too
+ * (bom_*_select_prod_admin policies), not just this check. Viewer is
+ * deliberately excluded here even though it reads every other table.
+ */
+export const BOM_DEPTS: Department[] = ['Production', 'Admin'];
+
+export function canDeptUseBOM(dept: Department | null): boolean {
+  return dept !== null && BOM_DEPTS.includes(dept);
+}
+
+/**
+ * Who may answer a BOM line — order it, cut it short, swap in an
+ * alternative, or refuse it. Admin alone: the whole point of the feature is
+ * that the owner is the one who decides what gets bought. Production raises
+ * and tracks, and may withdraw its own request, but never decides.
+ */
+export const BOM_DECIDE_DEPTS: Department[] = ['Admin'];
+
+export function canDeptDecideBOM(dept: Department | null): boolean {
+  return dept !== null && BOM_DECIDE_DEPTS.includes(dept);
+}
+
 export function canDeptSetStage(dept: Department, stage: Stage): boolean {
   const allowed = DEPT_ALLOWED_STAGES[dept];
   if (allowed === '*') return true;

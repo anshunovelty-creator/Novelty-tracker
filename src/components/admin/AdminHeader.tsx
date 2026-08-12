@@ -2,11 +2,11 @@
 // src/components/admin/AdminHeader.tsx
 
 import Link from 'next/link';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Package, Scissors, Disc, Users, SplitSquareHorizontal, Contact } from 'lucide-react';
+import { Package, Scissors, Disc, Users, SplitSquareHorizontal, Contact, ClipboardList } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import type { Department } from '@/lib/constants/departments';
+import { canDeptUseBOM, type Department } from '@/lib/constants/departments';
 import { Logo } from '@/components/brand/Logo';
 import ExportButton from './ExportButton';
 
@@ -29,11 +29,44 @@ const SHORTCUTS: Record<string, string> = {
   // override it, so the shortcut would silently do nothing.
   m: '/admin/team',
   r: '/admin/register',
+  b: '/admin/bom',
 };
+
+// How often the header re-checks for material requests nobody has answered.
+// Slow on purpose: this is a badge, not a wall display, and it rides the
+// count-only branch of the API so it never pulls the request bodies.
+const BOM_BADGE_POLL_MS = 60_000;
 
 export default function AdminHeader({ dept, displayName }: Props) {
   const router = useRouter();
   const supabase = createClient();
+
+  // Bill of Material requests still awaiting the owner. Only Production and
+  // Admin can see the section at all, so nobody else even asks.
+  const showBom = canDeptUseBOM(dept);
+  const [bomPending, setBomPending] = useState(0);
+
+  useEffect(() => {
+    if (!showBom) return;
+
+    let cancelled = false;
+
+    async function refresh() {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const res = await fetch('/api/bom-requests?count=pending');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setBomPending(data.pending ?? 0);
+      } catch {
+        // A badge is not worth a toast — leave the last known count up.
+      }
+    }
+
+    refresh();
+    const timer = setInterval(refresh, BOM_BADGE_POLL_MS);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [showBom]);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -115,6 +148,30 @@ export default function AdminHeader({ dept, displayName }: Props) {
               <SplitSquareHorizontal className="h-4 w-4" aria-hidden="true" />
               Job Separation
             </Link>
+            {/* Bill of Material — Production raises material requests here
+                and Admin answers them. Production + Admin only, mirrored by
+                canDeptUseBOM in every /api/bom-requests route and by RLS on
+                the bom_* tables. The badge counts requests nobody has
+                acted on yet, so the owner can see work waiting without
+                opening the page. */}
+            {showBom && (
+              <Link
+                href="/admin/bom"
+                title="Bill of Material (Ctrl+B)"
+                className="relative inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
+              >
+                <ClipboardList className="h-4 w-4" aria-hidden="true" />
+                BOM
+                {bomPending > 0 && (
+                  <span
+                    className="ml-0.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-300 px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-[#0A1F18]"
+                    aria-label={`${bomPending} request${bomPending === 1 ? '' : 's'} awaiting a decision`}
+                  >
+                    {bomPending}
+                  </span>
+                )}
+              </Link>
+            )}
             {/* Follow-ups (customer CRM) holds sales/contact data with no
                 reason to be shop-floor-visible — Admin only, mirrored by
                 canDeptManageRegister in every /api/register route and by
