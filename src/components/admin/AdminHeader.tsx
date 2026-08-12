@@ -2,8 +2,9 @@
 // src/components/admin/AdminHeader.tsx
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Package, Scissors, Disc, Users, SplitSquareHorizontal, Contact, ClipboardList } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { canDeptUseBOM, type Department } from '@/lib/constants/departments';
@@ -40,33 +41,28 @@ const BOM_BADGE_POLL_MS = 60_000;
 export default function AdminHeader({ dept, displayName }: Props) {
   const router = useRouter();
   const supabase = createClient();
+  const queryClient = useQueryClient();
 
   // Bill of Material requests still awaiting the owner. Only Production and
   // Admin can see the section at all, so nobody else even asks.
   const showBom = canDeptUseBOM(dept);
-  const [bomPending, setBomPending] = useState(0);
 
-  useEffect(() => {
-    if (!showBom) return;
-
-    let cancelled = false;
-
-    async function refresh() {
-      if (document.visibilityState !== 'visible') return;
-      try {
-        const res = await fetch('/api/bom-requests?count=pending');
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!cancelled) setBomPending(data.pending ?? 0);
-      } catch {
-        // A badge is not worth a toast — leave the last known count up.
-      }
-    }
-
-    refresh();
-    const timer = setInterval(refresh, BOM_BADGE_POLL_MS);
-    return () => { cancelled = true; clearInterval(timer); };
-  }, [showBom]);
+  // React Query owns the poll now: refetchInterval already skips firing
+  // while the tab is in the background (matching the old manual
+  // document.visibilityState check), and a failed poll just leaves the
+  // last successful count on screen rather than resetting to 0 — a badge
+  // is not worth a toast.
+  const { data: bomPending = 0 } = useQuery({
+    queryKey: ['bom-requests', 'pending-count'],
+    queryFn: async () => {
+      const res = await fetch('/api/bom-requests?count=pending');
+      if (!res.ok) throw new Error('Failed to load pending BOM count');
+      const data = await res.json();
+      return data.pending ?? 0;
+    },
+    enabled: showBom,
+    refetchInterval: BOM_BADGE_POLL_MS,
+  });
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -95,6 +91,10 @@ export default function AdminHeader({ dept, displayName }: Props) {
 
   async function handleLogout() {
     await supabase.auth.signOut();
+    // Drop every cached response — this is a shared shop-floor terminal, and
+    // whoever logs in next must not see a moment of the previous
+    // department's job/stock/BOM data from the query cache.
+    queryClient.clear();
     router.push('/login');
     router.refresh();
   }

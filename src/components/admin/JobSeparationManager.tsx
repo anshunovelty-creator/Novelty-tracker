@@ -8,7 +8,8 @@
 // someone else just added shows up without a manual refresh — the same
 // visibility-aware pattern the room displays use, not Supabase Realtime.
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { Search, Plus, Pencil, Copy, Trash2, SplitSquareHorizontal, ArrowUp, ArrowDown, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatQty, formatNumericDate } from '@/lib/utils';
@@ -40,6 +41,10 @@ const POLL_MS = 30_000;
 // covers years of history, so it's capped the same way and grown via
 // "Load more" instead of fetched in one shot.
 const PAGE_SIZE = 500;
+
+// A stable reference for "no data yet" — `data?.rows ?? []` would otherwise
+// hand back a fresh array every render, defeating the sortedRows useMemo.
+const EMPTY_ROWS: JobSeparation[] = [];
 
 // Mirrors JOB_SEPARATION_SEARCH_FIELDS in src/app/api/job-separations/route.ts
 // — the value sent as ?field=. "All fields" (value 'all') skips the param,
@@ -152,8 +157,6 @@ const JOB_SEPARATION_EXPORT_COLUMNS: CsvColumn<JobSeparation>[] = [
 ];
 
 export default function JobSeparationManager({ canManage }: { canManage: boolean }) {
-  const [rows,        setRows]        = useState<JobSeparation[]>([]);
-  const [loading,     setLoading]     = useState(true);
   const [search,      setSearch]      = useState('');
   const [searchField, setSearchField] = useState('all');
   const [range,       setRange]       = useState<DateRangeOption>('month');
@@ -169,69 +172,72 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
   const [busyId,     setBusyId]     = useState<string | null>(null);
   const [managingParties, setManagingParties] = useState(false);
   const [limit,       setLimit]       = useState(PAGE_SIZE);
-  const [hasMore,     setHasMore]     = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  // First load shows the skeleton; background polls should not — nobody
-  // wants the whole list to flash empty every 30s while they're reading it.
-  const firstLoad = useRef(true);
+  const queryClient = useQueryClient();
 
-  const load = useCallback(async () => {
-    if (firstLoad.current) setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      params.set('range', range);
-      params.set('limit', String(limit));
-      if (search) {
-        params.set('search', search);
-        if (searchField !== 'all') params.set('field', searchField);
-      }
-      const res  = await fetch(`/api/job-separations?${params.toString()}`);
-      const data = await res.json();
-      if (res.ok) {
-        setRows(data.job_separations ?? []);
-        setHasMore(Boolean(data.hasMore));
-      } else if (firstLoad.current) toast.error(data.error ?? 'Failed to load job separation rows');
-    } catch {
-      if (firstLoad.current) toast.error('Network error');
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-      firstLoad.current = false;
-    }
-  }, [search, searchField, range, limit]);
+  // Debounced only while typing — range/field changes apply immediately.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), search ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   // A new search/field/range starts back at page one — the limit a previous
   // "Load more" click reached doesn't carry over to an unrelated query.
   useEffect(() => {
     setLimit(PAGE_SIZE);
-  }, [search, searchField, range]);
+  }, [debouncedSearch, searchField, range]);
+
+  // "Load more" just grows `limit` and re-fetches the whole 0..limit range
+  // (the API has no real cursor), so it's one more dimension of the query
+  // key rather than a separate pagination mechanism.
+  const rowsQuery = useQuery({
+    queryKey: ['job-separations', debouncedSearch, searchField, range, limit],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set('range', range);
+      params.set('limit', String(limit));
+      if (debouncedSearch) {
+        params.set('search', debouncedSearch);
+        if (searchField !== 'all') params.set('field', searchField);
+      }
+      const res  = await fetch(`/api/job-separations?${params.toString()}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Failed to load job separation rows');
+      return {
+        rows:    (data.job_separations ?? []) as JobSeparation[],
+        hasMore: Boolean(data.hasMore),
+      };
+    },
+    placeholderData: keepPreviousData,
+    // Quiet background refresh — refetchInterval already skips firing while
+    // the tab isn't visible, matching the old manual visibilitychange logic.
+    refetchInterval: POLL_MS,
+  });
+  const rows    = rowsQuery.data?.rows ?? EMPTY_ROWS;
+  const hasMore = rowsQuery.data?.hasMore ?? false;
+  const loading = rowsQuery.isLoading;
 
   useEffect(() => {
-    const timer = setTimeout(load, search ? 300 : 0);
-    return () => clearTimeout(timer);
-  }, [load, search]);
+    if (!rowsQuery.isFetching) setLoadingMore(false);
+  }, [rowsQuery.isFetching]);
+
+  // Only the very first fetch this component ever makes gets a toast on
+  // failure — a filter change, "Load more", or a background poll failing
+  // quietly just leaves the current rows on screen, same as before.
+  const firstLoadRef = useRef(true);
+  useEffect(() => {
+    if (rowsQuery.isError && firstLoadRef.current) {
+      toast.error((rowsQuery.error as Error)?.message ?? 'Failed to load job separation rows');
+    }
+    if (rowsQuery.isSuccess || rowsQuery.isError) firstLoadRef.current = false;
+  }, [rowsQuery.isSuccess, rowsQuery.isError, rowsQuery.error]);
 
   function loadMore() {
     setLoadingMore(true);
     setLimit((l) => l + PAGE_SIZE);
   }
-
-  // Quiet background refresh — paused while the tab isn't visible, and
-  // caught up immediately the moment it becomes visible again.
-  useEffect(() => {
-    function handleVisibility() {
-      if (document.visibilityState === 'visible') load();
-    }
-    document.addEventListener('visibilitychange', handleVisibility);
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') load();
-    }, POLL_MS);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibility);
-      clearInterval(interval);
-    };
-  }, [load]);
 
   const sortedRows = useMemo(
     () => sortRows(rows, sortField, sortDir),
@@ -247,7 +253,10 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
         toast.error(data.error ?? 'Failed to delete row');
         return;
       }
-      setRows((prev) => prev.filter((r) => r.id !== row.id));
+      queryClient.setQueriesData<{ rows: JobSeparation[]; hasMore: boolean }>(
+        { queryKey: ['job-separations'] },
+        (old) => old ? { ...old, rows: old.rows.filter((r) => r.id !== row.id) } : old
+      );
       toast.success('Row deleted');
     } catch {
       toast.error('Network error');
@@ -689,7 +698,12 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
           editing={editing ?? undefined}
           prefill={!editing ? duplicateSource ?? undefined : undefined}
           onClose={() => { setAdding(false); setEditing(null); setDuplicateSource(null); }}
-          onSaved={() => { setAdding(false); setEditing(null); setDuplicateSource(null); load(); }}
+          onSaved={() => {
+            setAdding(false);
+            setEditing(null);
+            setDuplicateSource(null);
+            queryClient.invalidateQueries({ queryKey: ['job-separations'] });
+          }}
         />
       )}
 

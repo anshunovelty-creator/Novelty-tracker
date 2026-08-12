@@ -7,7 +7,8 @@
 // remove records — this list is typed by hand, so mis-entries and duplicates
 // have to be fixable.
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { Search, Plus, Pencil, Trash2, Layers } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatAdminDate } from '@/lib/utils';
@@ -56,8 +57,6 @@ const PLATE_EXPORT_COLUMNS: CsvColumn<Plate>[] = [
 ];
 
 export default function PlatesManager({ canManage }: { canManage: boolean }) {
-  const [plates,      setPlates]      = useState<Plate[]>([]);
-  const [loading,     setLoading]     = useState(true);
   const [search,      setSearch]      = useState('');
   const [searchField, setSearchField] = useState('all');
   const [adding,      setAdding]      = useState(false);
@@ -65,29 +64,35 @@ export default function PlatesManager({ canManage }: { canManage: boolean }) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [busyId,    setBusyId]    = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
+  const queryClient = useQueryClient();
+
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), search ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const platesQuery = useQuery({
+    queryKey: ['plates', debouncedSearch, searchField],
+    queryFn: async () => {
       const params = new URLSearchParams();
-      if (search) {
-        params.set('search', search);
+      if (debouncedSearch) {
+        params.set('search', debouncedSearch);
         if (searchField !== 'all') params.set('field', searchField);
       }
       const res  = await fetch(`/api/plates?${params.toString()}`);
       const data = await res.json();
-      if (res.ok) setPlates(data.plates ?? []);
-      else toast.error(data.error ?? 'Failed to load plates');
-    } catch {
-      toast.error('Network error');
-    } finally {
-      setLoading(false);
-    }
-  }, [search, searchField]);
+      if (!res.ok) throw new Error(data.error ?? 'Failed to load plates');
+      return (data.plates ?? []) as Plate[];
+    },
+    placeholderData: keepPreviousData,
+  });
+  const plates  = platesQuery.data ?? [];
+  const loading = platesQuery.isLoading;
 
   useEffect(() => {
-    const timer = setTimeout(load, search ? 300 : 0);
-    return () => clearTimeout(timer);
-  }, [load, search]);
+    if (platesQuery.error) toast.error((platesQuery.error as Error).message);
+  }, [platesQuery.error]);
 
   async function deletePlate(plate: Plate) {
     setBusyId(plate.id);
@@ -98,7 +103,10 @@ export default function PlatesManager({ canManage }: { canManage: boolean }) {
         toast.error(data.error ?? 'Failed to delete plate');
         return;
       }
-      setPlates((prev) => prev.filter((p) => p.id !== plate.id));
+      queryClient.setQueriesData<Plate[]>(
+        { queryKey: ['plates'] },
+        (old) => old?.filter((p) => p.id !== plate.id)
+      );
       toast.success('Plate deleted');
     } catch {
       toast.error('Network error');
@@ -429,7 +437,7 @@ export default function PlatesManager({ canManage }: { canManage: boolean }) {
         <AddPlateModal
           editing={editing ?? undefined}
           onClose={() => { setAdding(false); setEditing(null); }}
-          onSaved={() => { setAdding(false); setEditing(null); load(); }}
+          onSaved={() => { setAdding(false); setEditing(null); queryClient.invalidateQueries({ queryKey: ['plates'] }); }}
         />
       )}
     </div>

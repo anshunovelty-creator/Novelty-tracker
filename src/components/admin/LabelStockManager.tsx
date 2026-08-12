@@ -6,7 +6,8 @@
 // Read-only for most departments; Dispatch and Admin get the two verbs that
 // change the shelf — add a manual entry, and mark a row dispatched out.
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { Search, Plus, PackageCheck, History, Package } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatQty, formatAdminDate } from '@/lib/utils';
@@ -46,34 +47,38 @@ const KIND_HINT: Record<StockKind, string> = {
 };
 
 export default function LabelStockManager({ canManage }: { canManage: boolean }) {
-  const [stock,       setStock]       = useState<LabelStock[]>([]);
-  const [loading,     setLoading]     = useState(true);
   const [search,      setSearch]      = useState('');
   const [showHistory, setShowHistory] = useState(false);
   const [adding,      setAdding]      = useState(false);
   const [busyId,      setBusyId]      = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
+  const queryClient = useQueryClient();
+
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), search ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const stockQuery = useQuery({
+    queryKey: ['stock', debouncedSearch, showHistory],
+    queryFn: async () => {
       const params = new URLSearchParams();
-      if (search)      params.set('search', search);
-      if (showHistory) params.set('include_dispatched', 'true');
+      if (debouncedSearch) params.set('search', debouncedSearch);
+      if (showHistory)     params.set('include_dispatched', 'true');
       const res  = await fetch(`/api/stock?${params.toString()}`);
       const data = await res.json();
-      if (res.ok) setStock(data.stock ?? []);
-      else toast.error(data.error ?? 'Failed to load stock');
-    } catch {
-      toast.error('Network error');
-    } finally {
-      setLoading(false);
-    }
-  }, [search, showHistory]);
+      if (!res.ok) throw new Error(data.error ?? 'Failed to load stock');
+      return (data.stock ?? []) as LabelStock[];
+    },
+    placeholderData: keepPreviousData,
+  });
+  const stock   = stockQuery.data ?? [];
+  const loading = stockQuery.isLoading;
 
   useEffect(() => {
-    const timer = setTimeout(load, search ? 300 : 0);
-    return () => clearTimeout(timer);
-  }, [load, search]);
+    if (stockQuery.error) toast.error((stockQuery.error as Error).message);
+  }, [stockQuery.error]);
 
   async function markDispatched(entry: LabelStock) {
     setBusyId(entry.id);
@@ -88,12 +93,21 @@ export default function LabelStockManager({ canManage }: { canManage: boolean })
         toast.error(data.error ?? 'Failed to update stock');
         return;
       }
-      // Out of the live list; still there if history is showing.
-      setStock((prev) =>
-        showHistory
-          ? prev.map((s) => (s.id === entry.id ? (data.stock as LabelStock) : s))
-          : prev.filter((s) => s.id !== entry.id),
-      );
+      // Out of the live list; still there if history is showing — branch per
+      // cached view's own history flag, since both variants may be cached
+      // from earlier in this session. findAll + per-query setQueryData
+      // instead of setQueriesData's updater, which only exposes the old
+      // data — not the query itself — in this version's types.
+      queryClient.getQueryCache().findAll({ queryKey: ['stock'] }).forEach((query) => {
+        const historyView = (query.queryKey as unknown[])[2] as boolean;
+        queryClient.setQueryData<LabelStock[]>(query.queryKey, (old) =>
+          old === undefined
+            ? old
+            : historyView
+              ? old.map((s) => (s.id === entry.id ? (data.stock as LabelStock) : s))
+              : old.filter((s) => s.id !== entry.id)
+        );
+      });
       toast.success(`${formatQty(entry.qty)} labels dispatched out of stock`);
     } catch {
       toast.error('Network error');
@@ -274,7 +288,7 @@ export default function LabelStockManager({ canManage }: { canManage: boolean })
       {adding && (
         <ManualStockModal
           onClose={() => setAdding(false)}
-          onAdded={() => { setAdding(false); load(); }}
+          onAdded={() => { setAdding(false); queryClient.invalidateQueries({ queryKey: ['stock'] }); }}
         />
       )}
     </div>

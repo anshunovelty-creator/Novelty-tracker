@@ -6,7 +6,8 @@
 // Read-only for most departments — the point is answering "do we already have
 // a die for this" before ordering another. Prepress and Admin own the entries.
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { Search, Plus, Pencil, Trash2, Scissors } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatNumericDate } from '@/lib/utils';
@@ -66,8 +67,6 @@ const DIE_EXPORT_COLUMNS: CsvColumn<Die>[] = [
 ];
 
 export default function DiesManager({ canManage }: { canManage: boolean }) {
-  const [dies,        setDies]        = useState<Die[]>([]);
-  const [loading,     setLoading]     = useState(true);
   const [search,      setSearch]      = useState('');
   const [searchField, setSearchField] = useState('all');
   const [adding,      setAdding]      = useState(false);
@@ -76,29 +75,35 @@ export default function DiesManager({ canManage }: { canManage: boolean }) {
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busyId,     setBusyId]     = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
+  const queryClient = useQueryClient();
+
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), search ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const diesQuery = useQuery({
+    queryKey: ['dies', debouncedSearch, searchField],
+    queryFn: async () => {
       const params = new URLSearchParams();
-      if (search) {
-        params.set('search', search);
+      if (debouncedSearch) {
+        params.set('search', debouncedSearch);
         if (searchField !== 'all') params.set('field', searchField);
       }
       const res  = await fetch(`/api/dies?${params.toString()}`);
       const data = await res.json();
-      if (res.ok) setDies(data.dies ?? []);
-      else toast.error(data.error ?? 'Failed to load dies');
-    } catch {
-      toast.error('Network error');
-    } finally {
-      setLoading(false);
-    }
-  }, [search, searchField]);
+      if (!res.ok) throw new Error(data.error ?? 'Failed to load dies');
+      return (data.dies ?? []) as Die[];
+    },
+    placeholderData: keepPreviousData,
+  });
+  const dies    = diesQuery.data ?? [];
+  const loading = diesQuery.isLoading;
 
   useEffect(() => {
-    const timer = setTimeout(load, search ? 300 : 0);
-    return () => clearTimeout(timer);
-  }, [load, search]);
+    if (diesQuery.error) toast.error((diesQuery.error as Error).message);
+  }, [diesQuery.error]);
 
   async function remove(die: Die) {
     setBusyId(die.id);
@@ -109,7 +114,10 @@ export default function DiesManager({ canManage }: { canManage: boolean }) {
         toast.error(data.error ?? 'Failed to delete die');
         return;
       }
-      setDies((prev) => prev.filter((d) => d.id !== die.id));
+      queryClient.setQueriesData<Die[]>(
+        { queryKey: ['dies'] },
+        (old) => old?.filter((d) => d.id !== die.id)
+      );
       toast.success('Die deleted');
     } catch {
       toast.error('Network error');
@@ -449,7 +457,7 @@ export default function DiesManager({ canManage }: { canManage: boolean }) {
         <AddDieModal
           editing={editing ?? undefined}
           onClose={() => { setAdding(false); setEditing(null); }}
-          onSaved={() => { setAdding(false); setEditing(null); load(); }}
+          onSaved={() => { setAdding(false); setEditing(null); queryClient.invalidateQueries({ queryKey: ['dies'] }); }}
         />
       )}
     </div>

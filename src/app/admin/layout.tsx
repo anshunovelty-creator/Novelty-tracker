@@ -5,6 +5,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { parseDepartment, DEPT_DISPLAY_NAME } from '@/lib/constants/departments';
 import AdminHeader from '@/components/admin/AdminHeader';
 import NotesFeed from '@/components/admin/NotesFeed';
+import QueryProvider from '@/components/providers/QueryProvider';
 
 export const metadata = {
   title: 'Admin Panel',
@@ -32,14 +33,16 @@ export default async function AdminLayout({
   const displayName = DEPT_DISPLAY_NAME[dept];
 
   return (
-    <div className="admin-light min-h-screen">
-      <AdminHeader dept={dept} displayName={displayName} />
-      <main className="max-w-screen-2xl mx-auto px-4 py-6">
-        {children}
-      </main>
-      {/* Global internal-note feed. Mounted in the layout so the unread
-          badge survives navigation between admin pages. */}
-      <NotesFeed dept={dept} userEmail={user.email ?? ''} />
-    </div>
+    <QueryProvider>
+      <div className="admin-light min-h-screen">
+        <AdminHeader dept={dept} displayName={displayName} />
+        <main className="max-w-screen-2xl mx-auto px-4 py-6">
+          {children}
+        </main>
+        {/* Global internal-note feed. Mounted in the layout so the unread
+            badge survives navigation between admin pages. */}
+        <NotesFeed dept={dept} userEmail={user.email ?? ''} />
+      </div>
+    </QueryProvider>
   );
 }

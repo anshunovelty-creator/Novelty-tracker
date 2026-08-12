@@ -1,7 +1,8 @@
 'use client';
 // src/components/admin/JobsTable.tsx
 
-import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn, sortJobs, type JobSortOption } from '@/lib/utils';
 import { JOBS_CHANGED_EVENT, JOBS_FILTER_EVENT, type JobsFilterDetail } from '@/lib/constants/events';
 import type { Job, AddJobFormData } from '@/lib/types';
@@ -28,9 +29,11 @@ type DuplicatePrefill = Pick<AddJobFormData,
   'party' | 'pm_code' | 'job_name' | 'label_qty' | 'job_type' | 'notes'
 >;
 
+// A stable reference for "no data yet" — `data ?? []` would otherwise hand
+// back a fresh array every render, defeating the sortedJobs useMemo below.
+const EMPTY_JOBS: Job[] = [];
+
 export default function JobsTable({ initialJobs, dept }: Props) {
-  const [jobs,         setJobs]         = useState<Job[]>(initialJobs);
-  const [loading,      setLoading]      = useState(false);
   const [search,       setSearch]       = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [urgentOnly,   setUrgentOnly]   = useState(false);
@@ -39,39 +42,47 @@ export default function JobsTable({ initialJobs, dept }: Props) {
   const [prefill,      setPrefill]      = useState<Partial<DuplicatePrefill> | undefined>(undefined);
   const [formKey,      setFormKey]      = useState(0); // increment to reset form
 
-  const refetch = useCallback(async () => {
-    setLoading(true);
-    try {
+  const queryClient = useQueryClient();
+
+  // Debounced only while typing — status/urgent filters apply immediately.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), search ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const jobsQuery = useQuery({
+    queryKey: ['jobs', debouncedSearch, statusFilter, urgentOnly],
+    queryFn: async () => {
       const params = new URLSearchParams();
-      if (search)       params.set('search', search);
-      if (statusFilter) params.set('status', statusFilter);
-      if (urgentOnly)   params.set('urgent', 'true');
+      if (debouncedSearch) params.set('search', debouncedSearch);
+      if (statusFilter)    params.set('status', statusFilter);
+      if (urgentOnly)      params.set('urgent', 'true');
       const res  = await fetch(`/api/jobs?${params.toString()}`);
       const data = await res.json();
-      if (res.ok) setJobs(data.jobs);
-    } finally {
-      setLoading(false);
-    }
-  }, [search, statusFilter, urgentOnly]);
+      if (!res.ok) throw new Error(data.error ?? 'Failed to load jobs');
+      return data.jobs as Job[];
+    },
+    // Seeds the unfiltered view from the server component's own query, so
+    // the very first mount never re-fetches what the server already sent.
+    // React Query only uses this when the cache has nothing yet for this
+    // exact key — a second visit within the session uses its own cache
+    // (kept fresh by onJobUpdated/onJobDeleted below) instead of this prop.
+    initialData: !debouncedSearch && !statusFilter && !urgentOnly ? initialJobs : undefined,
+  });
+  const jobs    = jobsQuery.data ?? EMPTY_JOBS;
+  const loading = jobsQuery.isFetching;
 
-  // The server already provided initialJobs; skip the redundant fetch on mount
-  // unless a filter is somehow active on first render.
-  const firstRun = useRef(true);
+  // The machine board advances a job's stage on Start / Complete. It has no
+  // way to reach into this list, so it fires an event; every cached
+  // filter/search variant is invalidated, not just the one on screen.
   useEffect(() => {
-    if (firstRun.current) {
-      firstRun.current = false;
-      if (!search && !statusFilter && !urgentOnly) return;
+    function onJobsChanged() {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
     }
-    const timer = setTimeout(refetch, search ? 300 : 0);
-    return () => clearTimeout(timer);
-  }, [search, statusFilter, urgentOnly, refetch]);
-
-  // The machine board advances a job's stage on Start / Complete. It has no way
-  // to reach into this list, so it fires an event and we pull fresh rows.
-  useEffect(() => {
-    window.addEventListener(JOBS_CHANGED_EVENT, refetch);
-    return () => window.removeEventListener(JOBS_CHANGED_EVENT, refetch);
-  }, [refetch]);
+    window.addEventListener(JOBS_CHANGED_EVENT, onJobsChanged);
+    return () => window.removeEventListener(JOBS_CHANGED_EVENT, onJobsChanged);
+  }, [queryClient]);
 
   // A dashboard stat was clicked — narrow to the rows behind that number and
   // bring the table into view, since the stat row sits above it.
@@ -94,13 +105,21 @@ export default function JobsTable({ initialJobs, dept }: Props) {
   }, []);
 
   // Display order comes from `sortedJobs` below, so this just needs to swap
-  // the updated row in — no need to re-sort `jobs` itself.
+  // the updated row in — no need to re-sort `jobs` itself. Applied across
+  // every cached filter/search variant, not just the one on screen, so
+  // flipping back to a previously-viewed filter still shows the edit.
   function onJobUpdated(updatedJob: Job) {
-    setJobs((prev) => prev.map((j) => (j.id === updatedJob.id ? updatedJob : j)));
+    queryClient.setQueriesData<Job[]>(
+      { queryKey: ['jobs'] },
+      (old) => old?.map((j) => (j.id === updatedJob.id ? updatedJob : j))
+    );
   }
 
   function onJobDeleted(jobId: string) {
-    setJobs((prev) => prev.filter((j) => j.id !== jobId));
+    queryClient.setQueriesData<Job[]>(
+      { queryKey: ['jobs'] },
+      (old) => old?.filter((j) => j.id !== jobId)
+    );
   }
 
   const sortedJobs = useMemo(() => sortJobs(jobs, sortBy), [jobs, sortBy]);
@@ -136,7 +155,7 @@ export default function JobsTable({ initialJobs, dept }: Props) {
           prefillData={prefill}
           onSuccess={() => {
             setPrefill(undefined);
-            refetch();
+            queryClient.invalidateQueries({ queryKey: ['jobs'] });
           }}
         />
       </div>

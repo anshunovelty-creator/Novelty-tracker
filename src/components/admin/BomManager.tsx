@@ -16,7 +16,8 @@
 // pattern Job Separation uses, not Supabase Realtime — so a request raised
 // on the floor shows up in the office without a manual refresh.
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import {
   Plus, Trash2, X, Check, PackageCheck, PackageMinus, Repeat, Ban,
   Undo2, ClipboardList, AlertTriangle, Search, RotateCcw,
@@ -139,14 +140,13 @@ type PendingDecision = {
   note:     string;
 };
 
+// A stable reference for "no data yet" — `data ?? []` would otherwise hand
+// back a fresh array every render, defeating the exportRows useMemo below.
+const EMPTY_REQUESTS: BomRequestWithItems[] = [];
+
 export default function BomManager({ canDecide }: { canDecide: boolean }) {
-  const [requests, setRequests] = useState<BomRequestWithItems[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [filter,   setFilter]   = useState('open');
-  const [search,   setSearch]   = useState('');
-  // The material catalogue behind the form's typeahead. Fetched once —
-  // it is a shop's material list, not a growing dataset.
-  const [materials, setMaterials] = useState<BomMaterial[]>([]);
+  const [filter, setFilter] = useState('open');
+  const [search, setSearch] = useState('');
 
   const [raising, setRaising] = useState(false);
   const [saving,  setSaving]  = useState(false);
@@ -168,44 +168,58 @@ export default function BomManager({ canDecide }: { canDecide: boolean }) {
   const [note,     setNote]     = useState('');
   const [items,    setItems]    = useState<DraftItem[]>([blankItem()]);
 
-  const load = useCallback(async (quiet = false) => {
-    if (!quiet) setLoading(true);
-    try {
+  const queryClient = useQueryClient();
+
+  // Debounced only while typing — the debounce exists purely to avoid firing
+  // a request per keystroke; React Query's cache handles everything past that.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), search ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Background refresh is React Query's refetchInterval now: it already
+  // skips firing while the tab is backgrounded, matching the old manual
+  // document.visibilityState check. Recomputed fresh every render, so
+  // pausing while a form is open (raising) or a line's decision editor is
+  // open (pending) needs no ref-hack the way a setInterval closure would.
+  const requestsQuery = useQuery({
+    queryKey: ['bom-requests', filter, debouncedSearch],
+    queryFn: async () => {
       const params = new URLSearchParams({ status: filter });
-      if (search.trim()) params.set('search', search.trim());
+      if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
 
       const res  = await fetch(`/api/bom-requests?${params.toString()}`);
       const data = await res.json();
-      if (res.ok) setRequests(data.requests ?? []);
-      else if (!quiet) toast.error(data.error ?? 'Failed to load requests');
-    } catch {
-      if (!quiet) toast.error('Network error');
-    } finally {
-      if (!quiet) setLoading(false);
-    }
-  }, [filter, search]);
+      if (!res.ok) throw new Error(data.error ?? 'Failed to load requests');
+      return (data.requests ?? []) as BomRequestWithItems[];
+    },
+    // Keep the current list on screen while a filter/search change loads
+    // its own result, instead of flashing back to the skeleton each time.
+    placeholderData: keepPreviousData,
+    refetchInterval: raising || pending ? false : POLL_MS,
+  });
+  const requests = requestsQuery.data ?? EMPTY_REQUESTS;
+  const loading  = requestsQuery.isLoading;
 
-  // Debounced while typing in the search box, immediate otherwise — the
-  // same pattern Dies and Job Separation use.
   useEffect(() => {
-    const timer = setTimeout(() => load(), search ? 300 : 0);
-    return () => clearTimeout(timer);
-  }, [load, search]);
+    if (requestsQuery.error) toast.error((requestsQuery.error as Error).message);
+  }, [requestsQuery.error]);
 
-  // The catalogue only grows when a request is raised, so one fetch on
-  // mount plus a refresh after each successful raise is enough.
-  const loadMaterials = useCallback(async () => {
-    try {
-      const res  = await fetch('/api/bom-materials');
-      if (!res.ok) return;   // Typeahead is a convenience; never toast for it.
+  // The material catalogue behind the form's typeahead. A shop's material
+  // list is small and changes rarely, so the default staleTime already
+  // means one fetch per session in practice; submitRequest() below
+  // invalidates this directly whenever a request actually adds a new name.
+  const materialsQuery = useQuery({
+    queryKey: ['bom-materials'],
+    queryFn: async () => {
+      const res = await fetch('/api/bom-materials');
+      if (!res.ok) return [] as BomMaterial[];   // Typeahead is a convenience; never toast for it.
       const data = await res.json();
-      setMaterials(data.materials ?? []);
-    } catch {
-      // Offline or blocked: the field stays plain free text, which still works.
-    }
-  }, []);
-
-  useEffect(() => { loadMaterials(); }, [loadMaterials]);
+      return (data.materials ?? []) as BomMaterial[];
+    },
+  });
+  const materials = materialsQuery.data ?? [];
 
   // Exactly what's on screen, flattened one row per material line — the
   // filter and the search are already applied to `requests`.
@@ -213,22 +227,6 @@ export default function BomManager({ canDecide }: { canDecide: boolean }) {
     () => requests.flatMap((request) => request.items.map((item) => ({ request, item }))),
     [requests]
   );
-
-  // Background refresh. Skipped while the tab is hidden and while a form is
-  // open, so a poll can never overwrite something half-typed.
-  const raisingRef = useRef(raising);
-  raisingRef.current = raising;
-  const pendingRef = useRef(pending);
-  pendingRef.current = pending;
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (document.visibilityState !== 'visible') return;
-      if (raisingRef.current || pendingRef.current) return;
-      load(true);
-    }, POLL_MS);
-    return () => clearInterval(timer);
-  }, [load]);
 
   function resetDraft() {
     setJobPo(''); setParty(''); setNeededBy('');
@@ -316,10 +314,12 @@ export default function BomManager({ canDecide }: { canDecide: boolean }) {
       toast.success(`${data.request.ref} raised`);
       resetDraft();
       setRaising(false);
-      // Refetch rather than prepending: the current filter may exclude it.
-      load(true);
+      // Invalidate rather than prepend: the current filter may exclude the
+      // new row, and other filter/search variants cached from earlier in
+      // this session need to know about it too.
+      queryClient.invalidateQueries({ queryKey: ['bom-requests'] });
       // Any new material names on that request are now in the catalogue.
-      loadMaterials();
+      queryClient.invalidateQueries({ queryKey: ['bom-materials'] });
     } catch {
       toast.error('Network error');
     } finally {
@@ -348,9 +348,13 @@ export default function BomManager({ canDecide }: { canDecide: boolean }) {
         return;
       }
       // The server hands back the whole request with its freshly rolled-up
-      // status, so swap the card wholesale instead of patching one line.
+      // status, so swap the card wholesale instead of patching one line —
+      // across every cached filter/search variant, not just the one on screen.
       if (data.request) {
-        setRequests((prev) => prev.map((r) => (r.id === requestId ? data.request : r)));
+        queryClient.setQueriesData<BomRequestWithItems[]>(
+          { queryKey: ['bom-requests'] },
+          (old) => old?.map((r) => (r.id === requestId ? data.request : r))
+        );
       }
       setPending(null);
       toast.success(
@@ -405,7 +409,7 @@ export default function BomManager({ canDecide }: { canDecide: boolean }) {
         return;
       }
       toast.success(`${request.ref} withdrawn`);
-      load(true);
+      queryClient.invalidateQueries({ queryKey: ['bom-requests'] });
     } catch {
       toast.error('Network error');
     } finally {
@@ -426,7 +430,10 @@ export default function BomManager({ canDecide }: { canDecide: boolean }) {
         toast.error(data.error ?? 'Failed to delete');
         return;
       }
-      setRequests((prev) => prev.filter((r) => r.id !== request.id));
+      queryClient.setQueriesData<BomRequestWithItems[]>(
+        { queryKey: ['bom-requests'] },
+        (old) => old?.filter((r) => r.id !== request.id)
+      );
       toast.success(`${request.ref} deleted`);
     } catch {
       toast.error('Network error');

@@ -11,7 +11,8 @@
 //   • Unfinished jobs stay queued — they carry forward to the next day.
 // Other departments see the board read-only. Refreshes every 60 s.
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { format } from 'date-fns';
@@ -49,7 +50,6 @@ const toIsoOrNull = (local: string) =>
 export default function MachineBoard({ dept }: { dept: Department }) {
   const canManage = dept === 'Production' || dept === 'Admin';
 
-  const [data, setData]               = useState<BoardData | null>(null);
   const [historyDate, setHistoryDate] = useState('');
   const [busy, setBusy]               = useState(false);
   const [showAddMachine, setShowAddMachine] = useState(false);
@@ -58,20 +58,22 @@ export default function MachineBoard({ dept }: { dept: Department }) {
   const [machineRate, setMachineRate]         = useState('');
   const [confirmRemove, setConfirmRemove]   = useState<Machine | null>(null);
 
-  const load = useCallback(async (date: string) => {
-    try {
-      const res = await fetch(`/api/machines${date ? `?date=${date}` : ''}`);
-      if (res.ok) setData(await res.json());
-    } catch {
-      // network hiccup — keep showing the last board
-    }
-  }, []);
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    load(historyDate);
-    const t = setInterval(() => load(historyDate), 60_000);
-    return () => clearInterval(t);
-  }, [load, historyDate]);
+  const boardQuery = useQuery({
+    queryKey: ['machines', historyDate],
+    queryFn: async () => {
+      const res = await fetch(`/api/machines${historyDate ? `?date=${historyDate}` : ''}`);
+      if (!res.ok) throw new Error('Failed to load machine board');
+      return (await res.json()) as BoardData;
+    },
+    // Keep the board on screen while switching history dates instead of
+    // dropping to the skeleton between them — same as the old code, which
+    // only ever overwrote `data` on a successful fetch, never reset it.
+    placeholderData: keepPreviousData,
+    refetchInterval: 60_000,
+  });
+  const data = boardQuery.data ?? null;
 
   async function mutate(fn: () => Promise<Response>, okMsg?: string): Promise<boolean> {
     setBusy(true);
@@ -97,7 +99,10 @@ export default function MachineBoard({ dept }: { dept: Department }) {
         toast(`Stage unchanged — ${sync.reason}`, { icon: '⚠️' });
       }
 
-      await load(historyDate);
+      // Invalidate every cached history date, not just the one on screen —
+      // a machine action (start/complete/queue change) can affect what
+      // today's board AND an already-viewed history date would show.
+      await queryClient.invalidateQueries({ queryKey: ['machines'] });
       // The jobs table keeps its own copy of the list; tell it to refetch so an
       // auto-advanced stage appears without a page reload.
       if (sync?.advanced) {
