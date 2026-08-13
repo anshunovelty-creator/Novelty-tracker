@@ -193,6 +193,12 @@ export interface JobSeparation {
   order_value: number | null;     // Order Value — server-derived, quantity × rate
   jc_status: string | null;       // JC Status
   aw_send_to: string | null;      // AW send to
+  // Set once "Add Job" has been used on this row — see
+  // src/app/api/job-separations/[id]/create-job/route.ts. Denormalized
+  // job_card_number alongside the id so the worksheet can display it
+  // without a join.
+  linked_job_id: string | null;
+  linked_job_card_number: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

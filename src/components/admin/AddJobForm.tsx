@@ -5,7 +5,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { cn, formatQty, formatShortDate } from '@/lib/utils';
 import type { Department } from '@/lib/constants/departments';
-import type { AddJobFormData, ScheduledReleaseInput, JobType, PrintingUnit, LabelStock } from '@/lib/types';
+import type { AddJobFormData, ScheduledReleaseInput, JobType, PrintingUnit, LabelStock, Job } from '@/lib/types';
 import { LoadingButton } from '@/components/ui/Loading';
 import toast from 'react-hot-toast';
 
@@ -29,7 +29,16 @@ type StockMatch = {
 type Props = {
   dept:          Department;
   prefillData?:  Partial<AddJobFormData>; // used by Job Duplication
-  onSuccess?:    () => void;
+  onSuccess?:    (job: Job) => void;
+  // Set when opened from the Job Separation worksheet's "Add Job" button —
+  // submits to that row's create-job endpoint instead of POST /api/jobs, so
+  // the row can be stamped with the resulting job and can't be used twice.
+  sourceJobSeparationId?: string;
+  // Called when the form collapses without submitting (Cancel, either
+  // button). Lets a caller that wraps this in its own modal overlay (the
+  // Job Separation "Add Job" button) close that overlay too, instead of
+  // leaving it open around the collapsed "+ Add Job" trigger.
+  onCancel?: () => void;
 };
 
 const JOB_TYPES = ['New', 'Repeat', 'Artwork Changed'] as const;
@@ -61,7 +70,7 @@ const EMPTY_FORM: AddJobFormData = {
   printing_unit_id:     null,
 };
 
-export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
+export default function AddJobForm({ dept, prefillData, onSuccess, sourceJobSeparationId, onCancel }: Props) {
   const [form,       setForm]       = useState<AddJobFormData>({ ...EMPTY_FORM, ...prefillData });
   // Active units only — a retired unit must never be assignable to a new job.
   const [units,      setUnits]      = useState<PrintingUnit[]>([]);
@@ -207,8 +216,12 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
       scheduled_releases: form.is_scheduled_release ? releases : [],
     };
 
+    const url = sourceJobSeparationId
+      ? `/api/job-separations/${sourceJobSeparationId}/create-job`
+      : '/api/jobs';
+
     try {
-      const res = await fetch('/api/jobs', {
+      const res = await fetch(url, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(payload),
@@ -221,11 +234,17 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
         return;
       }
 
-      toast.success('Job added successfully');
+      if (data.warning) {
+        // Job was created but this row's link-back write failed or lost a
+        // race — the job itself is fine, so this is a heads-up, not an error.
+        toast.error(data.warning);
+      } else {
+        toast.success('Job added successfully');
+      }
       setForm({ ...EMPTY_FORM });
       setReleases([{ release_number: 1, planned_qty: 0, planned_date: '' }]);
       setIsOpen(false);
-      onSuccess?.();
+      onSuccess?.(data.job);
     } catch {
       toast.error('Network error. Please try again.');
     } finally {
@@ -253,12 +272,19 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-base font-semibold text-[var(--glass-ink)]">Add New Job</h2>
         <button
-          onClick={() => setIsOpen(false)}
+          onClick={() => { setIsOpen(false); onCancel?.(); }}
           className="text-[var(--glass-muted)] hover:text-[var(--glass-ink)] text-sm"
         >
           Cancel
         </button>
       </div>
+
+      {sourceJobSeparationId && (
+        <p className="text-xs text-[var(--glass-muted)] -mt-3 mb-4">
+          Prefilled from the Job Separation row — Delivery Date and Job Type
+          are left blank for the team to verify and fill in.
+        </p>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Row 1: PO + PM code + Party */}
@@ -535,7 +561,7 @@ export default function AddJobForm({ dept, prefillData, onSuccess }: Props) {
         <div className="flex justify-end gap-3 pt-2">
           <button
             type="button"
-            onClick={() => setIsOpen(false)}
+            onClick={() => { setIsOpen(false); onCancel?.(); }}
             className="px-4 py-2 text-sm text-[var(--glass-muted)] hover:text-[var(--glass-ink)] transition-colors"
           >
             Cancel

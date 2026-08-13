@@ -9,17 +9,36 @@
 // visibility-aware pattern the room displays use, not Supabase Realtime.
 
 import { useState, useEffect, useMemo, useRef } from 'react';
+import Link from 'next/link';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { Search, Plus, Pencil, Copy, Trash2, SplitSquareHorizontal, ArrowUp, ArrowDown, Users } from 'lucide-react';
+import { Search, Plus, Pencil, Copy, Trash2, SplitSquareHorizontal, ArrowUp, ArrowDown, Users, FilePlus2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { cn, formatQty, formatNumericDate } from '@/lib/utils';
+import { cn, formatQty, formatNumericDate, formatJobCardNumber } from '@/lib/utils';
 import { csvDate, csvTimestamp, type CsvColumn } from '@/lib/export/csv';
-import type { JobSeparation } from '@/lib/types';
+import type { JobSeparation, AddJobFormData, Job } from '@/lib/types';
+import type { Department } from '@/lib/constants/departments';
 import AddJobSeparationModal from './AddJobSeparationModal';
+import AddJobForm from './AddJobForm';
 import ManagePartiesModal from './ManagePartiesModal';
 import PrepressTodoPanel from './PrepressTodoPanel';
 import CsvExportButton from './CsvExportButton';
 import { SkeletonRows } from '@/components/ui/Skeleton';
+
+// party/po_no/po_date/pm_code/quantity map cleanly onto Job fields;
+// material_name maps to job_name (confirmed with the team — the two are
+// treated as the same product/label name here). Delivery Date and Job Type
+// have no Job Separation source, so they're left for the team to fill in
+// after reviewing the prefilled form.
+function jobPrefillFromRow(row: JobSeparation): Partial<AddJobFormData> {
+  return {
+    party:      row.party,
+    po_number:  row.po_no ?? '',
+    po_date:    row.po_date ?? '',
+    pm_code:    row.pm_code ?? '',
+    job_name:   row.material_name ?? '',
+    label_qty:  row.quantity,
+  };
+}
 
 // Header labels for the desk table, one column per worksheet field plus
 // actions. "Added" is deliberately left out here — it's in the CSV export
@@ -156,7 +175,9 @@ const JOB_SEPARATION_EXPORT_COLUMNS: CsvColumn<JobSeparation>[] = [
   { header: 'Added',          value: (j) => csvTimestamp(j.created_at) },
 ];
 
-export default function JobSeparationManager({ canManage }: { canManage: boolean }) {
+type Props = { canManage: boolean; dept: Department | null };
+
+export default function JobSeparationManager({ canManage, dept }: Props) {
   const [search,      setSearch]      = useState('');
   const [searchField, setSearchField] = useState('all');
   const [range,       setRange]       = useState<DateRangeOption>('month');
@@ -167,6 +188,9 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
   // Set when "Duplicate" is used instead of "Add row" — seeds the add form
   // with this row's fields (a fresh POST, not a PATCH to this row).
   const [duplicateSource, setDuplicateSource] = useState<JobSeparation | null>(null);
+  // Set when "Add Job" is used on a row — opens AddJobForm prefilled,
+  // submitting to that row's create-job endpoint instead of a fresh POST.
+  const [addingJobFrom, setAddingJobFrom] = useState<JobSeparation | null>(null);
   // The row whose Delete has been armed. Deleting is two taps, never a dialog.
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busyId,     setBusyId]     = useState<string | null>(null);
@@ -237,6 +261,26 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
   function loadMore() {
     setLoadingMore(true);
     setLimit((l) => l + PAGE_SIZE);
+  }
+
+  // Stamps the row locally so the button flips to "Job added" without a
+  // refetch — the server already did the same write via the create-job
+  // route's linked_job_id update.
+  function handleJobAdded(row: JobSeparation, job: Job) {
+    queryClient.setQueriesData<{ rows: JobSeparation[]; hasMore: boolean }>(
+      { queryKey: ['job-separations'] },
+      (old) => old
+        ? {
+            ...old,
+            rows: old.rows.map((r) =>
+              r.id === row.id
+                ? { ...r, linked_job_id: job.id, linked_job_card_number: job.job_card_number }
+                : r
+            ),
+          }
+        : old
+    );
+    setAddingJobFrom(null);
   }
 
   const sortedRows = useMemo(
@@ -499,7 +543,7 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
                     </div>
 
                     {canManage && (
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-2 shrink-0 flex-wrap">
                         <button
                           onClick={() => { setConfirming(null); setEditing(row); }}
                           aria-label={`Edit job separation row for ${row.party}`}
@@ -512,6 +556,30 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
                           <Pencil className="w-4 h-4" aria-hidden="true" />
                           Edit
                         </button>
+
+                        {dept && (row.linked_job_id ? (
+                          <Link
+                            href={`/admin/jobs/${row.linked_job_id}`}
+                            className="inline-flex items-center gap-1.5 min-h-11 px-3 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition-colors whitespace-nowrap"
+                            title="Open this Job"
+                          >
+                            <FilePlus2 className="w-4 h-4" aria-hidden="true" />
+                            Job {formatJobCardNumber(row.linked_job_card_number) || 'added'}
+                          </Link>
+                        ) : (
+                          <button
+                            onClick={() => { setConfirming(null); setAddingJobFrom(row); }}
+                            aria-label={`Add a Job from the job separation row for ${row.party}`}
+                            className={cn(
+                              'inline-flex items-center justify-center gap-1.5 min-h-11 px-3 rounded-lg',
+                              'text-xs font-medium border border-black/[0.12] text-[var(--glass-muted)]',
+                              'hover:bg-black/[0.04] hover:text-[var(--glass-ink)] transition-colors',
+                            )}
+                          >
+                            <FilePlus2 className="w-4 h-4" aria-hidden="true" />
+                            Add Job
+                          </button>
+                        ))}
 
                         <button
                           onClick={() =>
@@ -631,6 +699,29 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
                                 <Copy className="w-3.5 h-3.5" aria-hidden="true" />
                               </button>
 
+                              {dept && (row.linked_job_id ? (
+                                <Link
+                                  href={`/admin/jobs/${row.linked_job_id}`}
+                                  className="inline-flex items-center justify-center min-h-11 px-2.5 rounded-lg text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition-colors whitespace-nowrap"
+                                  title="Open this Job"
+                                >
+                                  Job {formatJobCardNumber(row.linked_job_card_number) || 'added'}
+                                </Link>
+                              ) : (
+                                <button
+                                  onClick={() => { setConfirming(null); setAddingJobFrom(row); }}
+                                  aria-label={`Add a Job from the job separation row for ${row.party}`}
+                                  title="Add Job"
+                                  className={cn(
+                                    'inline-flex items-center justify-center min-h-11 min-w-11 rounded-lg',
+                                    'border border-black/[0.12] text-[var(--glass-muted)]',
+                                    'hover:bg-black/[0.04] hover:text-[var(--glass-ink)] transition-colors',
+                                  )}
+                                >
+                                  <FilePlus2 className="w-3.5 h-3.5" aria-hidden="true" />
+                                </button>
+                              ))}
+
                               {confirming === row.id ? (
                                 <div className="inline-flex items-center gap-1">
                                   <button
@@ -709,6 +800,24 @@ export default function JobSeparationManager({ canManage }: { canManage: boolean
 
       {managingParties && (
         <ManagePartiesModal onClose={() => setManagingParties(false)} />
+      )}
+
+      {addingJobFrom && dept && (
+        <div
+          className="fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto bg-black/40 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setAddingJobFrom(null); }}
+        >
+          <div className="w-full max-w-2xl my-8">
+            <AddJobForm
+              key={addingJobFrom.id}
+              dept={dept}
+              prefillData={jobPrefillFromRow(addingJobFrom)}
+              sourceJobSeparationId={addingJobFrom.id}
+              onSuccess={(job) => handleJobAdded(addingJobFrom, job)}
+              onCancel={() => setAddingJobFrom(null)}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

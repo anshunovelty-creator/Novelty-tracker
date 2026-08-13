@@ -43,7 +43,7 @@ export default async function JobSeparationPage() {
         </p>
       </div>
 
-      <JobSeparationManager canManage={canDeptManageJobSeparation(dept)} />
+      <JobSeparationManager canManage={canDeptManageJobSeparation(dept)} dept={dept} />
     </div>
   );
 }
