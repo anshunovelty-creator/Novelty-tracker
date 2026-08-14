@@ -290,6 +290,17 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
     [rows, sortField, sortDir],
   );
 
+  // Live sum of what's currently on screen — reacts to search, date range
+  // and "Load more" the same way the row count above the table does.
+  // Cancelled rows don't count: that order isn't being produced or billed.
+  const totalOrderValue = useMemo(
+    () => sortedRows.reduce(
+      (sum, r) => r.cancelled_at ? sum : sum + (r.order_value ?? 0),
+      0,
+    ),
+    [sortedRows],
+  );
+
   async function cancelRow(row: JobSeparation, reason: string) {
     setBusyId(row.id);
     try {
@@ -438,18 +449,30 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
       </div>
 
       {!loading && sortedRows.length > 0 && (
-        <p className="text-sm text-[var(--glass-muted)]">
-          <strong className="text-[var(--glass-ink)]">{sortedRows.length}</strong>
-          {hasMore && '+'}
-          {' '}{sortedRows.length === 1 ? 'row' : 'rows'}
-          {search && ' matching your search'}
-          {range !== 'all' && (
-            <>{' '}in {DATE_RANGE_OPTIONS.find((r) => r.value === range)?.label.toLowerCase()}</>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          <p className="text-sm text-[var(--glass-muted)]">
+            <strong className="text-[var(--glass-ink)]">{sortedRows.length}</strong>
+            {hasMore && '+'}
+            {' '}{sortedRows.length === 1 ? 'row' : 'rows'}
+            {search && ' matching your search'}
+            {range !== 'all' && (
+              <>{' '}in {DATE_RANGE_OPTIONS.find((r) => r.value === range)?.label.toLowerCase()}</>
+            )}
+            {hasMore && (
+              <>{' '}— more match below; sort and CSV export cover only what&rsquo;s loaded, use &ldquo;Load more&rdquo; or narrow the search to reach the rest</>
+            )}
+          </p>
+
+          {canManage && (
+            <p
+              className="text-sm font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1"
+              title={hasMore ? 'Totals only what’s loaded — narrow the search or "Load more" to cover the rest' : 'Total order value of the rows shown above, excluding cancelled rows'}
+            >
+              Total order value: ₹{formatMoney(totalOrderValue)}
+              {hasMore && <span className="text-emerald-700">*</span>}
+            </p>
           )}
-          {hasMore && (
-            <>{' '}— more match below; sort and CSV export cover only what&rsquo;s loaded, use &ldquo;Load more&rdquo; or narrow the search to reach the rest</>
-          )}
-        </p>
+        </div>
       )}
 
       {loading ? (
