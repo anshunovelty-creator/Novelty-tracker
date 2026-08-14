@@ -101,7 +101,7 @@ export default function AdminHeader({ dept, displayName }: Props) {
 
   return (
     <header className="bg-brand-header sticky top-0 z-40 border-b border-white/10">
-      <div className="max-w-screen-2xl mx-auto px-4 h-14 flex items-center justify-between">
+      <div className="max-w-screen-2xl 3xl:max-w-[1800px] 4xl:max-w-[2200px] mx-auto px-4 h-14 flex items-center justify-between">
 
         {/* Brand + primary nav */}
         <div className="flex items-center gap-3 sm:gap-5 min-w-0">

@@ -9,6 +9,17 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      // ── Wide-monitor breakpoints ─────────────────────────────
+      // Tailwind's largest default (2xl) tops out at 1536px, so the admin
+      // shell's content column stayed capped there even on 27"-32"
+      // monitors with 2560px+ of real viewport. These let the shell widen
+      // in steps instead of jumping straight to full width, which would
+      // over-stretch the glass cards.
+      screens: {
+        '3xl': '1920px',
+        '4xl': '2560px',
+      },
+
       // ── Brand colors from spec ──────────────────────────────
       colors: {
         brand: {

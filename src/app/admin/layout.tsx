@@ -36,7 +36,7 @@ export default async function AdminLayout({
     <QueryProvider>
       <div className="admin-light min-h-screen">
         <AdminHeader dept={dept} displayName={displayName} />
-        <main className="max-w-screen-2xl mx-auto px-4 py-6">
+        <main className="max-w-screen-2xl 3xl:max-w-[1800px] 4xl:max-w-[2200px] mx-auto px-4 py-6">
           {children}
         </main>
         {/* Global internal-note feed. Mounted in the layout so the unread
