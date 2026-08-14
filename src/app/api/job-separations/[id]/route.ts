@@ -1,11 +1,11 @@
 // src/app/api/job-separations/[id]/route.ts
 // ============================================================
-// PATCH  /api/job-separations/[id] — correct a row. Prepress or Admin.
-// DELETE /api/job-separations/[id] — remove one outright. Prepress or Admin.
+// PATCH /api/job-separations/[id] — correct a row. Prepress or Admin.
 //
-// Delete is a hard delete: these rows are hand-typed off a PO, so
-// duplicates and mis-entries are common and nothing else in the schema
-// points at a job separation row.
+// There is no DELETE here — a row is hand-typed off a PO, so mis-entries
+// happen, but hard-deleting one leaves a gap in the Sr. No. sequence with
+// no explanation. Use POST /api/job-separations/[id]/cancel instead: it
+// marks the row cancelled (with a required reason) rather than removing it.
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -104,23 +104,4 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (!data) return NextResponse.json({ error: 'Job separation row not found' }, { status: 404 });
 
   return NextResponse.json({ job_separation: data });
-}
-
-export async function DELETE(_request: NextRequest, { params }: Params) {
-  const { id } = await params;
-
-  const denied = await denyWrite();
-  if (denied) return denied;
-
-  const admin = createAdminClient();
-  const { data, error } = await admin
-    .from('job_separations')
-    .delete()
-    .eq('id', id)
-    .select('id');
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  if (!data?.length) return NextResponse.json({ error: 'Job separation row not found' }, { status: 404 });
-
-  return NextResponse.json({ ok: true });
 }

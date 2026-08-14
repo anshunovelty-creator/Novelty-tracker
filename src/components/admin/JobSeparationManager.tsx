@@ -11,7 +11,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { Search, Plus, Pencil, Copy, Trash2, SplitSquareHorizontal, ArrowUp, ArrowDown, Users, FilePlus2 } from 'lucide-react';
+import { Search, Plus, Pencil, Copy, Ban, SplitSquareHorizontal, ArrowUp, ArrowDown, Users, FilePlus2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatQty, formatNumericDate, formatJobCardNumber } from '@/lib/utils';
 import { csvDate, csvTimestamp, type CsvColumn } from '@/lib/export/csv';
@@ -19,6 +19,7 @@ import type { JobSeparation, AddJobFormData, Job } from '@/lib/types';
 import type { Department } from '@/lib/constants/departments';
 import AddJobSeparationModal from './AddJobSeparationModal';
 import AddJobForm from './AddJobForm';
+import { PromptModal } from './modals';
 import ManagePartiesModal from './ManagePartiesModal';
 import PrepressTodoPanel from './PrepressTodoPanel';
 import CsvExportButton from './CsvExportButton';
@@ -191,9 +192,10 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
   // Set when "Add Job" is used on a row — opens AddJobForm prefilled,
   // submitting to that row's create-job endpoint instead of a fresh POST.
   const [addingJobFrom, setAddingJobFrom] = useState<JobSeparation | null>(null);
-  // The row whose Delete has been armed. Deleting is two taps, never a dialog.
-  const [confirming, setConfirming] = useState<string | null>(null);
-  const [busyId,     setBusyId]     = useState<string | null>(null);
+  // The row a Cancel Job prompt is open for — cancelling always asks for a
+  // reason, never a bare confirm, since it can't be undone afterward.
+  const [cancellingRow, setCancellingRow] = useState<JobSeparation | null>(null);
+  const [busyId,        setBusyId]        = useState<string | null>(null);
   const [managingParties, setManagingParties] = useState(false);
   const [limit,       setLimit]       = useState(PAGE_SIZE);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -288,25 +290,30 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
     [rows, sortField, sortDir],
   );
 
-  async function remove(row: JobSeparation) {
+  async function cancelRow(row: JobSeparation, reason: string) {
     setBusyId(row.id);
     try {
-      const res = await fetch(`/api/job-separations/${row.id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/job-separations/${row.id}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.error ?? 'Failed to delete row');
+        toast.error(data.error ?? 'Failed to cancel row');
         return;
       }
       queryClient.setQueriesData<{ rows: JobSeparation[]; hasMore: boolean }>(
         { queryKey: ['job-separations'] },
-        (old) => old ? { ...old, rows: old.rows.filter((r) => r.id !== row.id) } : old
+        (old) => old
+          ? { ...old, rows: old.rows.map((r) => (r.id === row.id ? (data.job_separation as JobSeparation) : r)) }
+          : old
       );
-      toast.success('Row deleted');
+      toast.success('Job separation row cancelled');
     } catch {
       toast.error('Network error');
     } finally {
       setBusyId(null);
-      setConfirming(null);
     }
   }
 
@@ -486,10 +493,11 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
           <ul className="sm:hidden space-y-3">
             {sortedRows.map((row) => {
               const isRepeat = (row.aw_send_to ?? '').trim().toUpperCase() === 'REPEAT';
+              const isCancelled = Boolean(row.cancelled_at);
               return (
-                <li key={row.id} className="glass rounded-xl p-4">
+                <li key={row.id} className={cn('glass rounded-xl p-4', isCancelled && 'border border-red-300/40')}>
                   <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-                    <div className="min-w-0 flex-1">
+                    <div className={cn('min-w-0 flex-1', isCancelled && 'text-red-600 line-through decoration-red-400')}>
                       {/* Identity: sr. no, unit, JC status, and an AW-repeat flag */}
                       <div className="flex flex-wrap items-center gap-2">
                         {row.sr_no && (
@@ -517,6 +525,12 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                             AW REPEAT
                           </span>
                         )}
+                        {isCancelled && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded bg-red-600 text-white no-underline">
+                            <Ban className="w-3 h-3" aria-hidden="true" />
+                            CANCELLED
+                          </span>
+                        )}
                       </div>
 
                       <p className="text-sm font-semibold text-[var(--glass-ink)] mt-1.5 break-words">
@@ -525,6 +539,12 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                       {row.material_name && (
                         <p className="text-xs text-[var(--glass-muted)] mt-0.5 break-words">
                           {row.material_name}
+                        </p>
+                      )}
+                      {isCancelled && (
+                        <p className="text-xs font-medium text-red-600 no-underline mt-1 break-words">
+                          Reason: {row.cancel_reason}
+                          {row.cancelled_by && <> — cancelled by {row.cancelled_by}</>}
                         </p>
                       )}
 
@@ -542,10 +562,10 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                       </div>
                     </div>
 
-                    {canManage && (
+                    {canManage && !isCancelled && (
                       <div className="flex items-center gap-2 shrink-0 flex-wrap">
                         <button
-                          onClick={() => { setConfirming(null); setEditing(row); }}
+                          onClick={() => setEditing(row)}
                           aria-label={`Edit job separation row for ${row.party}`}
                           className={cn(
                             'inline-flex items-center justify-center gap-1.5 min-h-11 px-3 rounded-lg',
@@ -568,7 +588,7 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                           </Link>
                         ) : (
                           <button
-                            onClick={() => { setConfirming(null); setAddingJobFrom(row); }}
+                            onClick={() => setAddingJobFrom(row)}
                             aria-label={`Add a Job from the job separation row for ${row.party}`}
                             className={cn(
                               'inline-flex items-center justify-center gap-1.5 min-h-11 px-3 rounded-lg',
@@ -582,28 +602,17 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                         ))}
 
                         <button
-                          onClick={() =>
-                            confirming === row.id ? remove(row) : setConfirming(row.id)
-                          }
-                          onBlur={() => setConfirming((id) => (id === row.id ? null : id))}
+                          onClick={() => setCancellingRow(row)}
                           disabled={busyId === row.id}
-                          aria-label={
-                            confirming === row.id
-                              ? `Confirm deleting the job separation row for ${row.party}`
-                              : `Delete the job separation row for ${row.party}`
-                          }
+                          aria-label={`Cancel the job separation row for ${row.party}`}
                           className={cn(
                             'inline-flex items-center justify-center gap-1.5 min-h-11 px-3 rounded-lg',
                             'text-xs font-medium border transition-colors disabled:opacity-50 whitespace-nowrap',
-                            confirming === row.id
-                              ? 'border-red-300 bg-red-100 text-red-800 hover:bg-red-200'
-                              : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100',
+                            'border-red-200 bg-red-50 text-red-700 hover:bg-red-100',
                           )}
                         >
-                          <Trash2 className="w-4 h-4" aria-hidden="true" />
-                          {busyId === row.id
-                            ? 'Deleting…'
-                            : confirming === row.id ? 'Confirm' : 'Delete'}
+                          <Ban className="w-4 h-4" aria-hidden="true" />
+                          {busyId === row.id ? 'Cancelling…' : 'Cancel Job'}
                         </button>
                       </div>
                     )}
@@ -635,13 +644,22 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                 <tbody>
                   {sortedRows.map((row) => {
                     const isRepeat = (row.aw_send_to ?? '').trim().toUpperCase() === 'REPEAT';
+                    const isCancelled = Boolean(row.cancelled_at);
                     return (
-                      <tr key={row.id} className="border-b border-white/8 hover:bg-black/[0.03] transition-colors">
+                      <tr
+                        key={row.id}
+                        className={cn(
+                          'border-b border-white/8 transition-colors',
+                          isCancelled
+                            ? 'text-red-600 line-through decoration-red-400'
+                            : 'hover:bg-black/[0.03]',
+                        )}
+                      >
                         <td className="px-3 py-2.5 whitespace-nowrap">
-                          {canManage ? (
+                          {canManage && !isCancelled ? (
                             <button
                               type="button"
-                              onClick={() => { setConfirming(null); setEditing(row); }}
+                              onClick={() => setEditing(row)}
                               aria-label={`Open details for ${row.party}`}
                               title="Open details"
                               className="font-mono text-xs font-semibold text-[var(--glass-ink)] underline decoration-dotted decoration-[var(--glass-muted)] underline-offset-2 hover:text-emerald-700 hover:decoration-emerald-700 transition-colors"
@@ -649,15 +667,23 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                               {row.sr_no || '—'}
                             </button>
                           ) : (
-                            <span className="font-mono text-xs font-semibold text-[var(--glass-ink)]">{row.sr_no || '—'}</span>
+                            <span className={cn('font-mono text-xs font-semibold', !isCancelled && 'text-[var(--glass-ink)]')}>{row.sr_no || '—'}</span>
                           )}
                         </td>
-                        <td className="px-3 py-2.5 font-semibold text-[var(--glass-ink)] whitespace-nowrap">{row.party}</td>
+                        <td className={cn('px-3 py-2.5 font-semibold whitespace-nowrap', !isCancelled && 'text-[var(--glass-ink)]')}>
+                          {row.party}
+                          {isCancelled && (
+                            <p className="text-[11px] font-medium no-underline mt-0.5">
+                              CANCELLED — {row.cancel_reason}
+                              {row.cancelled_by && <> (by {row.cancelled_by})</>}
+                            </p>
+                          )}
+                        </td>
                         <td className="px-3 py-2.5 font-mono whitespace-nowrap">{row.po_no || '—'}</td>
                         <td className="px-3 py-2.5 font-mono whitespace-nowrap">{formatNumericDate(row.po_date) || '—'}</td>
                         <td className="px-3 py-2.5 min-w-[220px] max-w-[320px] whitespace-normal align-top">
-                          <p className="font-mono text-xs font-semibold text-[var(--glass-ink)]">{row.pm_code || '—'}</p>
-                          <p className="text-xs text-[var(--glass-muted)] mt-0.5 break-words">{row.material_name || '—'}</p>
+                          <p className={cn('font-mono text-xs font-semibold', !isCancelled && 'text-[var(--glass-ink)]')}>{row.pm_code || '—'}</p>
+                          <p className={cn('text-xs mt-0.5 break-words', !isCancelled && 'text-[var(--glass-muted)]')}>{row.material_name || '—'}</p>
                         </td>
                         <td className="px-3 py-2.5 font-mono whitespace-nowrap">{row.quantity !== null ? formatQty(row.quantity) : '—'}</td>
                         <td className="px-3 py-2.5 whitespace-nowrap">{row.unit || '—'}</td>
@@ -667,7 +693,7 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           {row.jc_status ? (
                             <span className={cn(
-                              'text-[11px] font-medium px-1.5 py-0.5 rounded border',
+                              'text-[11px] font-medium px-1.5 py-0.5 rounded border no-underline',
                               row.jc_status.trim().toUpperCase() === 'DONE'
                                 ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
                                 : 'bg-amber-100 text-amber-800 border-amber-200',
@@ -678,16 +704,21 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                         </td>
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           {isRepeat ? (
-                            <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200">
+                            <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 no-underline">
                               AW REPEAT
                             </span>
                           ) : (row.aw_send_to || '—')}
                         </td>
                         <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                          {canManage && (
+                          {isCancelled ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg bg-red-600 text-white no-underline">
+                              <Ban className="w-3.5 h-3.5" aria-hidden="true" />
+                              Cancelled
+                            </span>
+                          ) : canManage && (
                             <div className="inline-flex items-center gap-1.5">
                               <button
-                                onClick={() => { setConfirming(null); setEditing(null); setDuplicateSource(row); setAdding(true); }}
+                                onClick={() => { setEditing(null); setDuplicateSource(row); setAdding(true); }}
                                 aria-label={`Duplicate the job separation row for ${row.party}`}
                                 title="Duplicate"
                                 className={cn(
@@ -709,7 +740,7 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                                 </Link>
                               ) : (
                                 <button
-                                  onClick={() => { setConfirming(null); setAddingJobFrom(row); }}
+                                  onClick={() => setAddingJobFrom(row)}
                                   aria-label={`Add a Job from the job separation row for ${row.party}`}
                                   title="Add Job"
                                   className={cn(
@@ -722,39 +753,19 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                                 </button>
                               ))}
 
-                              {confirming === row.id ? (
-                                <div className="inline-flex items-center gap-1">
-                                  <button
-                                    onClick={() => remove(row)}
-                                    disabled={busyId === row.id}
-                                    onBlur={() => setConfirming((id) => (id === row.id ? null : id))}
-                                    aria-label={`Confirm deleting the job separation row for ${row.party}`}
-                                    className="inline-flex items-center justify-center min-h-11 px-2.5 rounded-lg text-[11px] font-medium border border-red-300 bg-red-100 text-red-800 hover:bg-red-200 disabled:opacity-50 transition-colors whitespace-nowrap"
-                                  >
-                                    {busyId === row.id ? '…' : 'Confirm'}
-                                  </button>
-                                  <button
-                                    onClick={() => setConfirming(null)}
-                                    disabled={busyId === row.id}
-                                    className="inline-flex items-center justify-center min-h-11 px-1.5 text-[11px] font-medium text-[var(--glass-muted)] hover:text-[var(--glass-ink)] disabled:opacity-40 transition-colors"
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              ) : (
-                                <button
-                                  onClick={() => setConfirming(row.id)}
-                                  aria-label={`Delete the job separation row for ${row.party}`}
-                                  title="Delete"
-                                  className={cn(
-                                    'inline-flex items-center justify-center min-h-11 min-w-11 rounded-lg',
-                                    'border border-black/[0.12] text-[var(--glass-muted)]',
-                                    'hover:bg-red-50 hover:border-red-200 hover:text-red-800 transition-colors',
-                                  )}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-                                </button>
-                              )}
+                              <button
+                                onClick={() => setCancellingRow(row)}
+                                disabled={busyId === row.id}
+                                aria-label={`Cancel the job separation row for ${row.party}`}
+                                title="Cancel Job"
+                                className={cn(
+                                  'inline-flex items-center justify-center min-h-11 min-w-11 rounded-lg',
+                                  'border border-black/[0.12] text-[var(--glass-muted)] disabled:opacity-50',
+                                  'hover:bg-red-50 hover:border-red-200 hover:text-red-800 transition-colors',
+                                )}
+                              >
+                                <Ban className="w-3.5 h-3.5" aria-hidden="true" />
+                              </button>
                             </div>
                           )}
                         </td>
@@ -800,6 +811,23 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
 
       {managingParties && (
         <ManagePartiesModal onClose={() => setManagingParties(false)} />
+      )}
+
+      {cancellingRow && (
+        <PromptModal
+          title={`Cancel job separation row ${cancellingRow.sr_no ?? ''}`.trim()}
+          description="This can't be undone — the row stays visible, marked cancelled with this reason."
+          label="Cancellation reason"
+          kind="textarea"
+          required
+          confirmLabel="Cancel job"
+          onCancel={() => setCancellingRow(null)}
+          onConfirm={(reason) => {
+            const row = cancellingRow;
+            setCancellingRow(null);
+            cancelRow(row, reason);
+          }}
+        />
       )}
 
       {addingJobFrom && dept && (

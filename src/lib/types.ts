@@ -199,6 +199,13 @@ export interface JobSeparation {
   // without a join.
   linked_job_id: string | null;
   linked_job_card_number: string | null;
+  // Set once Cancel Job is used — see
+  // src/app/api/job-separations/[id]/cancel/route.ts. One-way: there is no
+  // un-cancel action, so the row stays visible (struck through) forever
+  // instead of being hard-deleted and leaving its Sr. No. unexplained.
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  cancel_reason: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
