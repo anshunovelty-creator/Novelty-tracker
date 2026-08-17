@@ -10,7 +10,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { parseDepartment, canDeptManageDiesPlates } from '@/lib/constants/departments';
-import DiesManager from '@/components/admin/DiesManager';
+import DiesTabs from '@/components/admin/DiesTabs';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,13 +37,13 @@ export default async function DiesPage() {
       <div>
         <h1 className="text-lg font-semibold text-[var(--glass-ink)]">Dies</h1>
         <p className="text-sm text-[var(--glass-muted)] mt-0.5">
-          The cutting dies that punch each label&rsquo;s shape, with the geometry
-          and serial for every one. Anyone can search the library; Prepress and
-          Admin add and correct the records.
+          The cutting dies that punch each label&rsquo;s shape — rotary and flatbed,
+          each with their own geometry. Anyone can search the library; Prepress
+          and Admin add and correct the records.
         </p>
       </div>
 
-      <DiesManager canManage={canDeptManageDiesPlates(dept)} />
+      <DiesTabs canManage={canDeptManageDiesPlates(dept)} />
     </div>
   );
 }

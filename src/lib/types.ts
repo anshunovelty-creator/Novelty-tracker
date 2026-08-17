@@ -146,6 +146,29 @@ export interface Die {
   updated_at: string;
 }
 
+// ── flatbed dies ─────────────────────────────────────────────
+// The shop's second physical die type, alongside the rotary dies above.
+// No cylinder (a flatbed die doesn't rotate) and no job/material identity
+// — flatbed dies are logged by their geometry alone. No status/damage
+// tracking either (the team decided against it) — serial_no is a plain
+// 1, 2, 3, ... assigned by the database on insert, not typed in by hand.
+
+export interface FlatbedDie {
+  id: string;
+  serial_no: number;              // auto-incrementing, DB-assigned
+  length: string | null;          // LENGTH
+  width: string | null;           // WIDTH — often a combined "H x W" reading
+  ups: number | null;             // Ups — labels per sheet/stroke
+  gap: string | null;             // Gap — e.g. "5 MM"
+  corner: string | null;          // Corner radius — e.g. "3 MM", "SPECIAL"
+  shape: string | null;           // e.g. "RECTANGLE", "OVAL"
+  location: string | null;        // rack / shelf / bay
+  die_received_on: string | null; // ISO date string
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ── plates ───────────────────────────────────────────────────
 // Printing plates mounted on press cylinders. Same access model as dies:
 // Prepress and Admin own entry, everyone else searches and views. Field
