@@ -156,7 +156,7 @@ function sortRows(rows: JobSeparation[], field: SortField, dir: SortDir): JobSep
 
 function formatMoney(value: number | null): string | null {
   if (value === null) return null;
-  return value.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  return value.toLocaleString('en-IN', { maximumFractionDigits: 2 });
 }
 
 const JOB_SEPARATION_EXPORT_COLUMNS: CsvColumn<JobSeparation>[] = [

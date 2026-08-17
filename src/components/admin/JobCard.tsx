@@ -208,7 +208,7 @@ export default function JobCard({
           )}
         >
           {actions.availableStages.map((stage) => {
-            const allowed   = canDeptSetStage(dept, stage);
+            const allowed   = canDeptSetStage(dept, stage, job.printing_method);
             const completed = actions.completedSet.has(stage);
             return (
               <option key={stage} value={stage} disabled={!allowed}>

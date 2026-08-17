@@ -6,6 +6,7 @@
 // ============================================================
 
 import type { Stage } from './stages';
+import type { PrintingMethod } from '../types';
 
 export const DEPARTMENTS = [
   'Prepress',
@@ -14,6 +15,18 @@ export const DEPARTMENTS = [
   'Postpress',
   'Dispatch',
   'Admin',
+  // Unit-1 (Offset) floor admin. Full stage access like Admin — see
+  // DEPT_ALLOWED_STAGES — but canDeptSetStage additionally checks the job's
+  // printing_method for this department and rejects non-Offset jobs, since
+  // this is the only department whose stage access is unit-scoped rather
+  // than stage-scoped. Deliberately excluded from every other *_EDIT_DEPTS
+  // allow-list below (Dies/Plates/Job Separation stay view-only for it;
+  // that same exclusion blocks the Prepress-Todo checklist, which reuses
+  // canDeptManageJobSeparation), and from BOM/Register. Every literal
+  // `dept === 'Admin'` check elsewhere in the app (Team, Follow-ups,
+  // export, PO Closed, prerequisite-skip override) excludes it too, since
+  // it isn't the string 'Admin'.
+  'Unit1Admin',
   // Read-only: sees every page and every job, same as Admin, but is never
   // added to a *_EDIT_DEPTS allow-list below and DEPT_ALLOWED_STAGES gives
   // it no stages — so every write path that already gates on department
@@ -58,6 +71,9 @@ export const DEPT_ALLOWED_STAGES: Record<Department, Stage[] | '*'> = {
     'Dispatched',
   ],
   Admin: '*',
+  // '*' here too — canDeptSetStage narrows it to Offset jobs only, since
+  // DEPT_ALLOWED_STAGES has no notion of "which job" to scope by itself.
+  Unit1Admin: '*',
   Viewer: [],
 };
 
@@ -166,9 +182,26 @@ export function canDeptDecideBOM(dept: Department | null): boolean {
   return dept !== null && BOM_DECIDE_DEPTS.includes(dept);
 }
 
-export function canDeptSetStage(dept: Department, stage: Stage): boolean {
+/**
+ * Whether `dept` may set a job to `stage`. Unit1Admin is the one department
+ * whose '*' is conditional: it only covers jobs actually running on Unit 1
+ * (printing_method === 'Offset'), since Unit 1 and Unit 2 run completely
+ * separate floors. Pass the job's printing_method wherever it's known
+ * (job detail / job row / job card) so the dropdown greys out stages for
+ * jobs Unit1Admin can't touch instead of only failing server-side; the
+ * POST /api/jobs/[id]/status route re-checks this after fetching the job
+ * regardless, since that's the actual enforcement point.
+ */
+export function canDeptSetStage(
+  dept: Department,
+  stage: Stage,
+  printingMethod?: PrintingMethod
+): boolean {
   const allowed = DEPT_ALLOWED_STAGES[dept];
-  if (allowed === '*') return true;
+  if (allowed === '*') {
+    if (dept === 'Unit1Admin' && printingMethod && printingMethod !== 'Offset') return false;
+    return true;
+  }
   return allowed.includes(stage);
 }
 
@@ -180,6 +213,7 @@ export const DEPT_DISPLAY_NAME: Record<Department, string> = {
   Postpress:  'Postpress Team',
   Dispatch:   'Dispatch Team',
   Admin:      'Admin',
+  Unit1Admin: 'Unit 1 Admin',
   Viewer:     'Viewer (read-only)',
 };
 

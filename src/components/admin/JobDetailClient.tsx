@@ -331,7 +331,7 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
               )}
             >
               {filteredStages.map((stage) => {
-                const allowed   = canDeptSetStage(dept, stage);
+                const allowed   = canDeptSetStage(dept, stage, job.printing_method);
                 const completed = completedSet.has(stage);
                 return (
                   <option key={stage} value={stage} disabled={!allowed}>

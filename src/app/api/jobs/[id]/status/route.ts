@@ -96,6 +96,17 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Cannot update a closed PO' }, { status: 400 });
   }
 
+  // Unit1Admin's '*' stage access only covers jobs actually running on
+  // Unit 1 — the department-only check above can't see the job yet, so
+  // it's re-checked here now that we have it. This is the real
+  // enforcement point; the dropdowns just mirror it for UX.
+  if (dept === 'Unit1Admin' && job.printing_method !== 'Offset') {
+    return NextResponse.json(
+      { error: 'Unit 1 Admin can only update Unit 1 (Offset) jobs' },
+      { status: 403 }
+    );
+  }
+
   const jobType = job.job_type as 'New' | 'Repeat' | 'Artwork Changed';
 
   // Scheduled-release jobs advance printing/QC/dispatch per release through

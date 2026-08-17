@@ -330,7 +330,7 @@ export default function AddJobSeparationModal({ editing, prefill, onClose, onSav
               <JsLabel>JC Status</JsLabel>
               <input
                 value={jcStatus}
-                onChange={(e) => setJcStatus(e.target.value)}
+                onChange={(e) => setJcStatus(e.target.value.toUpperCase())}
                 placeholder="e.g. DONE"
                 className={inputCls}
               />
@@ -339,7 +339,7 @@ export default function AddJobSeparationModal({ editing, prefill, onClose, onSav
               <JsLabel>AW send to</JsLabel>
               <input
                 value={awSendTo}
-                onChange={(e) => setAwSendTo(e.target.value)}
+                onChange={(e) => setAwSendTo(e.target.value.toUpperCase())}
                 placeholder="e.g. REPEAT"
                 className={inputCls}
               />
