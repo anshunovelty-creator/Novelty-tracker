@@ -46,8 +46,8 @@ function jobPrefillFromRow(row: JobSeparation): Partial<AddJobFormData> {
 // but kept out of the table to hold off horizontal scroll on desktop.
 // Must stay in the same order as the <td>s rendered below.
 const JOB_SEPARATION_COLUMNS = [
-  'Sr No', 'Party', 'PO No', 'PO Date', 'PM Code / Material', 'Qty', 'Unit',
-  'Rate', 'Order Value', 'Job Status', 'JC Status', 'AW', 'Actions',
+  'Sr No', 'Party', 'PO No / Date', 'PM Code / Material', 'Qty / Rate', 'Unit',
+  'Order Value', 'Job Status', 'JC Status', 'AW', 'Actions',
 ] as const;
 const JOB_SEPARATION_COLS = JOB_SEPARATION_COLUMNS.length;
 
@@ -486,7 +486,7 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
           {/* Desk: table skeleton */}
           <div className="hidden sm:block rounded-xl glass overflow-hidden">
             <div className="table-scroll-wrapper max-h-[70vh] overflow-y-auto">
-              <table className="w-full min-w-[1400px] border-collapse text-sm">
+              <table className="w-full min-w-[980px] border-collapse text-sm">
                 <thead>
                   <tr>
                     {JOB_SEPARATION_COLUMNS.map((col) => (
@@ -495,6 +495,19 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                         'uppercase tracking-[0.06em] whitespace-nowrap bg-[var(--glass-bg-strong)] backdrop-blur-[14px]',
                         'border-b border-white/12',
                         col === 'Actions' && 'text-right',
+                        // Sr No is the team's floor reference number — keep it pinned to the
+                        // left edge through both scroll axes so it's always visible. z-20
+                        // (above the plain top-sticky headers at z-10) so it stays on top at
+                        // the corner where both stickies overlap.
+                        col === 'Sr No' && 'left-0 z-20 border-r border-white/12',
+                        // The header label's own nowrap width was the real floor keeping
+                        // this column from shrinking — a td-only width doesn't constrain a
+                        // table column if its header cell is wider. Match the body cell's
+                        // width here too, and let the label wrap instead of forcing nowrap.
+                        // min-w-0 overrides the table's default per-column floor, which
+                        // Chrome derives from the longest unbreakable "word" in any row's
+                        // material name and otherwise ignores the explicit width above.
+                        col === 'PM Code / Material' && 'w-[200px] min-w-0 whitespace-normal',
                       )}>
                         {col}
                       </th>
@@ -649,7 +662,7 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
               the spreadsheet reading this worksheet was modeled on. */}
           <div className="hidden sm:block rounded-xl glass overflow-hidden">
             <div className="table-scroll-wrapper max-h-[70vh] overflow-y-auto">
-              <table className="w-full min-w-[1400px] border-collapse text-sm">
+              <table className="w-full min-w-[980px] border-collapse text-sm">
                 <thead>
                   <tr>
                     {JOB_SEPARATION_COLUMNS.map((col) => (
@@ -658,6 +671,19 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                         'uppercase tracking-[0.06em] whitespace-nowrap bg-[var(--glass-bg-strong)] backdrop-blur-[14px]',
                         'border-b border-white/12',
                         col === 'Actions' && 'text-right',
+                        // Sr No is the team's floor reference number — keep it pinned to the
+                        // left edge through both scroll axes so it's always visible. z-20
+                        // (above the plain top-sticky headers at z-10) so it stays on top at
+                        // the corner where both stickies overlap.
+                        col === 'Sr No' && 'left-0 z-20 border-r border-white/12',
+                        // The header label's own nowrap width was the real floor keeping
+                        // this column from shrinking — a td-only width doesn't constrain a
+                        // table column if its header cell is wider. Match the body cell's
+                        // width here too, and let the label wrap instead of forcing nowrap.
+                        // min-w-0 overrides the table's default per-column floor, which
+                        // Chrome derives from the longest unbreakable "word" in any row's
+                        // material name and otherwise ignores the explicit width above.
+                        col === 'PM Code / Material' && 'w-[200px] min-w-0 whitespace-normal',
                       )}>
                         {col}
                       </th>
@@ -678,7 +704,7 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                             : 'hover:bg-black/[0.03]',
                         )}
                       >
-                        <td className="px-3 py-2.5 whitespace-nowrap">
+                        <td className="sticky left-0 z-10 px-3 py-2.5 whitespace-nowrap bg-[var(--glass-bg-strong)] backdrop-blur-[14px] border-r border-white/8">
                           {canManage && !isCancelled ? (
                             <button
                               type="button"
@@ -693,7 +719,7 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                             <span className={cn('font-mono text-xs font-semibold', !isCancelled && 'text-[var(--glass-ink)]')}>{row.sr_no || '—'}</span>
                           )}
                         </td>
-                        <td className={cn('px-3 py-2.5 font-semibold whitespace-nowrap', !isCancelled && 'text-[var(--glass-ink)]')}>
+                        <td className={cn('px-3 py-2.5 font-semibold whitespace-normal break-words min-w-[110px]', !isCancelled && 'text-[var(--glass-ink)]')}>
                           {row.party}
                           {isCancelled && (
                             <p className="text-[11px] font-medium no-underline mt-0.5">
@@ -702,17 +728,21 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                             </p>
                           )}
                         </td>
-                        <td className="px-3 py-2.5 font-mono whitespace-nowrap">{row.po_no || '—'}</td>
-                        <td className="px-3 py-2.5 font-mono whitespace-nowrap">{formatNumericDate(row.po_date) || '—'}</td>
-                        <td className="px-3 py-2.5 min-w-[220px] max-w-[320px] whitespace-normal align-top">
+                        <td className="px-3 py-2.5 whitespace-nowrap align-top">
+                          <p className={cn('font-mono text-xs font-semibold', !isCancelled && 'text-[var(--glass-ink)]')}>{row.po_no || '—'}</p>
+                          <p className={cn('text-xs mt-0.5', !isCancelled && 'text-[var(--glass-muted)]')}>{formatNumericDate(row.po_date) || '—'}</p>
+                        </td>
+                        <td className="px-3 py-2.5 w-[200px] min-w-0 whitespace-normal align-top">
                           <p className={cn('font-mono text-xs font-semibold', !isCancelled && 'text-[var(--glass-ink)]')}>{row.pm_code || '—'}</p>
                           <p className={cn('text-xs mt-0.5 break-words', !isCancelled && 'text-[var(--glass-muted)]')}>{row.material_name || '—'}</p>
                         </td>
-                        <td className="px-3 py-2.5 font-mono whitespace-nowrap">{row.quantity !== null ? formatQty(row.quantity) : '—'}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap align-top">
+                          <p className={cn('font-mono text-xs font-semibold', !isCancelled && 'text-[var(--glass-ink)]')}>{row.quantity !== null ? formatQty(row.quantity) : '—'}</p>
+                          <p className={cn('font-mono text-xs mt-0.5', !isCancelled && 'text-[var(--glass-muted)]')}>@ {formatMoney(row.rate) ?? '—'}</p>
+                        </td>
                         <td className="px-3 py-2.5 whitespace-nowrap">{row.unit || '—'}</td>
-                        <td className="px-3 py-2.5 font-mono whitespace-nowrap">{formatMoney(row.rate) ?? '—'}</td>
                         <td className="px-3 py-2.5 font-mono whitespace-nowrap">{formatMoney(row.order_value) ?? '—'}</td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">{row.job_status || '—'}</td>
+                        <td className="px-3 py-2.5 whitespace-normal break-words min-w-[90px]">{row.job_status || '—'}</td>
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           {row.jc_status ? (
                             <span className={cn(
@@ -725,9 +755,9 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                             </span>
                           ) : '—'}
                         </td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">
+                        <td className="px-3 py-2.5 whitespace-normal break-words min-w-[90px]">
                           {isRepeat ? (
-                            <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 no-underline">
+                            <span className="inline-block whitespace-nowrap text-[11px] font-medium px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 no-underline">
                               AW REPEAT
                             </span>
                           ) : (row.aw_send_to || '—')}
