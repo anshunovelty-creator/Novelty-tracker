@@ -105,22 +105,24 @@ type SortField =
   | 'aw_send_to' | 'created_at';
 type SortDir = 'asc' | 'desc';
 
-const SORT_FIELDS: { value: SortField; label: string }[] = [
-  { value: 'created_at',    label: 'Added' },
-  { value: 'sr_no',         label: 'Sr. No.' },
-  { value: 'party',         label: 'Party' },
-  { value: 'po_no',         label: 'PO No' },
-  { value: 'po_date',       label: 'PO Date' },
-  { value: 'pm_code',       label: 'PM Code' },
-  { value: 'material_name', label: 'Material' },
-  { value: 'quantity',      label: 'Quantity' },
-  { value: 'unit',          label: 'Unit' },
-  { value: 'job_status',    label: 'Job Status' },
-  { value: 'rate',          label: 'Rate' },
-  { value: 'order_value',   label: 'Order Value' },
-  { value: 'jc_status',     label: 'JC Status' },
-  { value: 'aw_send_to',    label: 'AW send to' },
-];
+// Which single SortField each table header sorts by. Merged headers (PO No /
+// Date, PM Code / Material, Qty / Rate) stay one plain clickable label —
+// clicking sorts by the more useful of the two fields (date over number,
+// code over free-text name, quantity over rate) rather than offering a
+// per-field choice, which read as clutter with two tiny buttons stacked in
+// one header cell.
+const COLUMN_SORT_FIELDS: Partial<Record<typeof JOB_SEPARATION_COLUMNS[number], SortField>> = {
+  'Sr No':               'sr_no',
+  'Party':                'party',
+  'PO No / Date':         'po_date',
+  'PM Code / Material':   'pm_code',
+  'Qty / Rate':           'quantity',
+  'Unit':                 'unit',
+  'Order Value':          'order_value',
+  'Job Status':           'job_status',
+  'JC Status':            'jc_status',
+  'AW':                   'aw_send_to',
+};
 
 const SORT_FIELD_KIND: Record<SortField, 'text' | 'number' | 'date'> = {
   sr_no: 'text', party: 'text', po_no: 'text', po_date: 'date', pm_code: 'text',
@@ -184,6 +186,17 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
   const [range,       setRange]       = useState<DateRangeOption>('month');
   const [sortField,   setSortField]   = useState<SortField>('created_at');
   const [sortDir,     setSortDir]     = useState<SortDir>('desc');
+
+  // Click a header to sort by it; click the same one again to flip direction —
+  // replaces the old field-dropdown + direction-button pair.
+  const handleSort = (field: SortField) => {
+    if (field === sortField) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDir('asc');
+    }
+  };
   const [adding,      setAdding]      = useState(false);
   const [editing,     setEditing]     = useState<JobSeparation | null>(null);
   // Set when "Duplicate" is used instead of "Add row" — seeds the add form
@@ -328,6 +341,34 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
     }
   }
 
+  // A whole header's plain label made clickable — click to sort by it,
+  // click again to flip direction. Looks exactly like the old static header
+  // (same text, no permanent icon) except for the active column, which gets
+  // a small arrow. Merged headers (PO No / Date, PM Code / Material, Qty /
+  // Rate) keep their single combined label and sort by the one field
+  // COLUMN_SORT_FIELDS picks for them — no per-field sub-buttons.
+  function sortLabel(label: string, field: SortField) {
+    const active = sortField === field;
+    return (
+      <button
+        type="button"
+        onClick={() => handleSort(field)}
+        aria-label={`Sort by ${label}${active ? `, currently ${sortDir === 'asc' ? 'ascending' : 'descending'}` : ''}`}
+        className={cn(
+          'inline-flex items-center gap-1 hover:text-[var(--glass-ink)] transition-colors',
+          active && 'text-[var(--glass-ink)]',
+        )}
+      >
+        {label}
+        {active && (
+          sortDir === 'asc'
+            ? <ArrowUp className="w-3 h-3 shrink-0" aria-hidden="true" />
+            : <ArrowDown className="w-3 h-3 shrink-0" aria-hidden="true" />
+        )}
+      </button>
+    );
+  }
+
   return (
     <div className="space-y-3">
       {canManage && <PrepressTodoPanel />}
@@ -386,37 +427,6 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
             )}
           />
         </div>
-
-        <select
-          value={sortField}
-          onChange={(e) => setSortField(e.target.value as SortField)}
-          aria-label="Sort by field"
-          title="Sort by"
-          className={cn(
-            'min-h-11 px-3 rounded-xl text-sm shrink-0',
-            'bg-[var(--glass-bg)] border border-[var(--glass-border)] text-[var(--glass-ink)]',
-            'focus:outline-none focus:border-emerald-300/70 focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)] transition-all',
-          )}
-        >
-          {SORT_FIELDS.map((f) => (
-            <option key={f.value} value={f.value}>Sort: {f.label}</option>
-          ))}
-        </select>
-
-        <button
-          onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
-          aria-label={sortDir === 'asc' ? 'Sorting ascending, click for descending' : 'Sorting descending, click for ascending'}
-          title={sortDir === 'asc' ? 'Ascending' : 'Descending'}
-          className={cn(
-            'inline-flex items-center justify-center min-h-11 min-w-11 rounded-xl shrink-0',
-            'border border-[var(--glass-border)] text-[var(--glass-muted)]',
-            'hover:bg-black/[0.04] hover:text-[var(--glass-ink)] transition-colors',
-          )}
-        >
-          {sortDir === 'asc'
-            ? <ArrowUp className="w-4 h-4" aria-hidden="true" />
-            : <ArrowDown className="w-4 h-4" aria-hidden="true" />}
-        </button>
 
         <CsvExportButton rows={sortedRows} columns={JOB_SEPARATION_EXPORT_COLUMNS} filename="job-separation" />
 
@@ -685,13 +695,13 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                         // material name and otherwise ignores the explicit width above.
                         col === 'PM Code / Material' && 'w-[200px] min-w-0 whitespace-normal',
                       )}>
-                        {col}
+                        {COLUMN_SORT_FIELDS[col] ? sortLabel(col, COLUMN_SORT_FIELDS[col]!) : col}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedRows.map((row) => {
+                  {sortedRows.map((row, i) => {
                     const isRepeat = (row.aw_send_to ?? '').trim().toUpperCase() === 'REPEAT';
                     const isCancelled = Boolean(row.cancelled_at);
                     return (
@@ -699,6 +709,7 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                         key={row.id}
                         className={cn(
                           'border-b border-white/8 transition-colors',
+                          i % 2 === 1 && 'bg-[var(--glass-bg)]',
                           isCancelled
                             ? 'text-red-600 line-through decoration-red-400'
                             : 'hover:bg-black/[0.03]',

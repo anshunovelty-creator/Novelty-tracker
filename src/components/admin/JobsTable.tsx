@@ -248,11 +248,12 @@ export default function JobsTable({ initialJobs, dept }: Props) {
                   </td>
                 </tr>
               ) : (
-                sortedJobs.map((job) => (
+                sortedJobs.map((job, i) => (
                   <JobRow
                     key={job.id}
                     job={job}
                     dept={dept}
+                    index={i}
                     isExpanded={expandedId === job.id}
                     onToggleExpand={() =>
                       setExpandedId((prev) => (prev === job.id ? null : job.id))

@@ -355,7 +355,7 @@ export default function DiesManager({ canManage }: { canManage: boolean }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {dies.map((die) => {
+                  {dies.map((die, i) => {
                     const isDamaged = die.status === 'DAMAGE';
                     const damageText = [
                       die.damage_date ? formatNumericDate(die.damage_date) : null,
@@ -368,7 +368,7 @@ export default function DiesManager({ canManage }: { canManage: boolean }) {
                           'border-b transition-colors',
                           isDamaged
                             ? 'border-red-200/70 bg-red-50 hover:bg-red-100/70'
-                            : 'border-white/8 hover:bg-black/[0.03]',
+                            : cn('border-white/8 hover:bg-black/[0.03]', i % 2 === 1 && 'bg-[var(--glass-bg)]'),
                         )}
                       >
                         <td className="px-3 py-2.5 whitespace-nowrap">

@@ -345,12 +345,18 @@ export default function PlatesManager({ canManage }: { canManage: boolean }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {plates.map((plate) => {
+                  {plates.map((plate, i) => {
                     const size = plate.across_size || plate.around_size
                       ? `${plate.across_size ?? '—'} × ${plate.around_size ?? '—'}`
                       : '—';
                     return (
-                      <tr key={plate.id} className="border-b border-white/8 hover:bg-black/[0.03] transition-colors">
+                      <tr
+                        key={plate.id}
+                        className={cn(
+                          'border-b border-white/8 hover:bg-black/[0.03] transition-colors',
+                          i % 2 === 1 && 'bg-[var(--glass-bg)]',
+                        )}
+                      >
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           <div className="flex flex-wrap items-center gap-1">
                             {plateIdsOf(plate).length > 0

@@ -133,8 +133,11 @@ export default function MachineUtilisationReport({ initial }: { initial: Report 
                 </td>
               </tr>
             ) : (
-              report.machines.map((m) => (
-                <tr key={m.machine_id} className="border-b border-white/8 last:border-0">
+              report.machines.map((m, i) => (
+                <tr
+                  key={m.machine_id}
+                  className={cn('border-b border-white/8 last:border-0', i % 2 === 1 && 'bg-[var(--glass-bg)]')}
+                >
                   <td className="px-4 py-3">
                     <span className="block font-medium text-[var(--glass-ink)]">{m.machine_name}</span>
                     <span className="block text-xs text-[var(--glass-muted)]">

@@ -32,6 +32,7 @@ export const JOB_ROW_COLS = 9;
 type Props = {
   job:            Job;
   dept:           Department;
+  index:          number;
   isExpanded:     boolean;
   onToggleExpand: () => void;
   onJobUpdated:   (job: Job) => void;
@@ -48,12 +49,16 @@ const metaChip =
 const microLabel = 'text-[10px] tracking-[0.06em] uppercase text-[var(--glass-muted)] opacity-70';
 
 export default function JobRow({
-  job, dept, isExpanded, onToggleExpand, onJobUpdated, onJobDeleted, onDuplicate,
+  job, dept, index, isExpanded, onToggleExpand, onJobUpdated, onJobDeleted, onDuplicate,
 }: Props) {
   const actions = useJobActions({ job, dept, onJobUpdated, onJobDeleted });
   const [editing, setEditing] = useState(false);
 
-  const rowClass = cn('group border-b border-white/8 transition-colors', actions.urgencyTint);
+  // Urgency tint (on-hold, QC, urgent) always wins; otherwise zebra-stripe by row position.
+  const rowClass = cn(
+    'group border-b border-white/8 transition-colors',
+    actions.urgencyTint || (index % 2 === 1 ? 'bg-[var(--glass-bg)]' : ''),
+  );
 
   const updated  = formatAdminDateParts(job.updated_at);
   const cardNo   = formatJobCardNumber(job.job_card_number);
