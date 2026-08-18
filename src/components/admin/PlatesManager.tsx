@@ -197,7 +197,7 @@ export default function PlatesManager({ canManage }: { canManage: boolean }) {
                   <tr>
                     {PLATE_COLUMNS.map((col) => (
                       <th key={col} scope="col" className={cn(
-                        'sticky top-0 z-10 px-3 py-2.5 text-left text-[11px] font-semibold text-[var(--glass-muted)]',
+                        'sticky top-0 z-10 px-3 py-1.5 text-left text-[11px] font-semibold text-[var(--glass-muted)]',
                         'uppercase tracking-[0.06em] whitespace-nowrap bg-[var(--glass-bg-strong)] backdrop-blur-[14px]',
                         'border-b border-white/12',
                         col === 'Actions' && 'text-right',
@@ -334,7 +334,7 @@ export default function PlatesManager({ canManage }: { canManage: boolean }) {
                   <tr>
                     {PLATE_COLUMNS.map((col) => (
                       <th key={col} scope="col" className={cn(
-                        'sticky top-0 z-10 px-3 py-2.5 text-left text-[11px] font-semibold text-[var(--glass-muted)]',
+                        'sticky top-0 z-10 px-3 py-1.5 text-left text-[11px] font-semibold text-[var(--glass-muted)]',
                         'uppercase tracking-[0.06em] whitespace-nowrap bg-[var(--glass-bg-strong)] backdrop-blur-[14px]',
                         'border-b border-white/12',
                         col === 'Actions' && 'text-right',
@@ -357,7 +357,7 @@ export default function PlatesManager({ canManage }: { canManage: boolean }) {
                           i % 2 === 1 && 'bg-[var(--glass-bg)]',
                         )}
                       >
-                        <td className="px-3 py-2.5 whitespace-nowrap">
+                        <td className="px-3 py-1.5 whitespace-nowrap">
                           <div className="flex flex-wrap items-center gap-1">
                             {plateIdsOf(plate).length > 0
                               ? plateIdsOf(plate).map((pid) => (
@@ -371,15 +371,15 @@ export default function PlatesManager({ canManage }: { canManage: boolean }) {
                               : <span className="text-[var(--glass-muted)]">—</span>}
                           </div>
                         </td>
-                        <td className="px-3 py-2.5 font-semibold text-[var(--glass-ink)] whitespace-nowrap">{plate.party || '—'}</td>
-                        <td className="px-3 py-2.5 font-mono whitespace-nowrap">{plate.pm_code ?? '—'}</td>
-                        <td className="px-3 py-2.5 text-[var(--glass-muted)] whitespace-nowrap">{plate.item_name || '—'}</td>
-                        <td className="px-3 py-2.5 font-mono whitespace-nowrap">{size}</td>
-                        <td className="px-3 py-2.5 font-mono whitespace-nowrap">{plate.cylinder ?? '—'}</td>
-                        <td className="px-3 py-2.5 font-mono whitespace-nowrap">{plate.label_per_round ?? '—'}</td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">{plate.location || '—'}</td>
-                        <td className="px-3 py-2.5 font-mono whitespace-nowrap text-[var(--glass-muted)]">{formatAdminDate(plate.created_at)}</td>
-                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                        <td className="px-3 py-1.5 font-semibold text-[var(--glass-ink)] whitespace-nowrap">{plate.party || '—'}</td>
+                        <td className="px-3 py-1.5 font-mono whitespace-nowrap">{plate.pm_code ?? '—'}</td>
+                        <td className="px-3 py-1.5 text-[var(--glass-muted)] whitespace-nowrap">{plate.item_name || '—'}</td>
+                        <td className="px-3 py-1.5 font-mono whitespace-nowrap">{size}</td>
+                        <td className="px-3 py-1.5 font-mono whitespace-nowrap">{plate.cylinder ?? '—'}</td>
+                        <td className="px-3 py-1.5 font-mono whitespace-nowrap">{plate.label_per_round ?? '—'}</td>
+                        <td className="px-3 py-1.5 whitespace-nowrap">{plate.location || '—'}</td>
+                        <td className="px-3 py-1.5 font-mono whitespace-nowrap text-[var(--glass-muted)]">{formatAdminDate(plate.created_at)}</td>
+                        <td className="px-3 py-1.5 text-right whitespace-nowrap">
                           {canManage && (
                             <div className="inline-flex items-center gap-1.5">
                               <button

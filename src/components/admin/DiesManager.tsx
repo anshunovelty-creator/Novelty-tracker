@@ -6,9 +6,9 @@
 // Read-only for most departments — the point is answering "do we already have
 // a die for this" before ordering another. Prepress and Admin own the entries.
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { Search, Plus, Pencil, Trash2, Scissors } from 'lucide-react';
+import { Search, Plus, Pencil, Trash2, Scissors, ArrowUp, ArrowDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatNumericDate } from '@/lib/utils';
 import { csvDate, csvTimestamp, type CsvColumn } from '@/lib/export/csv';
@@ -20,10 +20,68 @@ import { SkeletonRows } from '@/components/ui/Skeleton';
 // Header labels for the desk table — must stay in the same order as the
 // <td>s rendered below.
 const DIE_COLUMNS = [
-  'Status', 'Serial No', 'Job Name', 'Corner', 'Size', 'Cylinder', 'Material',
+  'Sr No', 'Status', 'Serial No', 'Job Name', 'Corner', 'Size', 'Cylinder', 'Material',
   'Location', 'Gap across', 'Ups / repeat', 'Received', 'Damage', 'Actions',
 ] as const;
 const DIE_COLS = DIE_COLUMNS.length;
+
+// Stable reference — `data ?? []` would create a new array every render,
+// making the sortedDies useMemo below recompute even when data hasn't changed.
+const EMPTY_DIES: Die[] = [];
+
+// Click-to-sort, mirroring JobSeparationManager.tsx's approach. Size
+// (length/width) and Damage (date/reason) are merged headers — each sorts
+// by the more useful of its two source fields.
+type SortField =
+  | 'status' | 'serial_no' | 'job_name' | 'corner' | 'length' | 'cylinder'
+  | 'material' | 'location' | 'gap' | 'ups' | 'die_received_on' | 'damage_date' | 'created_at';
+type SortDir = 'asc' | 'desc';
+
+const COLUMN_SORT_FIELDS: Partial<Record<typeof DIE_COLUMNS[number], SortField>> = {
+  'Sr No':         'created_at',
+  'Status':        'status',
+  'Serial No':     'serial_no',
+  'Job Name':      'job_name',
+  'Corner':        'corner',
+  'Size':          'length',
+  'Cylinder':      'cylinder',
+  'Material':      'material',
+  'Location':      'location',
+  'Gap across':    'gap',
+  'Ups / repeat':  'ups',
+  'Received':      'die_received_on',
+  'Damage':        'damage_date',
+};
+
+const SORT_FIELD_KIND: Record<SortField, 'text' | 'number' | 'date'> = {
+  status: 'text', serial_no: 'text', job_name: 'text', corner: 'text', length: 'text',
+  cylinder: 'number', material: 'text', location: 'text', gap: 'text', ups: 'number',
+  die_received_on: 'date', damage_date: 'date', created_at: 'date',
+};
+
+// Nulls always sort to the end regardless of direction — "not set" reads as
+// "furthest away," in either direction.
+function compareDies(a: Die, b: Die, field: SortField): number {
+  const av = a[field];
+  const bv = b[field];
+  if (av === null && bv === null) return 0;
+  if (av === null) return 1;
+  if (bv === null) return -1;
+
+  const kind = SORT_FIELD_KIND[field];
+  if (kind === 'number') return (av as number) - (bv as number);
+  if (kind === 'date') return new Date(av as string).getTime() - new Date(bv as string).getTime();
+  return (av as string).localeCompare(bv as string, undefined, { numeric: true, sensitivity: 'base' });
+}
+
+function sortDies(dies: Die[], field: SortField, dir: SortDir): Die[] {
+  const sorted = [...dies];
+  sorted.sort((a, b) => {
+    const diff = compareDies(a, b, field);
+    return dir === 'asc' ? diff : -diff;
+  });
+  return sorted;
+}
 
 const STATUS_BADGE: Record<DieStatus, string> = {
   'IN USE': 'bg-emerald-100 text-emerald-800 border border-emerald-200',
@@ -48,7 +106,20 @@ const DIE_SEARCH_FIELDS: { value: string; label: string; placeholder: string }[]
   { value: 'ups',       label: 'Ups / repeat',  placeholder: 'Search by ups / repeat' },
 ];
 
-const DIE_EXPORT_COLUMNS: CsvColumn<Die>[] = [
+// Sr No isn't a stored field — it's each die's rank by created_at among the
+// currently loaded rows, recomputed on every render. That's what makes it
+// "not fixed": delete a die from the middle and everything after it just
+// shifts up, with no renumbering write of its own.
+function buildSrNoMap(dies: Die[]): Map<string, number> {
+  const byCreated = [...dies].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+  return new Map(byCreated.map((d, i) => [d.id, i + 1]));
+}
+
+function buildDieExportColumns(srNoMap: Map<string, number>): CsvColumn<Die>[] {
+  return [
+  { header: 'Sr No',            value: (d) => srNoMap.get(d.id) ?? null },
   { header: 'Status',           value: (d) => d.status },
   { header: 'Serial No',        value: (d) => d.serial_no },
   { header: 'Job Name',         value: (d) => d.job_name },
@@ -64,16 +135,29 @@ const DIE_EXPORT_COLUMNS: CsvColumn<Die>[] = [
   { header: 'Damage Date',      value: (d) => csvDate(d.damage_date) },
   { header: 'Damage Reason',    value: (d) => d.damage_reason },
   { header: 'Added',            value: (d) => csvTimestamp(d.created_at) },
-];
+  ];
+}
 
 export default function DiesManager({ canManage }: { canManage: boolean }) {
   const [search,      setSearch]      = useState('');
   const [searchField, setSearchField] = useState('all');
+  const [sortField,   setSortField]   = useState<SortField>('created_at');
+  const [sortDir,     setSortDir]     = useState<SortDir>('asc');
   const [adding,      setAdding]      = useState(false);
   const [editing,     setEditing]     = useState<Die | null>(null);
   // The row whose Delete has been armed. Deleting is two taps, never a dialog.
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busyId,     setBusyId]     = useState<string | null>(null);
+
+  // Click a header to sort by it; click the same one again to flip direction.
+  const handleSort = (field: SortField) => {
+    if (field === sortField) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDir('asc');
+    }
+  };
 
   const queryClient = useQueryClient();
 
@@ -98,8 +182,16 @@ export default function DiesManager({ canManage }: { canManage: boolean }) {
     },
     placeholderData: keepPreviousData,
   });
-  const dies    = diesQuery.data ?? [];
+  const dies    = diesQuery.data ?? EMPTY_DIES;
   const loading = diesQuery.isLoading;
+
+  const sortedDies = useMemo(
+    () => sortDies(dies, sortField, sortDir),
+    [dies, sortField, sortDir]
+  );
+
+  const srNoMap = useMemo(() => buildSrNoMap(dies), [dies]);
+  const exportColumns = useMemo(() => buildDieExportColumns(srNoMap), [srNoMap]);
 
   useEffect(() => {
     if (diesQuery.error) toast.error((diesQuery.error as Error).message);
@@ -125,6 +217,31 @@ export default function DiesManager({ canManage }: { canManage: boolean }) {
       setBusyId(null);
       setConfirming(null);
     }
+  }
+
+  // A whole header's plain label made clickable — click to sort by it, click
+  // again to flip direction. Merged headers (Size, Damage) keep their single
+  // combined label and sort by the one field COLUMN_SORT_FIELDS picks.
+  function sortLabel(label: string, field: SortField) {
+    const active = sortField === field;
+    return (
+      <button
+        type="button"
+        onClick={() => handleSort(field)}
+        aria-label={`Sort by ${label}${active ? `, currently ${sortDir === 'asc' ? 'ascending' : 'descending'}` : ''}`}
+        className={cn(
+          'inline-flex items-center gap-1 hover:text-[var(--glass-ink)] transition-colors',
+          active && 'text-[var(--glass-ink)]',
+        )}
+      >
+        {label}
+        {active && (
+          sortDir === 'asc'
+            ? <ArrowUp className="w-3 h-3 shrink-0" aria-hidden="true" />
+            : <ArrowDown className="w-3 h-3 shrink-0" aria-hidden="true" />
+        )}
+      </button>
+    );
   }
 
   return (
@@ -168,7 +285,7 @@ export default function DiesManager({ canManage }: { canManage: boolean }) {
           />
         </div>
 
-        <CsvExportButton rows={dies} columns={DIE_EXPORT_COLUMNS} filename="dies" />
+        <CsvExportButton rows={dies} columns={exportColumns} filename="dies" />
 
         {canManage && (
           <button
@@ -203,15 +320,16 @@ export default function DiesManager({ canManage }: { canManage: boolean }) {
           {/* Desk: table skeleton */}
           <div className="hidden sm:block rounded-xl glass overflow-hidden">
             <div className="table-scroll-wrapper max-h-[70vh] overflow-y-auto">
-              <table className="w-full min-w-[1400px] border-collapse text-sm">
+              <table className="w-full min-w-[1450px] border-collapse text-sm text-center">
                 <thead>
                   <tr>
                     {DIE_COLUMNS.map((col) => (
                       <th key={col} scope="col" className={cn(
-                        'sticky top-0 z-10 px-3 py-2.5 text-left text-[11px] font-semibold text-[var(--glass-muted)]',
+                        'sticky top-0 z-10 px-3 py-1.5 text-center text-[11px] font-semibold text-[var(--glass-muted)]',
                         'uppercase tracking-[0.06em] whitespace-nowrap bg-[var(--glass-bg-strong)] backdrop-blur-[14px]',
                         'border-b border-white/12',
-                        col === 'Actions' && 'text-right',
+                        col === 'Job Name' && 'w-[220px] min-w-0 whitespace-normal',
+                        col === 'Sr No' && 'left-0 z-20 border-r border-white/12',
                       )}>
                         {col}
                       </th>
@@ -231,7 +349,7 @@ export default function DiesManager({ canManage }: { canManage: boolean }) {
         <>
           {/* Phone: card list */}
           <ul className="sm:hidden space-y-3">
-            {dies.map((die) => {
+            {sortedDies.map((die) => {
               const isDamaged = die.status === 'DAMAGE';
               return (
               <li
@@ -339,23 +457,35 @@ export default function DiesManager({ canManage }: { canManage: boolean }) {
           {/* Desk: table with a fixed header, scrolling through the rows. */}
           <div className="hidden sm:block rounded-xl glass overflow-hidden">
             <div className="table-scroll-wrapper max-h-[70vh] overflow-y-auto">
-              <table className="w-full min-w-[1400px] border-collapse text-sm">
+              <table className="w-full min-w-[1450px] border-collapse text-sm text-center">
                 <thead>
                   <tr>
                     {DIE_COLUMNS.map((col) => (
                       <th key={col} scope="col" className={cn(
-                        'sticky top-0 z-10 px-3 py-2.5 text-left text-[11px] font-semibold text-[var(--glass-muted)]',
+                        'sticky top-0 z-10 px-3 py-1.5 text-center text-[11px] font-semibold text-[var(--glass-muted)]',
                         'uppercase tracking-[0.06em] whitespace-nowrap bg-[var(--glass-bg-strong)] backdrop-blur-[14px]',
                         'border-b border-white/12',
-                        col === 'Actions' && 'text-right',
+                        // The header label's own nowrap width was the real floor keeping
+                        // this column from shrinking — a td-only width doesn't constrain a
+                        // table column if its header cell is wider. Match the body cell's
+                        // width here too, and let the label wrap instead of forcing nowrap.
+                        // min-w-0 overrides the table's default per-column floor, which
+                        // Chrome derives from the longest unbreakable "word" in any row's
+                        // job name and otherwise ignores the explicit width above.
+                        col === 'Job Name' && 'w-[220px] min-w-0 whitespace-normal',
+                        // Sr No is the team's floor reference number — keep it pinned to the
+                        // left edge through both scroll axes so it's always visible. z-20
+                        // (above the plain top-sticky headers at z-10) so it stays on top at
+                        // the corner where both stickies overlap.
+                        col === 'Sr No' && 'left-0 z-20 border-r border-white/12',
                       )}>
-                        {col}
+                        {COLUMN_SORT_FIELDS[col] ? sortLabel(col, COLUMN_SORT_FIELDS[col]!) : col}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {dies.map((die, i) => {
+                  {sortedDies.map((die, i) => {
                     const isDamaged = die.status === 'DAMAGE';
                     const damageText = [
                       die.damage_date ? formatNumericDate(die.damage_date) : null,
@@ -371,27 +501,30 @@ export default function DiesManager({ canManage }: { canManage: boolean }) {
                             : cn('border-white/8 hover:bg-black/[0.03]', i % 2 === 1 && 'bg-[var(--glass-bg)]'),
                         )}
                       >
-                        <td className="px-3 py-2.5 whitespace-nowrap">
+                        <td className="sticky left-0 z-10 px-3 py-1.5 font-mono text-xs whitespace-nowrap bg-[var(--glass-bg-strong)] backdrop-blur-[14px] border-r border-white/8">
+                          {srNoMap.get(die.id) ?? '—'}
+                        </td>
+                        <td className="px-3 py-1.5 whitespace-nowrap">
                           <span className={cn('text-[11px] font-medium px-1.5 py-0.5 rounded', STATUS_BADGE[die.status])}>
                             {die.status}
                           </span>
                         </td>
-                        <td className="px-3 py-2.5 font-mono text-xs font-semibold text-[var(--glass-ink)] whitespace-nowrap">
+                        <td className="px-3 py-1.5 font-mono text-xs font-semibold text-[var(--glass-ink)] whitespace-nowrap">
                           {die.serial_no ? die.serial_no.toUpperCase() : '—'}
                         </td>
-                        <td className="px-3 py-2.5 font-semibold text-[var(--glass-ink)] whitespace-nowrap">{die.job_name}</td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">{die.corner || '—'}</td>
-                        <td className="px-3 py-2.5 font-mono whitespace-nowrap">{sizeOf(die) ?? '—'}</td>
-                        <td className="px-3 py-2.5 font-mono whitespace-nowrap">{die.cylinder ?? '—'}</td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">{die.material || '—'}</td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">{die.location || '—'}</td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">{die.gap || '—'}</td>
-                        <td className="px-3 py-2.5 font-mono whitespace-nowrap">{die.ups ?? '—'}</td>
-                        <td className="px-3 py-2.5 font-mono whitespace-nowrap">{formatNumericDate(die.die_received_on) || '—'}</td>
-                        <td className="px-3 py-2.5 text-xs text-red-800 max-w-[220px] truncate" title={damageText || undefined}>
+                        <td className="px-3 py-1.5 font-semibold text-[var(--glass-ink)] w-[220px] min-w-0 whitespace-normal break-words">{die.job_name}</td>
+                        <td className="px-3 py-1.5 whitespace-nowrap">{die.corner || '—'}</td>
+                        <td className="px-3 py-1.5 font-mono whitespace-nowrap">{sizeOf(die) ?? '—'}</td>
+                        <td className="px-3 py-1.5 font-mono whitespace-nowrap">{die.cylinder ?? '—'}</td>
+                        <td className="px-3 py-1.5 whitespace-nowrap">{die.material || '—'}</td>
+                        <td className="px-3 py-1.5 whitespace-nowrap">{die.location || '—'}</td>
+                        <td className="px-3 py-1.5 whitespace-nowrap">{die.gap || '—'}</td>
+                        <td className="px-3 py-1.5 font-mono whitespace-nowrap">{die.ups ?? '—'}</td>
+                        <td className="px-3 py-1.5 font-mono whitespace-nowrap">{formatNumericDate(die.die_received_on) || '—'}</td>
+                        <td className="px-3 py-1.5 text-xs text-red-800 max-w-[220px] truncate" title={damageText || undefined}>
                           {damageText || '—'}
                         </td>
-                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                        <td className="px-3 py-1.5 text-center whitespace-nowrap">
                           {canManage && (
                             <div className="inline-flex items-center gap-1.5">
                               <button

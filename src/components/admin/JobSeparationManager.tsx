@@ -501,7 +501,7 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                   <tr>
                     {JOB_SEPARATION_COLUMNS.map((col) => (
                       <th key={col} scope="col" className={cn(
-                        'sticky top-0 z-10 px-3 py-2.5 text-left text-[11px] font-semibold text-[var(--glass-muted)]',
+                        'sticky top-0 z-10 px-3 py-1.5 text-left text-[11px] font-semibold text-[var(--glass-muted)]',
                         'uppercase tracking-[0.06em] whitespace-nowrap bg-[var(--glass-bg-strong)] backdrop-blur-[14px]',
                         'border-b border-white/12',
                         col === 'Actions' && 'text-right',
@@ -677,7 +677,7 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                   <tr>
                     {JOB_SEPARATION_COLUMNS.map((col) => (
                       <th key={col} scope="col" className={cn(
-                        'sticky top-0 z-10 px-3 py-2.5 text-left text-[11px] font-semibold text-[var(--glass-muted)]',
+                        'sticky top-0 z-10 px-3 py-1.5 text-left text-[11px] font-semibold text-[var(--glass-muted)]',
                         'uppercase tracking-[0.06em] whitespace-nowrap bg-[var(--glass-bg-strong)] backdrop-blur-[14px]',
                         'border-b border-white/12',
                         col === 'Actions' && 'text-right',
@@ -715,7 +715,7 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                             : 'hover:bg-black/[0.03]',
                         )}
                       >
-                        <td className="sticky left-0 z-10 px-3 py-2.5 whitespace-nowrap bg-[var(--glass-bg-strong)] backdrop-blur-[14px] border-r border-white/8">
+                        <td className="sticky left-0 z-10 px-3 py-1.5 whitespace-nowrap bg-[var(--glass-bg-strong)] backdrop-blur-[14px] border-r border-white/8">
                           {canManage && !isCancelled ? (
                             <button
                               type="button"
@@ -730,7 +730,7 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                             <span className={cn('font-mono text-xs font-semibold', !isCancelled && 'text-[var(--glass-ink)]')}>{row.sr_no || '—'}</span>
                           )}
                         </td>
-                        <td className={cn('px-3 py-2.5 font-semibold whitespace-normal break-words min-w-[110px]', !isCancelled && 'text-[var(--glass-ink)]')}>
+                        <td className={cn('px-3 py-1.5 font-semibold whitespace-normal break-words min-w-[110px]', !isCancelled && 'text-[var(--glass-ink)]')}>
                           {row.party}
                           {isCancelled && (
                             <p className="text-[11px] font-medium no-underline mt-0.5">
@@ -739,22 +739,22 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                             </p>
                           )}
                         </td>
-                        <td className="px-3 py-2.5 whitespace-nowrap align-top">
+                        <td className="px-3 py-1.5 whitespace-nowrap align-top">
                           <p className={cn('font-mono text-xs font-semibold', !isCancelled && 'text-[var(--glass-ink)]')}>{row.po_no || '—'}</p>
                           <p className={cn('text-xs mt-0.5', !isCancelled && 'text-[var(--glass-muted)]')}>{formatNumericDate(row.po_date) || '—'}</p>
                         </td>
-                        <td className="px-3 py-2.5 w-[200px] min-w-0 whitespace-normal align-top">
+                        <td className="px-3 py-1.5 w-[200px] min-w-0 whitespace-normal align-top">
                           <p className={cn('font-mono text-xs font-semibold', !isCancelled && 'text-[var(--glass-ink)]')}>{row.pm_code || '—'}</p>
                           <p className={cn('text-xs mt-0.5 break-words', !isCancelled && 'text-[var(--glass-muted)]')}>{row.material_name || '—'}</p>
                         </td>
-                        <td className="px-3 py-2.5 whitespace-nowrap align-top">
+                        <td className="px-3 py-1.5 whitespace-nowrap align-top">
                           <p className={cn('font-mono text-xs font-semibold', !isCancelled && 'text-[var(--glass-ink)]')}>{row.quantity !== null ? formatQty(row.quantity) : '—'}</p>
                           <p className={cn('font-mono text-xs mt-0.5', !isCancelled && 'text-[var(--glass-muted)]')}>@ {formatMoney(row.rate) ?? '—'}</p>
                         </td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">{row.unit || '—'}</td>
-                        <td className="px-3 py-2.5 font-mono whitespace-nowrap">{formatMoney(row.order_value) ?? '—'}</td>
-                        <td className="px-3 py-2.5 whitespace-normal break-words min-w-[90px]">{row.job_status || '—'}</td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">
+                        <td className="px-3 py-1.5 whitespace-nowrap">{row.unit || '—'}</td>
+                        <td className="px-3 py-1.5 font-mono whitespace-nowrap">{formatMoney(row.order_value) ?? '—'}</td>
+                        <td className="px-3 py-1.5 whitespace-normal break-words min-w-[90px]">{row.job_status || '—'}</td>
+                        <td className="px-3 py-1.5 whitespace-nowrap">
                           {row.jc_status ? (
                             <span className={cn(
                               'text-[11px] font-medium px-1.5 py-0.5 rounded border no-underline',
@@ -766,14 +766,14 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                             </span>
                           ) : '—'}
                         </td>
-                        <td className="px-3 py-2.5 whitespace-normal break-words min-w-[90px]">
+                        <td className="px-3 py-1.5 whitespace-normal break-words min-w-[90px]">
                           {isRepeat ? (
                             <span className="inline-block whitespace-nowrap text-[11px] font-medium px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 no-underline">
                               AW REPEAT
                             </span>
                           ) : (row.aw_send_to || '—')}
                         </td>
-                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                        <td className="px-3 py-1.5 text-right whitespace-nowrap">
                           {isCancelled ? (
                             <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg bg-red-600 text-white no-underline">
                               <Ban className="w-3.5 h-3.5" aria-hidden="true" />
