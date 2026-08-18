@@ -2,10 +2,10 @@
 // src/components/admin/AdminHeader.tsx
 
 import Link from 'next/link';
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Package, Scissors, Disc, Users, SplitSquareHorizontal, Contact, ClipboardList } from 'lucide-react';
+import { Package, Scissors, Disc, Users, SplitSquareHorizontal, Contact, ClipboardList, Menu, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { canDeptUseBOM, type Department } from '@/lib/constants/departments';
 import { Logo } from '@/components/brand/Logo';
@@ -40,8 +40,16 @@ const BOM_BADGE_POLL_MS = 60_000;
 
 export default function AdminHeader({ dept, displayName }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
   const supabase = createClient();
   const queryClient = useQueryClient();
+
+  // Below lg, the link list is replaced by this hamburger toggle — closes
+  // itself on every navigation so it never lingers open over the next page.
+  const [mobileOpen, setMobileOpen] = useState(false);
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   // Bill of Material requests still awaiting the owner. Only Production and
   // Admin can see the section at all, so nobody else even asks.
@@ -115,7 +123,7 @@ export default function AdminHeader({ dept, displayName }: Props) {
               in /api/stock, /api/dies, /api/plates, /api/job-separations.
               Ctrl/Cmd + letter shortcuts are wired up in the keydown handler
               above — the titles below are just how the team discovers them. */}
-          <nav aria-label="Admin sections" className="flex items-center">
+          <nav aria-label="Admin sections" className="hidden lg:flex items-center">
             <Link
               href="/admin/stock"
               title="Label Stock (Ctrl+S)"
@@ -210,14 +218,118 @@ export default function AdminHeader({ dept, displayName }: Props) {
           {/* Full-database export — Admin only, mirrored by the check in
               GET /api/export, which is the actual gate. */}
           {dept === 'Admin' && <ExportButton />}
+          {/* Below md this moves into the hamburger panel instead, sized for
+              a proper tap target there — this compact text button stays
+              desktop-only. */}
           <button
             onClick={handleLogout}
-            className="text-white/70 hover:text-white text-xs transition-colors px-2 py-1"
+            className="hidden lg:inline-block text-white/70 hover:text-white text-xs transition-colors px-2 py-1"
           >
             Sign out
           </button>
+
+          {/* Hamburger toggle — below lg, this is the only way to reach the
+              section links, so it needs a real 44px tap target. */}
+          <button
+            type="button"
+            onClick={() => setMobileOpen((open) => !open)}
+            aria-expanded={mobileOpen}
+            aria-controls="admin-mobile-nav"
+            aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+            className="lg:hidden inline-flex items-center justify-center min-h-11 min-w-11 -mr-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            {mobileOpen
+              ? <X className="h-5 w-5" aria-hidden="true" />
+              : <Menu className="h-5 w-5" aria-hidden="true" />}
+          </button>
         </div>
       </div>
+
+      {/* Mobile section list — same links/conditions as the desktop nav
+          above, just stacked with full-width 44px rows instead of an
+          inline strip. lg:hidden as a second guard so a resize past lg
+          hides it even if mobileOpen is still true from a smaller width. */}
+      {mobileOpen && (
+        <nav
+          id="admin-mobile-nav"
+          aria-label="Admin sections (mobile)"
+          className="lg:hidden border-t border-white/10 bg-brand-header px-4 py-2"
+        >
+          <Link
+            href="/admin/stock"
+            className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            <Package className="h-4 w-4 shrink-0" aria-hidden="true" />
+            Label Stock
+          </Link>
+          <Link
+            href="/admin/dies"
+            className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            <Scissors className="h-4 w-4 shrink-0" aria-hidden="true" />
+            Dies
+          </Link>
+          <Link
+            href="/admin/plates"
+            className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            <Disc className="h-4 w-4 shrink-0" aria-hidden="true" />
+            Plates
+          </Link>
+          <Link
+            href="/admin/job-separation"
+            className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            <SplitSquareHorizontal className="h-4 w-4 shrink-0" aria-hidden="true" />
+            Job Separation
+          </Link>
+          {showBom && (
+            <Link
+              href="/admin/bom"
+              className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <ClipboardList className="h-4 w-4 shrink-0" aria-hidden="true" />
+              BOM
+              {bomPending > 0 && (
+                <span
+                  className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-300 px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-[#0A1F18]"
+                  aria-label={`${bomPending} request${bomPending === 1 ? '' : 's'} awaiting a decision`}
+                >
+                  {bomPending}
+                </span>
+              )}
+            </Link>
+          )}
+          {dept === 'Admin' && (
+            <Link
+              href="/admin/register"
+              className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <Contact className="h-4 w-4 shrink-0" aria-hidden="true" />
+              Follow-ups
+            </Link>
+          )}
+          {dept === 'Admin' && (
+            <Link
+              href="/admin/team"
+              className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <Users className="h-4 w-4 shrink-0" aria-hidden="true" />
+              Team
+            </Link>
+          )}
+
+          <div className="mt-1 pt-2 border-t border-white/10 flex items-center justify-between">
+            <span className="text-white/75 text-xs font-mono px-2">{displayName}</span>
+            <button
+              onClick={handleLogout}
+              className="min-h-11 px-3 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              Sign out
+            </button>
+          </div>
+        </nav>
+      )}
     </header>
   );
 }
