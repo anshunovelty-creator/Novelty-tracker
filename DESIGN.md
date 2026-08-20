@@ -40,7 +40,7 @@ typography:
     fontWeight: 500
     letterSpacing: "0.025em"
   data:
-    fontFamily: "DM Mono, ui-monospace, monospace"
+    fontFamily: "Trispace, ui-monospace, monospace"
     fontSize: "0.75rem"
     fontWeight: 400
 rounded:
@@ -102,7 +102,7 @@ The system explicitly rejects the generic admin template (rows of identical stat
 - Two themes, split by audience: the **admin panel** runs the **"Airy Green" light theme** (§2.5) — white cards on a pale mint wash, dark ink text — chosen for maximum legibility and speed on the factory floor. The public **/track portal** keeps the dark Press Green mesh + glass as its client-facing brand statement.
 - Frosted glass surfaces (7–12% white + 14px blur) as the only container material
 - Tactile, confident controls: focus lifts, emerald glows, instant hover feedback
-- DM Mono with tabular numerals for every number, timestamp, and code
+- Trispace with tabular numerals for every number, timestamp, and code
 - Status is always a tinted translucent chip; color means state, never decoration
 
 ## 2. Colors: The Press Green Palette
@@ -142,7 +142,7 @@ The State-Only Spectrum Rule and the Mono Number Rule apply identically in both 
 ## 3. Typography
 
 **Body/UI Font:** DM Sans (with system-ui fallback)
-**Data Font:** DM Mono (with ui-monospace fallback), always `tabular-nums`
+**Data Font:** Trispace (with ui-monospace fallback), always `tabular-nums` — chosen for its plain-oval zero (no dot/slash), which stays legible in dense numeric columns
 
 **Character:** One geometric-humanist sans carries the entire UI; the mono is its technical counterpart for anything a user might compare, count, or copy. The pairing reads precise and workmanlike, never showy.
 
@@ -151,10 +151,10 @@ The State-Only Spectrum Rule and the Mono Number Rule apply identically in both 
 - **Title** (600, 1rem, 1.4): panel and card headings, job names.
 - **Body** (400, 0.875rem, 1.5): the workhorse size for table cells, forms, and descriptions. Cap prose at 65–75ch.
 - **Label** (500, 10–11px, 0.025em tracking, uppercase): floating field labels and micro-metadata. This is the only uppercase in the system.
-- **Data** (DM Mono, 0.75rem): PO numbers, quantities, dates, countdowns, department codes. If it's a number, it's mono.
+- **Data** (Trispace, 0.75rem): PO numbers, quantities, dates, countdowns, department codes. If it's a number, it's mono.
 
 ### Named Rules
-**The Mono Number Rule.** Every numeric value renders in DM Mono with tabular numerals, everywhere, with no exceptions. Columns of quantities must align digit-for-digit.
+**The Mono Number Rule.** Every numeric value renders in Trispace with tabular numerals, everywhere, with no exceptions. Columns of quantities must align digit-for-digit.
 
 ## 4. Elevation
 
@@ -195,7 +195,7 @@ Controls are tactile and confident: they lift, glow, and answer immediately. Min
 - **Error / Disabled:** danger-tinted border + message below the field; disabled at 40% opacity.
 
 ### Navigation
-- **Style:** slim 56px sticky header on solid Press Green (#10553F) with the logo left and identity/session right; department name in DM Mono at white/75. Mobile keeps the same bar; content scrolls beneath.
+- **Style:** slim 56px sticky header on solid Press Green (#10553F) with the logo left and identity/session right; department name in Trispace at white/75. Mobile keeps the same bar; content scrolls beneath.
 
 ### Live Status Dot (signature)
 A 1.5px-radius dot pulsing via `pulse-ring` (scale 1 → 1.4, 1.5s), used exclusively to mark genuinely live/in-progress state (active stage, auto-refresh). One pulsing dot per section, maximum; it stops under reduced motion.
@@ -207,7 +207,7 @@ Shimmering glass bars (7% → 20% white sweep, 1.4s) shaped to match the final l
 
 ### Do:
 - **Do** render every screen over the Press Green mesh with glass panels; the atmosphere is the brand.
-- **Do** give every glass surface its 1px 14% white border and every number DM Mono tabular figures.
+- **Do** give every glass surface its 1px 14% white border and every number Trispace tabular figures.
 - **Do** answer every interaction within 200ms of visual feedback: hover fills, focus blooms, press states, optimistic chip updates.
 - **Do** design loading (skeleton), empty, error, on-hold, and overdue states as first-class layouts; unhappy paths are where trust is won.
 - **Do** keep 44px minimum tap targets and `prefers-reduced-motion` alternatives on all animation, including the mesh drift, shimmer, and field lift.

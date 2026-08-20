@@ -25,7 +25,7 @@
   --color-red:           #C0392B;
 
   --font-sans: var(--font-dm-sans), system-ui, sans-serif;
-  --font-mono: var(--font-dm-mono), ui-monospace, monospace;
+  --font-mono: var(--font-trispace), ui-monospace, monospace;
 }
 
 /* ── Base resets ────────────────────────────────────────────── */

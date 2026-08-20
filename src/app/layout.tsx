@@ -1,7 +1,7 @@
 // src/app/layout.tsx
 import React from 'react';
 import type { Metadata } from 'next';
-import { DM_Sans, DM_Mono } from 'next/font/google';
+import { DM_Sans, Trispace } from 'next/font/google';
 import { Toaster } from 'react-hot-toast';
 import './globals.css';
 
@@ -11,10 +11,10 @@ const dmSans = DM_Sans({
   display: 'swap',
 });
 
-const dmMono = DM_Mono({
+const trispace = Trispace({
   subsets: ['latin'],
-  variable: '--font-dm-mono',
-  weight: ['300', '400', '500'],
+  variable: '--font-trispace',
+  weight: ['400', '500', '600', '700'],
   display: 'swap',
 });
 
@@ -36,7 +36,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${dmSans.variable} ${dmMono.variable}`}>
+    <html lang="en" className={`${dmSans.variable} ${trispace.variable}`}>
       <body className="bg-brand-bg font-sans antialiased">
         {children}
         <Toaster

@@ -56,7 +56,7 @@ const config: Config = {
       // ── Typography ──────────────────────────────────────────
       fontFamily: {
         sans:  ['DM Sans', 'system-ui', 'sans-serif'],
-        mono:  ['DM Mono', 'ui-monospace', 'monospace'],
+        mono:  ['Trispace', 'ui-monospace', 'monospace'],
       },
 
       // ── Animations ──────────────────────────────────────────

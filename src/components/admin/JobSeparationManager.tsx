@@ -732,12 +732,12 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                               onClick={() => setEditing(row)}
                               aria-label={`Open details for ${row.party}`}
                               title="Open details"
-                              className="font-mono text-xs font-semibold text-[var(--glass-ink)] underline decoration-dotted decoration-[var(--glass-muted)] underline-offset-2 hover:text-emerald-700 hover:decoration-emerald-700 transition-colors"
+                              className="font-mono text-[13px] font-bold tracking-wide text-[var(--glass-ink)] underline decoration-dotted decoration-[var(--glass-muted)] underline-offset-2 hover:text-emerald-700 hover:decoration-emerald-700 transition-colors"
                             >
                               {row.sr_no || '—'}
                             </button>
                           ) : (
-                            <span className={cn('font-mono text-xs font-semibold', !isCancelled && 'text-[var(--glass-ink)]')}>{row.sr_no || '—'}</span>
+                            <span className={cn('font-mono text-[13px] font-bold tracking-wide', !isCancelled && 'text-[var(--glass-ink)]')}>{row.sr_no || '—'}</span>
                           )}
                         </td>
                         <td className={cn('px-3 py-1.5 font-semibold whitespace-normal break-words min-w-[110px] border-r border-white/8', !isCancelled && 'text-[var(--glass-ink)]')}>
@@ -750,15 +750,15 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                           )}
                         </td>
                         <td className="px-3 py-1.5 whitespace-nowrap align-top border-r border-white/8">
-                          <p className={cn('font-mono text-xs font-semibold', !isCancelled && 'text-[var(--glass-ink)]')}>{row.po_no || '—'}</p>
+                          <p className={cn('font-mono text-[13px] font-bold tracking-wide', !isCancelled && 'text-[var(--glass-ink)]')}>{row.po_no || '—'}</p>
                           <p className={cn('text-xs mt-0.5', !isCancelled && 'text-[var(--glass-muted)]')}>{formatNumericDate(row.po_date) || '—'}</p>
                         </td>
                         <td className="px-3 py-1.5 w-[200px] min-w-0 whitespace-normal align-top border-r border-white/8">
-                          <p className={cn('font-mono text-xs font-semibold', !isCancelled && 'text-[var(--glass-ink)]')}>{row.pm_code || '—'}</p>
+                          <p className={cn('font-mono text-[13px] font-bold tracking-wide', !isCancelled && 'text-[var(--glass-ink)]')}>{row.pm_code || '—'}</p>
                           <p className={cn('text-xs mt-0.5 break-words', !isCancelled && 'text-[var(--glass-muted)]')}>{row.material_name || '—'}</p>
                         </td>
                         <td className="px-3 py-1.5 whitespace-nowrap align-top border-r border-white/8">
-                          <p className={cn('font-mono text-xs font-semibold', !isCancelled && 'text-[var(--glass-ink)]')}>{row.quantity !== null ? formatQty(row.quantity) : '—'}</p>
+                          <p className={cn('font-mono text-[13px] font-bold tracking-wide', !isCancelled && 'text-[var(--glass-ink)]')}>{row.quantity !== null ? formatQty(row.quantity) : '—'}</p>
                           <p className={cn('font-mono text-xs mt-0.5', !isCancelled && 'text-[var(--glass-muted)]')}>@ {formatMoney(row.rate) ?? '—'}</p>
                         </td>
                         <td className="px-3 py-1.5 whitespace-nowrap border-r border-white/8">{row.unit || '—'}</td>
