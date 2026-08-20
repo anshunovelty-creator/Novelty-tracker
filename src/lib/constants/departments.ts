@@ -119,6 +119,17 @@ export function canDeptManageStock(dept: Department | null): boolean {
 }
 
 /**
+ * Who may view and send the queued, party-consolidated dispatch email.
+ * Dispatch owns marking jobs Dispatched/Partial Dispatch, so they own
+ * sending the resulting notification too; Admin always has full access.
+ */
+export const DISPATCH_NOTIFICATION_DEPTS: Department[] = ['Dispatch', 'Admin'];
+
+export function canDeptManageDispatchNotifications(dept: Department | null): boolean {
+  return dept !== null && DISPATCH_NOTIFICATION_DEPTS.includes(dept);
+}
+
+/**
  * Who may add, correct, or remove a die/plate reference entry.
  * Prepress makes and owns dies and plates, so they enter and correct their
  * own records; Admin always has full access. Everyone else searches and views.

@@ -629,6 +629,39 @@ export interface PartyContact {
   updated_at:   string;
 }
 
+// ── internal_notification_recipients ────────────────────────────
+
+export interface InternalNotificationRecipient {
+  id:         string;
+  email:      string;
+  label:      string | null;
+  created_at: string;
+}
+
+// ── pending_dispatch_notifications ──────────────────────────────
+// Queued per-job dispatch events, consolidated into one email per party
+// from /admin/dispatch-notifications. See migration 038.
+
+export interface PendingDispatchNotification {
+  id:          string;
+  job_id:      string;
+  job_name:    string | null;
+  po_number:   string;
+  party:       string;
+  status:      Stage;
+  qty:         number | null;
+  remark:      string | null;
+  created_at:  string;
+  notified_at: string | null;
+}
+
+// One party's group of pending dispatch notifications, as returned by
+// GET /api/dispatch-notifications.
+export interface PendingDispatchGroup {
+  party: string;
+  items: PendingDispatchNotification[];
+}
+
 // Status change payload — sent to /api/jobs/[id]/status
 export interface StatusChangePayload {
   new_status: Stage;

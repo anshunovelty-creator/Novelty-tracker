@@ -372,6 +372,15 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   // ── 9. Fire notifications (non-blocking — don't await, don't fail request) ──
+  // Dispatch events (Partial Dispatch / Dispatched) don't email instantly —
+  // a single truck run often carries several orders for the same party, so
+  // each event queues into pending_dispatch_notifications instead, and
+  // Dispatch/Admin sends one consolidated email (party + internal team) per
+  // party from /admin/dispatch-notifications once a batch is complete.
+  // WhatsApp is unaffected and still fires per job, same as every other
+  // trigger stage.
+  const isDispatchEvent = new_status === 'Partial Dispatch' || new_status === 'Dispatched';
+
   if (NOTIFICATION_TRIGGER_STAGES.includes(new_status)) {
     const notifyPayload = {
       job_id:     id,
@@ -383,21 +392,39 @@ export async function POST(request: NextRequest, { params }: Params) {
       qty:        qty_dispatched ?? updatedJob.dispatched_qty,
     };
 
+    const sends: Promise<Response>[] = [];
+    if (!isDispatchEvent) {
+      sends.push(fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/notifications/email`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(notifyPayload),
+      }));
+    }
+    sends.push(fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/notifications/whatsapp`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(notifyPayload),
+    }));
+
     // Fire-and-forget — failures are logged server-side but don't block response
-    Promise.all([
-      fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/notifications/email`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(notifyPayload),
-      }),
-      fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/notifications/whatsapp`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(notifyPayload),
-      }),
-    ]).catch((err) => {
+    Promise.all(sends).catch((err) => {
       console.error('[POST status] notification error (non-fatal):', err);
     });
+  }
+
+  if (isDispatchEvent) {
+    const { error: queueError } = await admin
+      .from('pending_dispatch_notifications')
+      .insert({
+        job_id:    id,
+        job_name:  job.job_name,
+        po_number: job.po_number,
+        party:     job.party,
+        status:    new_status,
+        qty:       qty_dispatched ?? updatedJob.dispatched_qty,
+        remark:    remark?.trim() ?? null,
+      });
+    if (queueError) console.error('[POST status] queue dispatch notification:', queueError);
   }
 
   return NextResponse.json({ job: updatedJob });

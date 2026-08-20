@@ -5,9 +5,9 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Package, Scissors, Disc, Users, SplitSquareHorizontal, Contact, ClipboardList, Menu, X } from 'lucide-react';
+import { Package, Scissors, Disc, Users, SplitSquareHorizontal, Contact, ClipboardList, Bell, Truck, Mail, Menu, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { canDeptUseBOM, type Department } from '@/lib/constants/departments';
+import { canDeptUseBOM, canDeptManageDispatchNotifications, type Department } from '@/lib/constants/departments';
 import { Logo } from '@/components/brand/Logo';
 import ExportButton from './ExportButton';
 
@@ -31,6 +31,10 @@ const SHORTCUTS: Record<string, string> = {
   m: '/admin/team',
   r: '/admin/register',
   b: '/admin/bom',
+  a: '/admin/notifications',
+  e: '/admin/dispatch-notifications',
+  // Not 'c' — Ctrl/Cmd+C is copy and browsers never let a page override it.
+  o: '/admin/party-contacts',
 };
 
 // How often the header re-checks for material requests nobody has answered.
@@ -69,6 +73,22 @@ export default function AdminHeader({ dept, displayName }: Props) {
       return data.pending ?? 0;
     },
     enabled: showBom,
+    refetchInterval: BOM_BADGE_POLL_MS,
+  });
+
+  // Parties with a dispatch batch still waiting to be emailed. Only
+  // Dispatch/Admin manage this queue — same poll cadence as the BOM badge.
+  const showDispatchEmails = canDeptManageDispatchNotifications(dept);
+
+  const { data: dispatchPending = 0 } = useQuery({
+    queryKey: ['dispatch-notifications', 'pending-count'],
+    queryFn: async () => {
+      const res = await fetch('/api/dispatch-notifications');
+      if (!res.ok) throw new Error('Failed to load pending dispatch count');
+      const data = await res.json();
+      return data.groups?.length ?? 0;
+    },
+    enabled: showDispatchEmails,
     refetchInterval: BOM_BADGE_POLL_MS,
   });
 
@@ -180,6 +200,42 @@ export default function AdminHeader({ dept, displayName }: Props) {
                 )}
               </Link>
             )}
+            {/* Consolidated dispatch email queue — Dispatch/Admin only,
+                mirrored by canDeptManageDispatchNotifications in every
+                /api/dispatch-notifications route and by RLS on
+                pending_dispatch_notifications. The badge counts parties
+                with an unsent batch waiting. */}
+            {showDispatchEmails && (
+              <Link
+                href="/admin/dispatch-notifications"
+                title="Dispatch Emails (Ctrl+E)"
+                className="relative inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
+              >
+                <Truck className="h-4 w-4" aria-hidden="true" />
+                Dispatch Emails
+                {dispatchPending > 0 && (
+                  <span
+                    className="ml-0.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-300 px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-[#0A1F18]"
+                    aria-label={`${dispatchPending} part${dispatchPending === 1 ? 'y' : 'ies'} with an unsent dispatch email`}
+                  >
+                    {dispatchPending}
+                  </span>
+                )}
+              </Link>
+            )}
+            {/* Party -> email/WhatsApp mapping the dispatch email routes look
+                up automatically. Dispatch/Admin can view; only Admin can
+                edit, mirrored by /api/party-contacts and party_contacts' RLS. */}
+            {showDispatchEmails && (
+              <Link
+                href="/admin/party-contacts"
+                title="Party Contacts (Ctrl+O)"
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
+              >
+                <Mail className="h-4 w-4" aria-hidden="true" />
+                Party Contacts
+              </Link>
+            )}
             {/* Follow-ups (customer CRM) holds sales/contact data with no
                 reason to be shop-floor-visible — Admin only, mirrored by
                 canDeptManageRegister in every /api/register route and by
@@ -205,6 +261,18 @@ export default function AdminHeader({ dept, displayName }: Props) {
               >
                 <Users className="h-4 w-4" aria-hidden="true" />
                 Team
+              </Link>
+            )}
+            {/* Who gets a copy of the dispatch email internally — Admin only,
+                mirrored by the check in every /api/notification-recipients route. */}
+            {dept === 'Admin' && (
+              <Link
+                href="/admin/notifications"
+                title="Dispatch Alerts (Ctrl+A)"
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
+              >
+                <Bell className="h-4 w-4" aria-hidden="true" />
+                Dispatch Alerts
               </Link>
             )}
           </nav>
@@ -300,6 +368,32 @@ export default function AdminHeader({ dept, displayName }: Props) {
               )}
             </Link>
           )}
+          {showDispatchEmails && (
+            <Link
+              href="/admin/dispatch-notifications"
+              className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <Truck className="h-4 w-4 shrink-0" aria-hidden="true" />
+              Dispatch Emails
+              {dispatchPending > 0 && (
+                <span
+                  className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-300 px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-[#0A1F18]"
+                  aria-label={`${dispatchPending} part${dispatchPending === 1 ? 'y' : 'ies'} with an unsent dispatch email`}
+                >
+                  {dispatchPending}
+                </span>
+              )}
+            </Link>
+          )}
+          {showDispatchEmails && (
+            <Link
+              href="/admin/party-contacts"
+              className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <Mail className="h-4 w-4 shrink-0" aria-hidden="true" />
+              Party Contacts
+            </Link>
+          )}
           {dept === 'Admin' && (
             <Link
               href="/admin/register"
@@ -316,6 +410,15 @@ export default function AdminHeader({ dept, displayName }: Props) {
             >
               <Users className="h-4 w-4 shrink-0" aria-hidden="true" />
               Team
+            </Link>
+          )}
+          {dept === 'Admin' && (
+            <Link
+              href="/admin/notifications"
+              className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <Bell className="h-4 w-4 shrink-0" aria-hidden="true" />
+              Dispatch Alerts
             </Link>
           )}
 
