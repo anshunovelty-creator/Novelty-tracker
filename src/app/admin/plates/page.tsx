@@ -9,7 +9,7 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { parseDepartment, canDeptManageDiesPlates } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageDiesPlates } from '@/lib/constants/departments';
 import PlatesManager from '@/components/admin/PlatesManager';
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +22,7 @@ export const metadata = {
 export default async function PlatesPage() {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
-  const dept = parseDepartment(user?.user_metadata?.department);
+  const perms = await getDeptPermissions(user?.user_metadata?.department);
 
   return (
     <div className="space-y-4">
@@ -43,7 +43,7 @@ export default async function PlatesPage() {
         </p>
       </div>
 
-      <PlatesManager canManage={canDeptManageDiesPlates(dept)} />
+      <PlatesManager canManage={canDeptManageDiesPlates(perms)} />
     </div>
   );
 }

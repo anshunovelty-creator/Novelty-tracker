@@ -6,7 +6,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { MACHINE_MANAGERS, requireDept } from '@/lib/api/machineBoard';
+import { requireDept } from '@/lib/api/machineBoard';
+import { canDeptManageMachineBoard } from '@/lib/constants/departments';
 import { estimateFinishIso } from '@/lib/machineSpeed';
 
 type Params = { params: Promise<{ id: string }> };
@@ -15,7 +16,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const { id: machineId } = await params;
   const auth = await requireDept();
   if ('error' in auth) return auth.error;
-  if (!MACHINE_MANAGERS.includes(auth.dept)) {
+  if (!canDeptManageMachineBoard(auth.perms)) {
     return NextResponse.json(
       { error: 'Only Production or Admin can queue jobs on machines' },
       { status: 403 }
@@ -123,7 +124,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       position:     (last?.position ?? 0) + 1,
       est_start_at: estStart,
       est_end_at:   estEnd,
-      created_by:   auth.dept,
+      created_by:   auth.perms.key,
     })
     .select('*, jobs(po_number, job_name, party, label_qty)')
     .single();

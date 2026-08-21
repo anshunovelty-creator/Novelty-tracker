@@ -5,7 +5,7 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { parseDepartment } from '@/lib/constants/departments';
+import { getDeptPermissions } from '@/lib/constants/departments';
 import PrintingUnitsManager from '@/components/admin/PrintingUnitsManager';
 
 export const dynamic = 'force-dynamic';
@@ -20,8 +20,14 @@ export default async function PrintingUnitsPage() {
   // means non-Admins never see a screen whose every control 403s.
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
-  const dept = parseDepartment(user?.user_metadata?.department);
-  const isAdmin = dept === 'Admin';
+  const perms = await getDeptPermissions(user?.user_metadata?.department);
+  // TODO(dept-migration): this page gates the printing-UNITS master list
+  // (create/rename a unit), a distinct concept from 'printing_edit' (who
+  // may set a JOB's printing method — Prepress/Production). No named
+  // feature_key covers "manage the printing-units list" specifically yet;
+  // preserved as super-admin-only for now. Consider adding a
+  // 'printing_units_manage' feature_key if this should become grantable.
+  const isAdmin = perms?.isSuperAdmin ?? false;
 
   return (
     <div className="space-y-4">
@@ -48,7 +54,7 @@ export default async function PrintingUnitsPage() {
           <p className="text-sm font-medium text-amber-900">Admin access required</p>
           <p className="text-sm text-amber-800 mt-1">
             Printing units are managed by Admin. Your department is{' '}
-            {dept ?? 'not recognised'}.
+            {perms?.displayName ?? 'not recognised'}.
           </p>
         </div>
       )}

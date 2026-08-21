@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { parseDepartment } from '@/lib/constants/departments';
+import { getDeptPermissions } from '@/lib/constants/departments';
 import { redirect } from 'next/navigation';
 import DashboardSummaryCard from '@/components/admin/DashboardSummaryCard';
 import MachineBoard from '@/components/admin/MachineBoard';
@@ -15,8 +15,8 @@ export default async function AdminPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!dept) redirect('/login');
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms) redirect('/login');
 
   // Fetch initial jobs (server-side for first paint)
   // job_stage_timestamps(stage) join powers the ✓ marks in the status dropdown
@@ -59,10 +59,10 @@ export default async function AdminPage() {
       <DashboardSummaryCard summary={summary} />
 
       {/* Machine board — live per-machine printing queues */}
-      <MachineBoard dept={dept} />
+      <MachineBoard dept={perms} />
 
       {/* Admin-only settings entry points */}
-      {dept === 'Admin' && (
+      {perms.isSuperAdmin && (
         <div className="flex flex-wrap gap-2">
           <Link
             href="/admin/printing-units"
@@ -76,7 +76,7 @@ export default async function AdminPage() {
       {/* Add job form + jobs table */}
       <JobsTable
         initialJobs={jobs ?? []}
-        dept={dept}
+        dept={perms}
       />
     </div>
   );

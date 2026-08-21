@@ -10,8 +10,6 @@
 // stage names anywhere else.
 // ============================================================
 
-import type { Department } from './departments';
-
 export const RUN_STAGES = [
   'Printing',
   'Slitting',
@@ -33,17 +31,6 @@ export const RUN_STAGE_LABELS: Record<RunStage, string> = {
   'Dispatched':        'Dispatched',
 };
 
-// Which departments may set each run stage (Admin always allowed).
-// Mirrors DEPT_ALLOWED_STAGES for the equivalent job stages.
-export const RUN_STAGE_DEPTS: Record<RunStage, Department[]> = {
-  'Printing':          ['Production'],
-  'Slitting':          ['Postpress'],
-  'QC':                ['QC'],
-  'Packing':           ['Dispatch'],
-  'Ready to Dispatch': ['Dispatch'],
-  'Dispatched':        ['Dispatch'],
-};
-
 /** The stage after `stage`, or null if the run is complete. */
 export function nextRunStage(stage: RunStage): RunStage | null {
   const idx = RUN_STAGES.indexOf(stage);
@@ -51,7 +38,5 @@ export function nextRunStage(stage: RunStage): RunStage | null {
   return RUN_STAGES[idx + 1];
 }
 
-/** True if `dept` may advance a run to `stage`. */
-export function canDeptSetRunStage(dept: Department, stage: RunStage): boolean {
-  return dept === 'Admin' || RUN_STAGE_DEPTS[stage].includes(dept);
-}
+// Which departments may set each run stage is now DB-configurable — see
+// canDeptSetRunStage(perms, stage) in constants/departments.ts.

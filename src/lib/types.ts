@@ -617,6 +617,26 @@ export interface RunStageTimestamp {
   changed_at:   string;
 }
 
+// ── departments ──────────────────────────────────────────────
+// Configurable departments + their granted permissions. See migrations
+// 039/040 and /admin/departments (Phase 4 of the departments redesign).
+
+export interface DepartmentRecord {
+  id:                    string;
+  key:                   string;
+  display_name:          string;
+  client_facing_name:    string | null;
+  is_protected:          boolean;
+  is_super_admin:        boolean;
+  is_read_only:          boolean;
+  all_stages:            boolean;
+  printing_method_scope: PrintingMethod | null;
+  created_at:            string;
+  features:              string[];
+  stages:                Stage[];
+  run_stages:            RunStage[];
+}
+
 // ── party_contacts ────────────────────────────────────────────
 
 export interface PartyContact {

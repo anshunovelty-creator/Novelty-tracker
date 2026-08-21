@@ -21,7 +21,8 @@ import toast from 'react-hot-toast';
 import { cn, formatQty } from '@/lib/utils';
 import { runDurationMs, formatDuration, estimateFinishIso } from '@/lib/machineSpeed';
 import { JOBS_CHANGED_EVENT } from '@/lib/constants/events';
-import type { Department } from '@/lib/constants/departments';
+import { canDeptManageMachineBoard } from '@/lib/constants/departments';
+import type { DeptPermissions } from '@/lib/constants/departments';
 import type { Machine, MachineQueueItem } from '@/lib/types';
 import { ConfirmModal } from './modals';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -47,8 +48,8 @@ const fmtDT = (iso: string | null) =>
 const toIsoOrNull = (local: string) =>
   local ? new Date(local).toISOString() : null;
 
-export default function MachineBoard({ dept }: { dept: Department }) {
-  const canManage = dept === 'Production' || dept === 'Admin';
+export default function MachineBoard({ dept }: { dept: DeptPermissions }) {
+  const canManage = canDeptManageMachineBoard(dept);
 
   const [historyDate, setHistoryDate] = useState('');
   const [busy, setBusy]               = useState(false);

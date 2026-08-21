@@ -4,13 +4,14 @@
 import { useState } from 'react';
 import { Pencil, Check, X } from 'lucide-react';
 import { cn, formatNumericDate, getDeliveryCountdown } from '@/lib/utils';
-import type { Department } from '@/lib/constants/departments';
+import { canDeptEditDeliveryDate } from '@/lib/constants/departments';
+import type { DeptPermissions } from '@/lib/constants/departments';
 import toast from 'react-hot-toast';
 
 type Props = {
   jobId:        string;
   deliveryDate: string | null;
-  dept:         Department;
+  dept:         DeptPermissions;
   onUpdated:    (newDate: string | null) => void;
 };
 
@@ -19,7 +20,7 @@ export default function DeliveryDateEdit({ jobId, deliveryDate, dept, onUpdated 
   const [value,    setValue]    = useState(deliveryDate ?? '');
   const [loading,  setLoading]  = useState(false);
 
-  const canEdit = dept === 'Admin' || dept === 'Dispatch';
+  const canEdit = canDeptEditDeliveryDate(dept);
 
   async function handleSave() {
     setLoading(true);

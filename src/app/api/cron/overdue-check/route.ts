@@ -11,6 +11,15 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { formatShortDate } from '@/lib/utils';
 
+// Without this, Next.js's build-time analysis sees a GET handler that never
+// reads request/cookies/headers and concludes it's static-cacheable — it
+// then executes the handler ONCE during `next build` (firing a real WhatsApp
+// alert off whatever data exists at build time) and bakes that response in
+// as a static asset, so the actual daily Vercel Cron trigger would just
+// replay the build-time snapshot instead of re-querying. Forcing dynamic
+// makes it run fresh on every invocation, cron or otherwise.
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const admin = createAdminClient();
   const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'

@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment, canDeptManageJobSeparation } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageJobSeparation } from '@/lib/constants/departments';
 
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -38,11 +38,11 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!dept) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
 
   // Same team that owns Job Separation owns the party list that feeds it.
-  if (!canDeptManageJobSeparation(dept)) {
+  if (!canDeptManageJobSeparation(perms)) {
     return NextResponse.json(
       { error: 'Only Prepress or Admin can add parties' },
       { status: 403 }
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from('parties')
-    .insert({ name, created_by: user.email ?? dept })
+    .insert({ name, created_by: user.email ?? perms.key })
     .select()
     .single();
 

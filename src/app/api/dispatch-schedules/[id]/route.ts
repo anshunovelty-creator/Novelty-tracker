@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment } from '@/lib/constants/departments';
+import { getDeptPermissions } from '@/lib/constants/departments';
 import { toMonthKey } from '@/lib/utils';
 
 type Params = { params: Promise<{ id: string }> };
@@ -23,8 +23,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (dept !== 'Admin') {
+  // Stricter than the general Dispatch+Admin delivery-date permission —
+  // force-dispatching without a production run skips normal validation, so
+  // it stays a bare super-admin-only override, not an independently
+  // grantable feature.
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms?.isSuperAdmin) {
     return NextResponse.json(
       { error: 'Only Admin can override-dispatch a release — advance its production run instead' },
       { status: 403 }
@@ -109,7 +113,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     await admin.from('job_status_logs').insert({
       job_id:          schedule.job_id,
       status:          'Partial Dispatch',
-      changed_by_dept: dept,
+      changed_by_dept: perms.key,
       changed_at:      now,
       qty_dispatched:  actual_qty,
     });

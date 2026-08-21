@@ -6,7 +6,7 @@
 
 import React from 'react';
 import type { Job } from '@/lib/types';
-import type { Department } from '@/lib/constants/departments';
+import type { DeptPermissions } from '@/lib/constants/departments';
 import type { JobActions } from '@/hooks/useJobActions';
 import {
   SequentialWarningModal,
@@ -20,7 +20,7 @@ import {
 
 type Props = {
   job:     Job;
-  dept:    Department;
+  dept:    DeptPermissions;
   actions: JobActions;
 };
 
@@ -33,7 +33,7 @@ export default function JobActionModals({ job, dept, actions }: Props) {
         <SequentialWarningModal
           targetStage={modal.targetStage}
           missingStage={modal.missingStage}
-          isAdmin={dept === 'Admin'}
+          isAdmin={dept.isSuperAdmin}
           onCancel={actions.cancelOverride}
           onOverride={(overrideRemark) =>
             actions.confirmOverride(overrideRemark, modal.targetStage)

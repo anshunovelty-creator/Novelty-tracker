@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment, canDeptManageDiesPlates } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageDiesPlates } from '@/lib/constants/departments';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -31,10 +31,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!dept) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
 
-  if (!canDeptManageDiesPlates(dept)) {
+  if (!canDeptManageDiesPlates(perms)) {
     return NextResponse.json(
       { error: 'Only Prepress or Admin can update plates' },
       { status: 403 }
@@ -109,10 +109,10 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!dept) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
 
-  if (!canDeptManageDiesPlates(dept)) {
+  if (!canDeptManageDiesPlates(perms)) {
     return NextResponse.json(
       { error: 'Only Prepress or Admin can delete plates' },
       { status: 403 }

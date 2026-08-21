@@ -1,13 +1,14 @@
 // src/app/api/export/route.ts
 // ============================================================
-// GET /api/export — one-click data export for the admin panel.
-// Returns a ZIP of jobs.csv, dispatch-schedules.csv and print-runs.csv.
+// GET /api/export — one-click "download everything" for the admin panel.
+// Returns a ZIP of every substantive dataset in the app as its own CSV —
+// see buildExportFiles in lib/export/adminExport.ts for the full list.
 // ============================================================
 
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptExportData } from '@/lib/constants/departments';
 import { buildExportFiles } from '@/lib/export/adminExport';
 import { createZip } from '@/lib/export/zip';
 
@@ -24,8 +25,8 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!dept) {
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms) {
     return NextResponse.json({ error: 'Invalid department in token' }, { status: 403 });
   }
 
@@ -33,7 +34,7 @@ export async function GET() {
   // floor departments see their own pipeline, not the whole book of work.
   // Enforced here, not just by hiding the button: the route is reachable
   // directly by anyone with a session cookie.
-  if (dept !== 'Admin') {
+  if (!canDeptExportData(perms)) {
     return NextResponse.json(
       { error: 'Only Admin can export data' },
       { status: 403 }
@@ -51,8 +52,8 @@ export async function GET() {
     const zip      = createZip(files, now);
 
     console.log(
-      `[GET /api/export] ${dept} exported ${counts.jobs} jobs, ` +
-      `${counts.schedules} releases, ${counts.runs} runs (${zip.length} bytes)`
+      `[GET /api/export] ${perms.key} exported ${files.length} files ` +
+      `(${JSON.stringify(counts)}, ${zip.length} bytes)`
     );
 
     return new NextResponse(new Uint8Array(zip), {

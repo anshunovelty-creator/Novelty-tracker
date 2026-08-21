@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageTeam } from '@/lib/constants/departments';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -26,8 +26,8 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (dept !== 'Admin') {
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!canDeptManageTeam(perms)) {
     return NextResponse.json({ error: 'Only Admin can manage the team' }, { status: 403 });
   }
 
@@ -42,15 +42,17 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Member not found' }, { status: 404 });
   }
 
-  if (parseDepartment(target.user.user_metadata?.department) === 'Admin') {
+  const targetPerms = await getDeptPermissions(target.user.user_metadata?.department);
+  if (targetPerms?.isSuperAdmin) {
     const { data: list, error: listError } = await admin.auth.admin.listUsers({ perPage: 200 });
     if (listError) return NextResponse.json({ error: listError.message }, { status: 500 });
 
-    const adminCount = list.users.filter(
-      (u) => parseDepartment(u.user_metadata?.department) === 'Admin'
-    ).length;
+    const memberPerms = await Promise.all(
+      list.users.map((u) => getDeptPermissions(u.user_metadata?.department))
+    );
+    const superAdminCount = memberPerms.filter((p) => p?.isSuperAdmin).length;
 
-    if (adminCount <= 1) {
+    if (superAdminCount <= 1) {
       return NextResponse.json(
         { error: 'At least one Admin account must remain' },
         { status: 400 },

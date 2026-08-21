@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment } from '@/lib/constants/departments';
+import { getDeptPermissions } from '@/lib/constants/departments';
 import { PRINTING_METHODS, type PrintingMethod } from '@/lib/types';
 
 interface Params {
@@ -21,8 +21,8 @@ async function requireAdmin() {
   if (error || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (dept !== 'Admin') {
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms?.isSuperAdmin) {
     return NextResponse.json(
       { error: 'Only Admin can manage printing units' },
       { status: 403 },

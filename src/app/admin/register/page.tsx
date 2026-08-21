@@ -7,7 +7,7 @@
 
 import { redirect } from 'next/navigation';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { parseDepartment } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageRegister } from '@/lib/constants/departments';
 import RegisterManager from '@/components/admin/RegisterManager';
 
 export default async function RegisterPage() {
@@ -15,8 +15,8 @@ export default async function RegisterPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (dept !== 'Admin') redirect('/admin');
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!canDeptManageRegister(perms)) redirect('/admin');
 
   return (
     <div className="space-y-6">

@@ -16,8 +16,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment } from '@/lib/constants/departments';
-import { RUN_STAGES, canDeptSetRunStage } from '@/lib/constants/runStages';
+import { getDeptPermissions, canDeptSetRunStage } from '@/lib/constants/departments';
+import { RUN_STAGES } from '@/lib/constants/runStages';
 import { toMonthKey } from '@/lib/utils';
 import type { PrintRunStage } from '@/lib/types';
 
@@ -32,8 +32,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!dept) return NextResponse.json({ error: 'Invalid department in token' }, { status: 403 });
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms) return NextResponse.json({ error: 'Invalid department in token' }, { status: 403 });
 
   const body: { new_stage?: PrintRunStage; notes?: string; qc_remark?: string } = await request.json();
   const newStage = body.new_stage;
@@ -47,9 +47,9 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   // ── Department permission ──
-  if (!canDeptSetRunStage(dept, newStage)) {
+  if (!canDeptSetRunStage(perms, newStage)) {
     return NextResponse.json(
-      { error: `${dept} department cannot set run stage to "${newStage}"` },
+      { error: `${perms.key} department cannot set run stage to "${newStage}"` },
       { status: 403 }
     );
   }
@@ -155,7 +155,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         await admin.from('job_status_logs').insert({
           job_id:          id,
           status:          'Partial Dispatch',
-          changed_by_dept: dept,
+          changed_by_dept: perms.key,
           changed_at:      now,
           qty_dispatched:  run.qty_this_run,
         });

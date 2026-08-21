@@ -19,7 +19,8 @@ import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { ModalShell } from './modals';
 import type { Job, PrintingUnit, JobType, PrintingMethod } from '@/lib/types';
-import type { Department } from '@/lib/constants/departments';
+import { canDeptEditDeliveryDate } from '@/lib/constants/departments';
+import type { DeptPermissions } from '@/lib/constants/departments';
 
 const JOB_TYPES: JobType[] = ['New', 'Repeat', 'Artwork Changed'];
 
@@ -64,7 +65,7 @@ function toForm(job: Job): EditForm {
 
 type Props = {
   job:     Job;
-  dept:    Department;
+  dept:    DeptPermissions;
   onClose: () => void;
   onSaved: (job: Job) => void;
 };
@@ -78,7 +79,7 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
   // Dispatch and Admin own the delivery date (see the PATCH guard). Showing
   // Prepress a field their save would be rejected for is a worse experience
   // than not showing it.
-  const canEditDelivery = dept === 'Admin' || dept === 'Dispatch';
+  const canEditDelivery = canDeptEditDeliveryDate(dept);
 
   // Active units only — a retired unit must never become assignable again.
   useEffect(() => {

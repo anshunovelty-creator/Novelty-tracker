@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment } from '@/lib/constants/departments';
+import { getDeptPermissions } from '@/lib/constants/departments';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -41,8 +41,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!dept) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
 
   const body = await request.json();
   const { stage, comment } = body;
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       job_id:           id,
       stage:            stage.trim(),
       comment:          comment.trim(),
-      created_by:       dept,
+      created_by:       perms.key,
       created_by_email: user.email ?? null,
     })
     .select()

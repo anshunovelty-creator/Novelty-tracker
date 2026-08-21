@@ -293,7 +293,7 @@ export default function AddJobSeparationModal({ editing, prefill, onClose, onSav
           </div>
 
           <div>
-            <JsLabel>Job Status</JsLabel>
+            <JsLabel>Artwork Status</JsLabel>
             <input
               value={jobStatus}
               onChange={(e) => setJobStatus(e.target.value)}
@@ -327,7 +327,7 @@ export default function AddJobSeparationModal({ editing, prefill, onClose, onSav
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <JsLabel>JC Status</JsLabel>
+              <JsLabel>Job Card Status</JsLabel>
               <input
                 value={jcStatus}
                 onChange={(e) => setJcStatus(e.target.value.toUpperCase())}
@@ -336,7 +336,7 @@ export default function AddJobSeparationModal({ editing, prefill, onClose, onSav
               />
             </div>
             <div>
-              <JsLabel>AW send to</JsLabel>
+              <JsLabel>AW SENT to U1</JsLabel>
               <input
                 value={awSendTo}
                 onChange={(e) => setAwSendTo(e.target.value.toUpperCase())}

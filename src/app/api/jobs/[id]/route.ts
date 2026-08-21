@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment, canDeptSetPrinting, canDeptEditJobDetails } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptSetPrinting, canDeptEditJobDetails, canDeptEditDeliveryDate } from '@/lib/constants/departments';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -55,8 +55,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!dept) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
 
   const body = await request.json();
 
@@ -83,7 +83,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   ] as const;
 
   // Delivery date edit: only Dispatch or Admin
-  if ('delivery_date' in body && dept !== 'Dispatch' && dept !== 'Admin') {
+  if ('delivery_date' in body && !canDeptEditDeliveryDate(perms)) {
     return NextResponse.json(
       { error: 'Only Dispatch or Admin can edit delivery date' },
       { status: 403 }
@@ -94,7 +94,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   // press takes the job. Enforced here as well as in the UI, because the
   // UI control is only a hint — this endpoint is the actual boundary.
   const touchesPrinting = 'printing_method' in body || 'printing_unit_id' in body;
-  if (touchesPrinting && !canDeptSetPrinting(dept)) {
+  if (touchesPrinting && !canDeptSetPrinting(perms)) {
     return NextResponse.json(
       { error: 'Only Prepress, Production or Admin can set the printing unit' },
       { status: 403 }
@@ -109,11 +109,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     'label_qty', 'job_type', 'po_date', 'notes',
   ];
   const touchedDetails = DETAIL_FIELDS.filter((f) => f in body);
-  if (touchedDetails.length > 0 && !canDeptEditJobDetails(dept)) {
+  if (touchedDetails.length > 0 && !canDeptEditJobDetails(perms)) {
     return NextResponse.json(
       {
         error:
-          `${dept} cannot change job details. ` +
+          `${perms.key} cannot change job details. ` +
           `Rejected fields: ${touchedDetails.join(', ')}`,
       },
       { status: 403 }
@@ -121,9 +121,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 
   // Production may change the printing unit and NOTHING else — every other
-  // detail stays fixed for them. Enforced here because the endpoint, not the
-  // UI, is the real boundary.
-  if (dept === 'Production') {
+  // detail stays fixed for them. A bespoke carve-out on the literal
+  // 'Production' department key, not a generic feature — kept as-is since
+  // it's a restriction narrower than any grantable permission, not a gate.
+  if (perms.key === 'Production') {
     const nonPrintingKeys = Object.keys(body).filter(
       (k) => k !== 'printing_method' && k !== 'printing_unit_id',
     );
@@ -131,7 +132,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       return NextResponse.json(
         {
           error:
-            `${dept} can only change the printing unit. ` +
+            `${perms.key} can only change the printing unit. ` +
             `Rejected fields: ${nonPrintingKeys.join(', ')}`,
         },
         { status: 403 }
@@ -206,8 +207,8 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (dept !== 'Admin') {
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms?.isSuperAdmin) {
     return NextResponse.json({ error: 'Admin only' }, { status: 403 });
   }
 

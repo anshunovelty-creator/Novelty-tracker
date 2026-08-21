@@ -13,19 +13,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageTeam } from '@/lib/constants/departments';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Returns the response to send back when the caller may not manage the
-// team, null when they may (must be signed in AND department === 'Admin').
+// team, null when they may (must be signed in AND hold team_manage).
 async function denyUnlessAdmin(): Promise<NextResponse | null> {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (dept !== 'Admin') {
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!canDeptManageTeam(perms)) {
     return NextResponse.json({ error: 'Only Admin can manage the team' }, { status: 403 });
   }
   return null;
@@ -40,15 +40,18 @@ export async function GET() {
   const { data, error } = await admin.auth.admin.listUsers({ perPage: 200 });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const members = data.users
-    .map((u) => ({
-      id:              u.id,
-      email:           u.email ?? '',
-      department:      parseDepartment(u.user_metadata?.department),
-      created_at:      u.created_at,
-      last_sign_in_at: u.last_sign_in_at ?? null,
-    }))
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const members = (await Promise.all(
+    data.users.map(async (u) => {
+      const memberPerms = await getDeptPermissions(u.user_metadata?.department);
+      return {
+        id:              u.id,
+        email:           u.email ?? '',
+        department:      memberPerms?.key ?? null,
+        created_at:      u.created_at,
+        last_sign_in_at: u.last_sign_in_at ?? null,
+      };
+    })
+  )).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   return NextResponse.json({ members });
 }
@@ -65,10 +68,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Enter a valid email address' }, { status: 400 });
   }
 
-  const department = parseDepartment(body.department);
-  if (!department) {
+  const deptPerms = await getDeptPermissions(body.department);
+  if (!deptPerms) {
     return NextResponse.json({ error: 'Choose a department' }, { status: 400 });
   }
+  const department = deptPerms.key;
 
   const password = typeof body.password === 'string' ? body.password : '';
   if (password.length < 8) {

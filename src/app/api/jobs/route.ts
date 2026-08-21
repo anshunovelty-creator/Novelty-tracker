@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment } from '@/lib/constants/departments';
+import { getDeptPermissions } from '@/lib/constants/departments';
 import { createJobRecord } from '@/lib/jobs/createJob';
 import type { AddJobFormData } from '@/lib/types';
 
@@ -63,8 +63,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!dept) {
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms) {
     return NextResponse.json({ error: 'Invalid department in token' }, { status: 403 });
   }
 
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
   // Use admin client to bypass RLS for insert — we've already verified auth above
   const admin = createAdminClient();
 
-  const result = await createJobRecord(admin, dept, body);
+  const result = await createJobRecord(admin, perms.key, body);
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }

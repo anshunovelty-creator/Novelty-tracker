@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { parseDepartment, canDeptUseBOM } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptUseBOM } from '@/lib/constants/departments';
 
 export async function GET(_request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -18,8 +18,8 @@ export async function GET(_request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!canDeptUseBOM(dept)) {
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!canDeptUseBOM(perms)) {
     return NextResponse.json(
       { error: 'Bill of Material is Production and Admin only' },
       { status: 403 }

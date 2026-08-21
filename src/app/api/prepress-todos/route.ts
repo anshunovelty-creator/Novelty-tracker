@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment, canDeptManageJobSeparation } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManagePrepressTodo } from '@/lib/constants/departments';
 
 export async function GET(_request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -15,12 +15,12 @@ export async function GET(_request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!dept) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
 
   // Same team that owns Job Separation owns this checklist — no other
   // consumer needs it, unlike parties' open read for the typeahead.
-  if (!canDeptManageJobSeparation(dept)) {
+  if (!canDeptManagePrepressTodo(perms)) {
     return NextResponse.json(
       { error: 'Only Prepress or Admin can view this checklist' },
       { status: 403 }
@@ -43,10 +43,10 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!dept) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
 
-  if (!canDeptManageJobSeparation(dept)) {
+  if (!canDeptManagePrepressTodo(perms)) {
     return NextResponse.json(
       { error: 'Only Prepress or Admin can add to this checklist' },
       { status: 403 }
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from('prepress_todos')
-    .insert({ task, created_by: user.email ?? dept })
+    .insert({ task, created_by: user.email ?? perms.key })
     .select()
     .single();
 
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     todo_id: data.id,
     task: data.task,
     action: 'created',
-    actor_department: dept,
+    actor_department: perms.key,
     actor_email: user.email ?? null,
   });
   if (logError) console.error('prepress_todo_logs insert (created) failed:', logError);

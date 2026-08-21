@@ -10,7 +10,7 @@
 
 import { redirect } from 'next/navigation';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { parseDepartment, canDeptUseBOM, canDeptDecideBOM } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptUseBOM, canDeptDecideBOM } from '@/lib/constants/departments';
 import BomManager from '@/components/admin/BomManager';
 
 export default async function BomPage() {
@@ -18,10 +18,10 @@ export default async function BomPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!canDeptUseBOM(dept)) redirect('/admin');
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!canDeptUseBOM(perms)) redirect('/admin');
 
-  const canDecide = canDeptDecideBOM(dept);
+  const canDecide = canDeptDecideBOM(perms);
 
   return (
     <div className="space-y-6">

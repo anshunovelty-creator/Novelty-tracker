@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn, sortJobs, type JobSortOption } from '@/lib/utils';
 import { JOBS_CHANGED_EVENT, JOBS_FILTER_EVENT, type JobsFilterDetail } from '@/lib/constants/events';
 import type { Job, AddJobFormData } from '@/lib/types';
-import type { Department } from '@/lib/constants/departments';
+import type { DeptPermissions } from '@/lib/constants/departments';
 import JobRow, { JOB_ROW_COLS } from './JobRow';
 import JobCard from './JobCard';
 import FilterBar from './FilterBar';
@@ -15,7 +15,7 @@ import { SkeletonRows } from '@/components/ui/Skeleton';
 
 type Props = {
   initialJobs: Job[];
-  dept:        Department;
+  dept:        DeptPermissions;
 };
 
 // Header labels for the desk table. Must stay in the same order — and at the

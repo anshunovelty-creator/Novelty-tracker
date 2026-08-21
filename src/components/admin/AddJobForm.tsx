@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { cn, formatQty, formatShortDate } from '@/lib/utils';
-import type { Department } from '@/lib/constants/departments';
+import type { DeptPermissions } from '@/lib/constants/departments';
 import type { AddJobFormData, ScheduledReleaseInput, JobType, PrintingUnit, LabelStock, Job } from '@/lib/types';
 import { LoadingButton } from '@/components/ui/Loading';
 import toast from 'react-hot-toast';
@@ -27,7 +27,11 @@ type StockMatch = {
 };
 
 type Props = {
-  dept:          Department;
+  // Received as a plain department key by some callers (JobSeparationManager)
+  // and as a full permission set by others (JobsTable) — never read inside
+  // this form, so both shapes are accepted rather than forcing one caller
+  // to adapt.
+  dept:          DeptPermissions | string;
   prefillData?:  Partial<AddJobFormData>; // used by Job Duplication
   onSuccess?:    (job: Job) => void;
   // Set when opened from the Job Separation worksheet's "Add Job" button —

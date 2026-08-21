@@ -16,7 +16,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { MACHINE_MANAGERS, requireDept } from '@/lib/api/machineBoard';
+import { requireDept } from '@/lib/api/machineBoard';
+import { canDeptManageMachineBoard } from '@/lib/constants/departments';
 import { advanceJobStageFromMachine } from '@/lib/api/advanceJobStage';
 import { estimateFinishIso } from '@/lib/machineSpeed';
 import type { MachineDrivenStage, StageSyncResult } from '@/lib/api/advanceJobStage';
@@ -27,7 +28,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const { id: machineId, itemId } = await params;
   const auth = await requireDept();
   if ('error' in auth) return auth.error;
-  if (!MACHINE_MANAGERS.includes(auth.dept)) {
+  if (!canDeptManageMachineBoard(auth.perms)) {
     return NextResponse.json(
       { error: 'Only Production or Admin can update machine queues' },
       { status: 403 }
@@ -152,7 +153,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         stageSync = await advanceJobStageFromMachine(
           item.job_id,
           stageTarget,
-          auth.dept,
+          auth.perms,
           `${machineName} · ${label}`
         );
       } catch (err) {
@@ -176,7 +177,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
   const { id: machineId, itemId } = await params;
   const auth = await requireDept();
   if ('error' in auth) return auth.error;
-  if (!MACHINE_MANAGERS.includes(auth.dept)) {
+  if (!canDeptManageMachineBoard(auth.perms)) {
     return NextResponse.json(
       { error: 'Only Production or Admin can update machine queues' },
       { status: 403 }

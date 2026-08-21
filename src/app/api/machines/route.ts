@@ -8,7 +8,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { MACHINE_MANAGERS, requireDept } from '@/lib/api/machineBoard';
+import { requireDept } from '@/lib/api/machineBoard';
+import { canDeptManageMachineBoard } from '@/lib/constants/departments';
 
 export async function GET(request: NextRequest) {
   const auth = await requireDept();
@@ -63,7 +64,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireDept();
   if ('error' in auth) return auth.error;
-  if (!MACHINE_MANAGERS.includes(auth.dept)) {
+  if (!canDeptManageMachineBoard(auth.perms)) {
     return NextResponse.json(
       { error: 'Only Production or Admin can add machines' },
       { status: 403 }

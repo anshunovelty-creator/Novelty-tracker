@@ -5,7 +5,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { parseDepartment } from '@/lib/constants/departments';
+import { getDeptPermissions } from '@/lib/constants/departments';
 import JobDetailClient from '@/components/admin/JobDetailClient';
 import type { Job } from '@/lib/types';
 
@@ -20,8 +20,8 @@ export default async function JobDetailPage({ params }: Props) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!dept) redirect('/login');
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms) redirect('/login');
 
   const { data: job, error } = await supabase
     .from('jobs')
@@ -46,5 +46,5 @@ export default async function JobDetailPage({ params }: Props) {
     );
   }
 
-  return <JobDetailClient initialJob={job as Job} dept={dept} />;
+  return <JobDetailClient initialJob={job as Job} dept={perms} />;
 }

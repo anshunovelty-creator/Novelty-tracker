@@ -17,7 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment, canDeptUseBOM } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptUseBOM } from '@/lib/constants/departments';
 
 // Statuses that still want someone's attention — the default list view.
 const OPEN_STATUSES = ['pending', 'in_review'] as const;
@@ -48,8 +48,8 @@ async function requireBomAccess() {
     return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) } as const;
   }
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!canDeptUseBOM(dept)) {
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!canDeptUseBOM(perms)) {
     return {
       error: NextResponse.json(
         { error: 'Bill of Material is Production and Admin only' },
@@ -58,7 +58,7 @@ async function requireBomAccess() {
     } as const;
   }
 
-  return { user, dept: dept!, supabase } as const;
+  return { user, perms: perms!, supabase } as const;
 }
 
 export async function GET(request: NextRequest) {
@@ -173,8 +173,8 @@ export async function POST(request: NextRequest) {
       needed_by: text(body.needed_by),
       priority:  body.priority === 'urgent' ? 'urgent' : 'normal',
       note:      text(body.note),
-      raised_by_department: gate.dept,
-      raised_by: gate.user.email ?? gate.dept,
+      raised_by_department: gate.perms.key,
+      raised_by: gate.user.email ?? gate.perms.key,
     })
     .select()
     .single();
@@ -205,7 +205,7 @@ export async function POST(request: NextRequest) {
   // Grow the catalogue from what was actually asked for. Deliberately after
   // the request is safely saved and never allowed to fail the call: a
   // requisition must not be rejected because a lookup table misbehaved.
-  await learnMaterials(items, gate.user.email ?? gate.dept);
+  await learnMaterials(items, gate.user.email ?? gate.perms.key);
 
   return NextResponse.json(
     { request: { ...created, items: savedItems ?? [] } },

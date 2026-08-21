@@ -22,7 +22,7 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { canDeptSetStage } from '@/lib/constants/departments';
 import { getPrerequisite, getVisibleStages, stageIndex } from '@/lib/constants/stages';
-import type { Department } from '@/lib/constants/departments';
+import type { DeptPermissions } from '@/lib/constants/departments';
 import type { Stage } from '@/lib/constants/stages';
 
 /** The only stages this helper may set — see the scope note above. */
@@ -35,7 +35,7 @@ export type StageSyncResult =
 export async function advanceJobStageFromMachine(
   jobId:  string,
   target: MachineDrivenStage,
-  dept:   Department,
+  perms:  DeptPermissions,
   /** Shown in the internal audit comment, e.g. "Machine 2 · Start". */
   source: string
 ): Promise<StageSyncResult> {
@@ -43,7 +43,7 @@ export async function advanceJobStageFromMachine(
 
   const { data: job } = await admin
     .from('jobs')
-    .select('id, status, job_type, is_closed, is_scheduled_release')
+    .select('id, status, job_type, is_closed, is_scheduled_release, printing_method')
     .eq('id', jobId)
     .maybeSingle();
 
@@ -59,8 +59,12 @@ export async function advanceJobStageFromMachine(
     };
   }
 
-  if (!canDeptSetStage(dept, target)) {
-    return { advanced: false, reason: `${dept} cannot set "${target}"` };
+  // Pass printing_method so a department's printingMethodScope (e.g.
+  // Unit1Admin → Offset only) is enforced here too — previously this path
+  // called canDeptSetStage without it, so unit-scoped departments could
+  // advance jobs outside their unit via the machine board.
+  if (!canDeptSetStage(perms, target, job.printing_method)) {
+    return { advanced: false, reason: `${perms.key} cannot set "${target}"` };
   }
 
   const currentStatus = job.status as Stage;
@@ -124,7 +128,7 @@ export async function advanceJobStageFromMachine(
     .insert({
       job_id:          jobId,
       status:          target,
-      changed_by_dept: dept,
+      changed_by_dept: perms.key,
       changed_at:      now,
       remark:          null,
       qty_dispatched:  null,
@@ -136,7 +140,7 @@ export async function advanceJobStageFromMachine(
       job_id:     jobId,
       stage:      target,
       comment:    `[Auto] Stage set from the machine board — ${source}.`,
-      created_by: dept,
+      created_by: perms.key,
     });
 
   return { advanced: true, stage: target };

@@ -5,14 +5,22 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Package, Scissors, Disc, Users, SplitSquareHorizontal, Contact, ClipboardList, Bell, Truck, Mail, Menu, X } from 'lucide-react';
+import { Package, Scissors, Disc, Users, SplitSquareHorizontal, Contact, ClipboardList, Bell, Truck, Mail, Menu, X, Building2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { canDeptUseBOM, canDeptManageDispatchNotifications, type Department } from '@/lib/constants/departments';
+import {
+  canDeptUseBOM,
+  canDeptManageDispatchNotifications,
+  canDeptManageRegister,
+  canDeptManageTeam,
+  canDeptManageNotificationRecipients,
+  canDeptExportData,
+  type DeptPermissions,
+} from '@/lib/constants/departments';
 import { Logo } from '@/components/brand/Logo';
 import ExportButton from './ExportButton';
 
 type Props = {
-  dept:        Department;
+  dept:        DeptPermissions;
   displayName: string;
 };
 
@@ -35,6 +43,7 @@ const SHORTCUTS: Record<string, string> = {
   e: '/admin/dispatch-notifications',
   // Not 'c' — Ctrl/Cmd+C is copy and browsers never let a page override it.
   o: '/admin/party-contacts',
+  g: '/admin/departments',
 };
 
 // How often the header re-checks for material requests nobody has answered.
@@ -241,7 +250,7 @@ export default function AdminHeader({ dept, displayName }: Props) {
                 canDeptManageRegister in every /api/register route and by
                 RLS on the register_* tables themselves. Ordered before
                 Team on request. */}
-            {dept === 'Admin' && (
+            {canDeptManageRegister(dept) && (
               <Link
                 href="/admin/register"
                 title="Follow-ups (Ctrl+R)"
@@ -253,7 +262,7 @@ export default function AdminHeader({ dept, displayName }: Props) {
             )}
             {/* Team management touches login accounts directly — Admin only,
                 mirrored by the check in every /api/team route. */}
-            {dept === 'Admin' && (
+            {canDeptManageTeam(dept) && (
               <Link
                 href="/admin/team"
                 title="Team (Ctrl+M)"
@@ -265,7 +274,7 @@ export default function AdminHeader({ dept, displayName }: Props) {
             )}
             {/* Who gets a copy of the dispatch email internally — Admin only,
                 mirrored by the check in every /api/notification-recipients route. */}
-            {dept === 'Admin' && (
+            {canDeptManageNotificationRecipients(dept) && (
               <Link
                 href="/admin/notifications"
                 title="Dispatch Alerts (Ctrl+A)"
@@ -273,6 +282,19 @@ export default function AdminHeader({ dept, displayName }: Props) {
               >
                 <Bell className="h-4 w-4" aria-hidden="true" />
                 Dispatch Alerts
+              </Link>
+            )}
+            {/* Create departments and configure their permission grids —
+                the super-admin department only, since this page edits the
+                permission system itself. */}
+            {dept.isSuperAdmin && (
+              <Link
+                href="/admin/departments"
+                title="Departments (Ctrl+G)"
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
+              >
+                <Building2 className="h-4 w-4" aria-hidden="true" />
+                Departments
               </Link>
             )}
           </nav>
@@ -285,7 +307,7 @@ export default function AdminHeader({ dept, displayName }: Props) {
           </span>
           {/* Full-database export — Admin only, mirrored by the check in
               GET /api/export, which is the actual gate. */}
-          {dept === 'Admin' && <ExportButton />}
+          {canDeptExportData(dept) && <ExportButton />}
           {/* Below md this moves into the hamburger panel instead, sized for
               a proper tap target there — this compact text button stays
               desktop-only. */}
@@ -394,7 +416,7 @@ export default function AdminHeader({ dept, displayName }: Props) {
               Party Contacts
             </Link>
           )}
-          {dept === 'Admin' && (
+          {canDeptManageRegister(dept) && (
             <Link
               href="/admin/register"
               className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
@@ -403,7 +425,7 @@ export default function AdminHeader({ dept, displayName }: Props) {
               Follow-ups
             </Link>
           )}
-          {dept === 'Admin' && (
+          {canDeptManageTeam(dept) && (
             <Link
               href="/admin/team"
               className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
@@ -412,13 +434,22 @@ export default function AdminHeader({ dept, displayName }: Props) {
               Team
             </Link>
           )}
-          {dept === 'Admin' && (
+          {canDeptManageNotificationRecipients(dept) && (
             <Link
               href="/admin/notifications"
               className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
             >
               <Bell className="h-4 w-4 shrink-0" aria-hidden="true" />
               Dispatch Alerts
+            </Link>
+          )}
+          {dept.isSuperAdmin && (
+            <Link
+              href="/admin/departments"
+              className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <Building2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+              Departments
             </Link>
           )}
 

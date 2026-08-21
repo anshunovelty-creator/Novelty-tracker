@@ -13,8 +13,9 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES, isPerReleaseStage } from '@/lib/constants/stages';
 import { ROW_URGENCY_STYLES } from '@/lib/constants/statusColors';
+import { canDeptOverridePOClosed, canDeptConfirmSlitting } from '@/lib/constants/departments';
 import type { Job } from '@/lib/types';
-import type { Department } from '@/lib/constants/departments';
+import type { DeptPermissions } from '@/lib/constants/departments';
 import type { Stage } from '@/lib/constants/stages';
 
 export type JobModalState =
@@ -43,7 +44,7 @@ export type StatusPayload = {
 
 type Params = {
   job:          Job;
-  dept:         Department;
+  dept:         DeptPermissions;
   onJobUpdated: (job: Job) => void;
   onJobDeleted: (id: string) => void;
 };
@@ -124,7 +125,7 @@ export function useJobActions({ job, dept, onJobUpdated, onJobDeleted }: Params)
   }
 
   const canConfirmSlitting =
-    (dept === 'Postpress' || dept === 'Admin') &&
+    canDeptConfirmSlitting(dept) &&
     job.status === 'Slitting' &&
     !job.slitting_confirmed_at;
 
@@ -209,7 +210,7 @@ export function useJobActions({ job, dept, onJobUpdated, onJobDeleted }: Params)
 
   // ── Available stages in the picker ──────────────────────────
   const _stages: Stage[] = [...PIPELINE_STAGES, 'On Hold'];
-  if (dept === 'Admin') _stages.push('PO Closed');
+  if (canDeptOverridePOClosed(dept)) _stages.push('PO Closed');
   let availableStages = job.job_type === 'Repeat'
     ? _stages.filter((s) => !REPEAT_SKIPPED_STAGES.includes(s as any))
     : _stages;

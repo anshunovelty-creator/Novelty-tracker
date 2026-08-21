@@ -16,14 +16,14 @@
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import type { PrintingMethod, PrintingUnit } from '@/lib/types';
-import { canDeptSetPrinting, type Department } from '@/lib/constants/departments';
+import { canDeptSetPrinting, type DeptPermissions } from '@/lib/constants/departments';
 
 interface Props {
   jobId: string;
   printingMethod: PrintingMethod;
   printingUnitId: string | null;
   /** Prepress, Production and Admin can change the unit; others read only. */
-  dept: Department | null;
+  dept: DeptPermissions | null;
   /** Fired after a successful save so the parent can refresh the job. */
   onSaved?: () => void;
   disabled?: boolean;

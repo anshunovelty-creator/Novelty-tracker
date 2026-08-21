@@ -28,7 +28,6 @@ import { MessageSquare, X, BellRing, Check } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
-import { DEPARTMENTS, type Department } from '@/lib/constants/departments';
 import type { NoteFeedItem } from '@/lib/types';
 
 const POLL_MS  = 25_000;
@@ -36,7 +35,7 @@ const FEED_URL = '/api/notes/feed?limit=50';
 
 type Props = {
   /** Department of the signed-in user — only used to label "you" in the filter. */
-  dept:      Department;
+  dept:      string;
   userEmail: string;
 };
 
@@ -73,7 +72,8 @@ export default function NotesFeed({ dept, userEmail }: Props) {
   const [open,           setOpen]           = useState(false);
   const [notes,          setNotes]          = useState<NoteFeedItem[]>([]);
   const [unread,         setUnread]         = useState(0);
-  const [filter,         setFilter]         = useState<'All' | Department>('All');
+  const [filter,         setFilter]         = useState<string>('All');
+  const [departments,    setDepartments]    = useState<{ key: string }[]>([]);
   const [error,          setError]          = useState(false);
   const [canPush,        setCanPush]        = useState<NotificationPermission | 'unsupported'>('unsupported');
   // Ids marked read locally but not yet confirmed by the next poll —
@@ -93,6 +93,13 @@ export default function NotesFeed({ dept, userEmail }: Props) {
 
   useEffect(() => {
     if ('Notification' in window) setCanPush(Notification.permission);
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/departments')
+      .then((res) => res.json())
+      .then((data) => setDepartments(data.departments ?? []))
+      .catch(() => {});
   }, []);
 
   const poll = useCallback(async () => {
@@ -325,12 +332,12 @@ export default function NotesFeed({ dept, userEmail }: Props) {
         <select
           id="notes-dept-filter"
           value={filter}
-          onChange={(e) => setFilter(e.target.value as 'All' | Department)}
+          onChange={(e) => setFilter(e.target.value)}
           className="w-full text-xs rounded-lg border border-brand-border bg-brand-bg px-2 py-1.5 text-brand-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
         >
           <option value="All">All departments</option>
-          {DEPARTMENTS.map((d) => (
-            <option key={d} value={d}>{d}{d === dept ? ' (you)' : ''}</option>
+          {departments.map((d) => (
+            <option key={d.key} value={d.key}>{d.key}{d.key === dept ? ' (you)' : ''}</option>
           ))}
         </select>
       </div>

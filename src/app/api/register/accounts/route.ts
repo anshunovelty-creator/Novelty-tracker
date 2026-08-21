@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment, canDeptManageRegister } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageRegister } from '@/lib/constants/departments';
 
 function text(value: unknown): string | null {
   return typeof value === 'string' ? value.trim() || null : null;
@@ -19,11 +19,11 @@ async function requireAdmin() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) } as const;
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!canDeptManageRegister(dept)) {
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms || !canDeptManageRegister(perms)) {
     return { error: NextResponse.json({ error: 'Register is Admin only' }, { status: 403 }) } as const;
   }
-  return { user, dept, supabase } as const;
+  return { user, perms, supabase } as const;
 }
 
 export async function GET(_request: NextRequest) {
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
       segment:      text(body.segment),
       city:         text(body.city),
       notes:        text(body.notes),
-      created_by:   gate.user.email ?? gate.dept,
+      created_by:   gate.user.email ?? gate.perms.key,
     })
     .select()
     .single();

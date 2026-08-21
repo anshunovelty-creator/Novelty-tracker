@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment } from '@/lib/constants/departments';
+import { getDeptPermissions } from '@/lib/constants/departments';
 import { PRINTING_METHODS, type PrintingMethod } from '@/lib/types';
 
 // ── GET ───────────────────────────────────────────────────────
@@ -52,8 +52,8 @@ export async function POST(request: NextRequest) {
 
   // Units define how the floor is organised — Admin only, matching the
   // delete-job restriction already enforced in JobRow/JobCard.
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (dept !== 'Admin') {
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms?.isSuperAdmin) {
     return NextResponse.json(
       { error: 'Only Admin can create printing units' },
       { status: 403 },

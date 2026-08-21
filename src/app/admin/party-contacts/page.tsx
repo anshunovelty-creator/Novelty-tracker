@@ -7,7 +7,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { parseDepartment, canDeptManageDispatchNotifications } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageDispatchNotifications, canDeptManagePartyContacts } from '@/lib/constants/departments';
 import PartyContactsManager from '@/components/admin/PartyContactsManager';
 
 export const dynamic = 'force-dynamic';
@@ -20,9 +20,9 @@ export const metadata = {
 export default async function PartyContactsPage() {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
-  const dept = parseDepartment(user?.user_metadata?.department);
+  const perms = await getDeptPermissions(user?.user_metadata?.department);
 
-  if (!canDeptManageDispatchNotifications(dept)) {
+  if (!canDeptManageDispatchNotifications(perms)) {
     redirect('/admin');
   }
 
@@ -45,7 +45,7 @@ export default async function PartyContactsPage() {
         </p>
       </div>
 
-      <PartyContactsManager canEdit={dept === 'Admin'} />
+      <PartyContactsManager canEdit={canDeptManagePartyContacts(perms)} />
     </div>
   );
 }

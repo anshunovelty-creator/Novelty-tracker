@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment, canDeptManageRegister } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageRegister } from '@/lib/constants/departments';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -22,11 +22,11 @@ async function requireAdmin() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) } as const;
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!canDeptManageRegister(dept)) {
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!canDeptManageRegister(perms)) {
     return { error: NextResponse.json({ error: 'Register is Admin only' }, { status: 403 }) } as const;
   }
-  return { user, dept } as const;
+  return { user, perms } as const;
 }
 
 export async function PATCH(request: NextRequest, { params }: Params) {

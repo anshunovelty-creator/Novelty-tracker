@@ -47,7 +47,7 @@ function jobPrefillFromRow(row: JobSeparation): Partial<AddJobFormData> {
 // Must stay in the same order as the <td>s rendered below.
 const JOB_SEPARATION_COLUMNS = [
   'Sr No', 'Party', 'PO No / Date', 'PM Code / Material', 'Qty / Rate', 'Unit',
-  'Order Value', 'Job Status', 'JC Status', 'AW', 'Actions',
+  'Order Value', 'Artwork Status', 'Job Card Status', 'AW SENT to U1', 'Actions',
 ] as const;
 const JOB_SEPARATION_COLS = JOB_SEPARATION_COLUMNS.length;
 
@@ -90,9 +90,9 @@ const JOB_SEPARATION_SEARCH_FIELDS: { value: string; label: string; placeholder:
   { value: 'material_name', label: 'Material',     placeholder: 'Search by material name' },
   { value: 'unit',          label: 'Unit',         placeholder: 'Search by unit' },
   { value: 'quantity',      label: 'Quantity',     placeholder: 'Search by quantity' },
-  { value: 'job_status',    label: 'Job status',   placeholder: 'Search by job status' },
-  { value: 'jc_status',     label: 'JC status',    placeholder: 'Search by JC status' },
-  { value: 'aw_send_to',    label: 'AW send to',   placeholder: 'Search by AW send to' },
+  { value: 'job_status',    label: 'Artwork Status',    placeholder: 'Search by artwork status' },
+  { value: 'jc_status',     label: 'Job Card Status',   placeholder: 'Search by job card status' },
+  { value: 'aw_send_to',    label: 'AW SENT to U1',     placeholder: 'Search by AW sent to U1' },
 ];
 
 // Sort by any field, either direction — unlike Jobs (JOB_SORT_OPTIONS in
@@ -119,9 +119,9 @@ const COLUMN_SORT_FIELDS: Partial<Record<typeof JOB_SEPARATION_COLUMNS[number], 
   'Qty / Rate':           'quantity',
   'Unit':                 'unit',
   'Order Value':          'order_value',
-  'Job Status':           'job_status',
-  'JC Status':            'jc_status',
-  'AW':                   'aw_send_to',
+  'Artwork Status':       'job_status',
+  'Job Card Status':      'jc_status',
+  'AW SENT to U1':        'aw_send_to',
 };
 
 const SORT_FIELD_KIND: Record<SortField, 'text' | 'number' | 'date'> = {
@@ -170,17 +170,17 @@ const JOB_SEPARATION_EXPORT_COLUMNS: CsvColumn<JobSeparation>[] = [
   { header: 'Material Name',  value: (j) => j.material_name },
   { header: 'Quantity',       value: (j) => j.quantity },
   { header: 'Unit',           value: (j) => j.unit },
-  { header: 'Job Status',     value: (j) => j.job_status },
+  { header: 'Artwork Status', value: (j) => j.job_status },
   { header: 'Rate',           value: (j) => j.rate },
   { header: 'Order Value',    value: (j) => j.order_value },
-  { header: 'JC Status',      value: (j) => j.jc_status },
-  { header: 'AW send to',     value: (j) => j.aw_send_to },
+  { header: 'Job Card Status', value: (j) => j.jc_status },
+  { header: 'AW SENT to U1',  value: (j) => j.aw_send_to },
   { header: 'Added',          value: (j) => csvTimestamp(j.created_at) },
 ];
 
-type Props = { canManage: boolean; dept: Department | null };
+type Props = { canManage: boolean; canManageTodo: boolean; dept: Department | null };
 
-export default function JobSeparationManager({ canManage, dept }: Props) {
+export default function JobSeparationManager({ canManage, canManageTodo, dept }: Props) {
   const [search,      setSearch]      = useState('');
   const [searchField, setSearchField] = useState('all');
   const [range,       setRange]       = useState<DateRangeOption>('month');
@@ -371,7 +371,7 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
 
   return (
     <div className="space-y-3">
-      {canManage && <PrepressTodoPanel />}
+      {canManageTodo && <PrepressTodoPanel />}
 
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-2">
@@ -608,7 +608,7 @@ export default function JobSeparationManager({ canManage, dept }: Props) {
                         <SpecField label="Quantity" value={row.quantity !== null ? formatQty(row.quantity) : null} mono />
                         <SpecField label="Rate" value={formatMoney(row.rate)} mono />
                         <SpecField label="Order Value" value={formatMoney(row.order_value)} mono />
-                        <SpecField label="Job Status" value={row.job_status} />
+                        <SpecField label="Artwork Status" value={row.job_status} />
                         <SpecField label="Added" value={formatNumericDate(row.created_at)} mono />
                       </div>
                     </div>

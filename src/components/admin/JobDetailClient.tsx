@@ -11,9 +11,9 @@ import { cn, formatAdminDate, formatJobCardNumber, formatShortDate, formatQty } 
 import { CheckCircle2 } from 'lucide-react';
 import { STATUS_COLORS, JOB_TYPE_BADGE, urgentBadgeClass } from '@/lib/constants/statusColors';
 import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES, isPerReleaseStage } from '@/lib/constants/stages';
-import { canDeptSetStage } from '@/lib/constants/departments';
+import { canDeptSetStage, canDeptOverridePOClosed, canDeptConfirmSlitting } from '@/lib/constants/departments';
 import type { Job } from '@/lib/types';
-import type { Department } from '@/lib/constants/departments';
+import type { DeptPermissions } from '@/lib/constants/departments';
 import type { Stage } from '@/lib/constants/stages';
 import HistoryPanel from './HistoryPanel';
 import DeliveryDateEdit from './DeliveryDateEdit';
@@ -31,7 +31,7 @@ import toast from 'react-hot-toast';
 
 type Props = {
   initialJob: Job;
-  dept:       Department;
+  dept:       DeptPermissions;
 };
 
 type ModalState =
@@ -75,7 +75,7 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
   }, [initialJob.id, router]);
 
   const availableStages: Stage[] = [...PIPELINE_STAGES, 'On Hold'];
-  if (dept === 'Admin') availableStages.push('PO Closed');
+  if (canDeptOverridePOClosed(dept)) availableStages.push('PO Closed');
   let filteredStages = job.job_type === 'Repeat'
     ? availableStages.filter((s) => !REPEAT_SKIPPED_STAGES.includes(s as any))
     : availableStages;
@@ -180,7 +180,7 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
   }
 
   const canConfirmSlitting =
-    (dept === 'Postpress' || dept === 'Admin') &&
+    canDeptConfirmSlitting(dept) &&
     job.status === 'Slitting' &&
     !job.slitting_confirmed_at;
 
@@ -420,7 +420,7 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
         <SequentialWarningModal
           targetStage={modal.targetStage}
           missingStage={modal.missingStage}
-          isAdmin={dept === 'Admin'}
+          isAdmin={dept.isSuperAdmin}
           onCancel={() => { setModal({ type: 'none' }); setPendingPayload(null); setPendingStage(null); }}
           onOverride={(overrideRemark) => {
             // Re-submit the stored payload (preserves qty/remark) with the

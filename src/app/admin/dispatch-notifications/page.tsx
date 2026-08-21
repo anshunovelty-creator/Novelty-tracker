@@ -7,7 +7,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { parseDepartment, canDeptManageDispatchNotifications } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageDispatchNotifications } from '@/lib/constants/departments';
 import PendingDispatchNotifications from '@/components/admin/PendingDispatchNotifications';
 
 export const dynamic = 'force-dynamic';
@@ -20,9 +20,9 @@ export const metadata = {
 export default async function DispatchNotificationsPage() {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
-  const dept = parseDepartment(user?.user_metadata?.department);
+  const perms = await getDeptPermissions(user?.user_metadata?.department);
 
-  if (!canDeptManageDispatchNotifications(dept)) {
+  if (!canDeptManageDispatchNotifications(perms)) {
     redirect('/admin');
   }
 

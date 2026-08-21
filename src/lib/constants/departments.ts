@@ -1,249 +1,224 @@
 // src/lib/constants/departments.ts
 // ============================================================
-// Department → allowed stages mapping.
-// This is the access control truth table from the spec.
-// Also contains display name logic for client portal.
+// Department → permission mapping.
+// Departments and their permissions are DB-configurable (departments,
+// department_feature_permissions, department_stage_permissions,
+// department_run_stage_permissions tables — see migrations 039/040) and
+// managed from /admin/departments. This file loads that data (cached,
+// see loadDeptCache below) and exposes the same canDeptXxx(...) helper
+// names every call site already used — they now take a loaded
+// DeptPermissions object instead of a bare department string.
 // ============================================================
 
+import { createAdminClient } from '@/lib/supabase/admin';
 import type { Stage } from './stages';
+import type { RunStage } from './runStages';
 import type { PrintingMethod } from '../types';
 
-export const DEPARTMENTS = [
-  'Prepress',
-  'QC',
-  'Production',
-  'Postpress',
-  'Dispatch',
-  'Admin',
-  // Unit-1 (Offset) floor admin. Full stage access like Admin — see
-  // DEPT_ALLOWED_STAGES — but canDeptSetStage additionally checks the job's
-  // printing_method for this department and rejects non-Offset jobs, since
-  // this is the only department whose stage access is unit-scoped rather
-  // than stage-scoped. Deliberately excluded from every other *_EDIT_DEPTS
-  // allow-list below (Dies/Plates/Job Separation stay view-only for it;
-  // that same exclusion blocks the Prepress-Todo checklist, which reuses
-  // canDeptManageJobSeparation), and from BOM/Register. Every literal
-  // `dept === 'Admin'` check elsewhere in the app (Team, Follow-ups,
-  // export, PO Closed, prerequisite-skip override) excludes it too, since
-  // it isn't the string 'Admin'.
-  'Unit1Admin',
-  // Read-only: sees every page and every job, same as Admin, but is never
-  // added to a *_EDIT_DEPTS allow-list below and DEPT_ALLOWED_STAGES gives
-  // it no stages — so every write path that already gates on department
-  // rejects it by construction. Middleware also blocks it from mutating
-  // methods on /api/* as a second, centralized backstop for the handful of
-  // routes that don't (yet) check department themselves.
-  'Viewer',
-] as const;
+export type Department = string;
 
-export type Department = typeof DEPARTMENTS[number];
-
-// Which stages each department can SET (update status to).
-// Admin can set all stages — represented as '*'.
-export const DEPT_ALLOWED_STAGES: Record<Department, Stage[] | '*'> = {
-  Prepress: [
-    'PO Received',
-    'Artwork Pending',
-    'Plate Status',
-    'Job Card Done',
-  ],
-  QC: [
-    'Sample Printing',
-    'Shade Card Sent',
-    'Shade Card Approved',
-    'Quality Check',
-  ],
-  // Production runs the presses and nothing downstream of them.
-  Production: [
-    'In Printing',
-    'On Hold',
-  ],
-  // Postpress took slitting off Production. On Hold comes with it: a team
-  // that owns a physical machine has to be able to say it stopped.
-  Postpress: [
-    'Slitting',
-    'On Hold',
-  ],
-  Dispatch: [
-    'Packing',
-    'Ready to Dispatch',
-    'Partial Dispatch',
-    'Dispatched',
-  ],
-  Admin: '*',
-  // '*' here too — canDeptSetStage narrows it to Offset jobs only, since
-  // DEPT_ALLOWED_STAGES has no notion of "which job" to scope by itself.
-  Unit1Admin: '*',
-  Viewer: [],
+export type DeptPermissions = {
+  key: string;
+  displayName: string;
+  clientFacingName: string;
+  isSuperAdmin: boolean;
+  isReadOnly: boolean;
+  allStages: boolean;
+  printingMethodScope: PrintingMethod | null;
+  features: string[];
+  stages: Stage[];
+  runStages: RunStage[];
 };
 
-/**
- * Returns true if the department is allowed to set the given stage.
- */
-/**
- * Who may set a job's printing method / unit.
- * Prepress and Production make the call on the floor; Admin always has
- * full access. QC and Dispatch can see the assignment but not change it.
- */
-export const PRINTING_EDIT_DEPTS: Department[] = ['Prepress', 'Production', 'Admin'];
+// ── Cache ─────────────────────────────────────────────────────
+// Small dataset (a handful of departments, a few dozen permission rows
+// total) — loaded via the service-role client (bypasses RLS, so this
+// doesn't depend on any particular caller's session) and cached
+// process-wide for CACHE_TTL_MS. The admin UI (Phase 4) calls
+// invalidateDeptCache() after every write so changes take effect
+// immediately instead of waiting out the TTL.
+const CACHE_TTL_MS = 60_000;
+let cache: { byKey: Map<string, DeptPermissions>; expiresAt: number } | null = null;
 
-export function canDeptSetPrinting(dept: Department | null): boolean {
-  return dept !== null && PRINTING_EDIT_DEPTS.includes(dept);
+export function invalidateDeptCache(): void {
+  cache = null;
+}
+
+async function loadDeptCache(): Promise<Map<string, DeptPermissions>> {
+  if (cache && cache.expiresAt > Date.now()) return cache.byKey;
+
+  const admin = createAdminClient();
+  const [depts, features, stages, runStages] = await Promise.all([
+    admin.from('departments').select('*'),
+    admin.from('department_feature_permissions').select('department_id, feature_key'),
+    admin.from('department_stage_permissions').select('department_id, stage'),
+    admin.from('department_run_stage_permissions').select('department_id, run_stage'),
+  ]);
+
+  const byId = new Map<string, DeptPermissions>();
+  const byKey = new Map<string, DeptPermissions>();
+
+  for (const d of depts.data ?? []) {
+    const perms: DeptPermissions = {
+      key: d.key,
+      displayName: d.display_name,
+      clientFacingName: d.client_facing_name ?? d.display_name,
+      isSuperAdmin: d.is_super_admin,
+      isReadOnly: d.is_read_only,
+      allStages: d.all_stages,
+      printingMethodScope: d.printing_method_scope,
+      features: [],
+      stages: [],
+      runStages: [],
+    };
+    byId.set(d.id, perms);
+    byKey.set(d.key, perms);
+  }
+  for (const f of features.data ?? []) byId.get(f.department_id)?.features.push(f.feature_key);
+  for (const s of stages.data ?? []) byId.get(s.department_id)?.stages.push(s.stage as Stage);
+  for (const r of runStages.data ?? []) byId.get(r.department_id)?.runStages.push(r.run_stage as RunStage);
+
+  cache = { byKey, expiresAt: Date.now() + CACHE_TTL_MS };
+  return byKey;
 }
 
 /**
- * Who may correct a job's detail fields — PO number, party, PM code, job
- * name, quantity, type, PO date, notes — through the Edit Job form.
- *
- * Prepress enters most jobs off the PO, so they fix their own typos. Admin
- * always has full access. QC and Dispatch read these fields but do not own
- * them; Dispatch still owns the delivery date, which is guarded separately.
+ * Resolves the raw department string from JWT/user_metadata into its
+ * full loaded permission set. Returns null for anything that isn't a
+ * non-empty string, or doesn't match a department that currently exists
+ * in the `departments` table — the same "reject bad tokens" contract
+ * `parseDepartment` used to have, now backed by a DB lookup instead of
+ * a hardcoded array. Every server-side call site that used to do
+ * `parseDepartment(...)` now does `await getDeptPermissions(...)`.
  */
-export const JOB_DETAIL_EDIT_DEPTS: Department[] = ['Prepress', 'Admin'];
+export async function getDeptPermissions(rawDept: unknown): Promise<DeptPermissions | null> {
+  if (typeof rawDept !== 'string' || !rawDept) return null;
+  const byKey = await loadDeptCache();
+  return byKey.get(rawDept) ?? null;
+}
 
-export function canDeptEditJobDetails(dept: Department | null): boolean {
-  return dept !== null && JOB_DETAIL_EDIT_DEPTS.includes(dept);
+function hasFeature(perms: DeptPermissions | null, featureKey: string): boolean {
+  return perms !== null && (perms.isSuperAdmin || perms.features.includes(featureKey));
+}
+
+/** Who may set a job's printing method / unit. */
+export function canDeptSetPrinting(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'printing_edit');
+}
+
+/** Who may correct a job's detail fields (PO#, party, PM code, name, qty, type, PO date, notes). */
+export function canDeptEditJobDetails(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'job_detail_edit');
+}
+
+/** Who may change the label stock shelf. */
+export function canDeptManageStock(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'stock_edit');
+}
+
+/** Who may view/send the queued, party-consolidated dispatch email. */
+export function canDeptManageDispatchNotifications(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'dispatch_notifications');
+}
+
+/** Who may add/correct/remove a party's dispatch-email contact. */
+export function canDeptManagePartyContacts(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'party_contacts_manage');
+}
+
+/** Who may add/correct/remove a die/plate reference entry. */
+export function canDeptManageDiesPlates(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'dies_plates_edit');
+}
+
+/** Who may add/correct/remove a Job Separation row. */
+export function canDeptManageJobSeparation(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'job_separation_edit');
+}
+
+/** Who may add/complete/log entries on the Prepress-Todo checklist. */
+export function canDeptManagePrepressTodo(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'prepress_todo_manage');
+}
+
+/** Who may open Register (the customer follow-up CRM) at all — read and write. */
+export function canDeptManageRegister(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'register_manage');
+}
+
+/** Who may open the Bill of Material section at all — read and write. */
+export function canDeptUseBOM(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'bom_use');
+}
+
+/** Who may answer a BOM line — order it, cut it short, swap in an alternative, or refuse it. */
+export function canDeptDecideBOM(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'bom_decide');
+}
+
+/** Who may manage the internal dispatch-notification recipient list ("Dispatch Alerts"). */
+export function canDeptManageNotificationRecipients(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'notification_recipients_manage');
+}
+
+/** Who may add/remove team logins (and who counts toward the "last super-admin" safety check). */
+export function canDeptManageTeam(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'team_manage');
+}
+
+/** Who may run the data export. */
+export function canDeptExportData(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'export_data');
+}
+
+/** Who may edit a job's delivery date. */
+export function canDeptEditDeliveryDate(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'delivery_date_edit');
+}
+
+/** Who may confirm a job's slitting completion. */
+export function canDeptConfirmSlitting(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'slitting_confirm');
+}
+
+/** Who may manage print runs (create/edit/schedule a run). */
+export function canDeptManagePrintRuns(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'print_run_manage');
+}
+
+/** Who may manage the machine board (machines + their queues). */
+export function canDeptManageMachineBoard(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'machine_board_manage');
+}
+
+/** Who may override a job to PO Closed ahead of its normal prerequisite. */
+export function canDeptOverridePOClosed(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'po_closed_override');
 }
 
 /**
- * Who may change the label stock shelf — add a manual entry, correct a
- * quantity, or mark stock as dispatched out.
- *
- * Dispatch physically handles the shelf, so they own it; Admin always may.
- * Everyone else can read stock (the page is open to all staff) but not move it.
- */
-export const STOCK_EDIT_DEPTS: Department[] = ['Dispatch', 'Admin'];
-
-export function canDeptManageStock(dept: Department | null): boolean {
-  return dept !== null && STOCK_EDIT_DEPTS.includes(dept);
-}
-
-/**
- * Who may view and send the queued, party-consolidated dispatch email.
- * Dispatch owns marking jobs Dispatched/Partial Dispatch, so they own
- * sending the resulting notification too; Admin always has full access.
- */
-export const DISPATCH_NOTIFICATION_DEPTS: Department[] = ['Dispatch', 'Admin'];
-
-export function canDeptManageDispatchNotifications(dept: Department | null): boolean {
-  return dept !== null && DISPATCH_NOTIFICATION_DEPTS.includes(dept);
-}
-
-/**
- * Who may add, correct, or remove a die/plate reference entry.
- * Prepress makes and owns dies and plates, so they enter and correct their
- * own records; Admin always has full access. Everyone else searches and views.
- */
-export const DIES_PLATES_EDIT_DEPTS: Department[] = ['Prepress', 'Admin'];
-
-export function canDeptManageDiesPlates(dept: Department | null): boolean {
-  return dept !== null && DIES_PLATES_EDIT_DEPTS.includes(dept);
-}
-
-/**
- * Who may add, correct, or remove a Job Separation row.
- * Prepress splits the PO into job entries, so they enter and correct their
- * own records; Admin always has full access. Everyone else searches and
- * watches it live.
- */
-export const JOB_SEPARATION_EDIT_DEPTS: Department[] = ['Prepress', 'Admin'];
-
-export function canDeptManageJobSeparation(dept: Department | null): boolean {
-  return dept !== null && JOB_SEPARATION_EDIT_DEPTS.includes(dept);
-}
-
-/**
- * Who may open Register at all — the customer follow-up CRM.
- * Admin only, both to read and to write: unlike every other feature here,
- * this data (customer contacts, deal values, sales notes) has no reason to
- * be shop-floor-visible, so the gate covers GET as well as writes. Backed
- * by RLS too (register_*_select_admin policies), not just this check.
- */
-export const REGISTER_EDIT_DEPTS: Department[] = ['Admin'];
-
-export function canDeptManageRegister(dept: Department | null): boolean {
-  return dept !== null && REGISTER_EDIT_DEPTS.includes(dept);
-}
-
-/**
- * Who may open the Bill of Material section at all — the material
- * requisitions Production used to raise by mailing the owner.
- *
- * Production and Admin only, and like Register the gate covers reads as
- * well as writes: no other department has a reason to see what stock is
- * being asked for or what the owner approved. Backed by RLS too
- * (bom_*_select_prod_admin policies), not just this check. Viewer is
- * deliberately excluded here even though it reads every other table.
- */
-export const BOM_DEPTS: Department[] = ['Production', 'Admin'];
-
-export function canDeptUseBOM(dept: Department | null): boolean {
-  return dept !== null && BOM_DEPTS.includes(dept);
-}
-
-/**
- * Who may answer a BOM line — order it, cut it short, swap in an
- * alternative, or refuse it. Admin alone: the whole point of the feature is
- * that the owner is the one who decides what gets bought. Production raises
- * and tracks, and may withdraw its own request, but never decides.
- */
-export const BOM_DECIDE_DEPTS: Department[] = ['Admin'];
-
-export function canDeptDecideBOM(dept: Department | null): boolean {
-  return dept !== null && BOM_DECIDE_DEPTS.includes(dept);
-}
-
-/**
- * Whether `dept` may set a job to `stage`. Unit1Admin is the one department
- * whose '*' is conditional: it only covers jobs actually running on Unit 1
- * (printing_method === 'Offset'), since Unit 1 and Unit 2 run completely
- * separate floors. Pass the job's printing_method wherever it's known
- * (job detail / job row / job card) so the dropdown greys out stages for
- * jobs Unit1Admin can't touch instead of only failing server-side; the
- * POST /api/jobs/[id]/status route re-checks this after fetching the job
- * regardless, since that's the actual enforcement point.
+ * Whether `perms` may set a job to `stage`. `printingMethodScope` generalizes
+ * the old Unit1Admin-only "full access but Offset jobs only" rule to any
+ * department: when set, it restricts stage-setting to jobs whose
+ * printing_method matches, regardless of whether access comes from
+ * `allStages` or an explicit stage grant. Pass the job's printing_method
+ * wherever it's known so the UI can grey out stages the department can't
+ * touch on that job; the actual enforcement point is always the server-side
+ * check in POST /api/jobs/[id]/status, which re-checks after fetching the job.
  */
 export function canDeptSetStage(
-  dept: Department,
+  perms: DeptPermissions,
   stage: Stage,
   printingMethod?: PrintingMethod
 ): boolean {
-  const allowed = DEPT_ALLOWED_STAGES[dept];
-  if (allowed === '*') {
-    if (dept === 'Unit1Admin' && printingMethod && printingMethod !== 'Offset') return false;
-    return true;
+  if (perms.printingMethodScope && printingMethod && printingMethod !== perms.printingMethodScope) {
+    return false;
   }
-  return allowed.includes(stage);
+  if (perms.allStages) return true;
+  return perms.stages.includes(stage);
 }
 
-// Display name shown on admin panel for each department
-export const DEPT_DISPLAY_NAME: Record<Department, string> = {
-  Prepress:   'Prepress Team',
-  QC:         'QC Team',
-  Production: 'Production Team',
-  Postpress:  'Postpress Team',
-  Dispatch:   'Dispatch Team',
-  Admin:      'Admin',
-  Unit1Admin: 'Unit 1 Admin',
-  Viewer:     'Viewer (read-only)',
-};
-
-/**
- * Display name shown on the CLIENT PORTAL.
- * Admin actions must show as "Novelty Labels Team" — internal identity hidden.
- */
-export function getClientFacingDeptName(dept: Department): string {
-  if (dept === 'Admin') return 'Novelty Labels Team';
-  return DEPT_DISPLAY_NAME[dept];
-}
-
-/**
- * Parses a department string from JWT metadata.
- * Returns null if not a valid department — use to reject bad tokens.
- */
-export function parseDepartment(value: unknown): Department | null {
-  if (typeof value !== 'string') return null;
-  return DEPARTMENTS.includes(value as Department)
-    ? (value as Department)
-    : null;
+/** Whether `perms` may advance a print run to `runStage` (see constants/runStages.ts). */
+export function canDeptSetRunStage(perms: DeptPermissions | null, runStage: RunStage): boolean {
+  return perms !== null && (perms.isSuperAdmin || perms.runStages.includes(runStage));
 }

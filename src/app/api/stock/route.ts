@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment, canDeptManageStock } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageStock } from '@/lib/constants/departments';
 
 // ── GET ───────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
@@ -52,10 +52,10 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!dept) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
 
-  if (!canDeptManageStock(dept)) {
+  if (!canDeptManageStock(perms)) {
     return NextResponse.json(
       { error: 'Only Dispatch or Admin can add stock' },
       { status: 403 }
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
       qty,
       location:   typeof body.location === 'string' ? body.location.trim() || null : null,
       remark:     typeof body.remark   === 'string' ? body.remark.trim()   || null : null,
-      created_by: user.email ?? dept,
+      created_by: user.email ?? perms.key,
     })
     .select()
     .single();

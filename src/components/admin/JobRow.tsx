@@ -18,7 +18,7 @@ import { STATUS_COLORS, JOB_TYPE_BADGE, urgentBadgeClass } from '@/lib/constants
 import { canDeptSetStage, canDeptEditJobDetails } from '@/lib/constants/departments';
 import { useJobActions } from '@/hooks/useJobActions';
 import type { Job } from '@/lib/types';
-import type { Department } from '@/lib/constants/departments';
+import type { DeptPermissions } from '@/lib/constants/departments';
 import type { Stage } from '@/lib/constants/stages';
 import HistoryPanel from './HistoryPanel';
 import DeliveryDateEdit from './DeliveryDateEdit';
@@ -31,7 +31,7 @@ export const JOB_ROW_COLS = 9;
 
 type Props = {
   job:            Job;
-  dept:           Department;
+  dept:           DeptPermissions;
   index:          number;
   isExpanded:     boolean;
   onToggleExpand: () => void;
@@ -316,7 +316,7 @@ export default function JobRow({
 
             <JobDuplicateButton job={job} onDuplicate={onDuplicate} />
 
-            {dept === 'Admin' && (
+            {dept.isSuperAdmin && (
               <button
                 onClick={actions.openDeleteModal}
                 aria-label={`Delete job ${cardNo ?? job.po_number}`}

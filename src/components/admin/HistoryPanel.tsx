@@ -5,12 +5,12 @@ import { useEffect, useState, useCallback } from 'react';
 import { CheckCircle2, RefreshCw, Clock, Lock } from 'lucide-react';
 import { cn, formatAdminDate, formatShortDate, formatQty } from '@/lib/utils';
 import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES } from '@/lib/constants/stages';
-import { DEPT_DISPLAY_NAME } from '@/lib/constants/departments';
-import { nextRunStage, RUN_STAGE_DEPTS, RUN_STAGE_LABELS } from '@/lib/constants/runStages';
+import { canDeptManagePrintRuns, canDeptSetRunStage } from '@/lib/constants/departments';
+import { nextRunStage, RUN_STAGE_LABELS } from '@/lib/constants/runStages';
 import { JOBS_CHANGED_EVENT } from '@/lib/constants/events';
 import type { JobDetail, JobStatusLog, StageComment, DispatchSchedule, PrintRun } from '@/lib/types';
 import type { Stage } from '@/lib/constants/stages';
-import type { Department } from '@/lib/constants/departments';
+import type { DeptPermissions } from '@/lib/constants/departments';
 import StageComments from './StageComments';
 import { PrintRunModal, PromptModal } from './modals';
 import { SkeletonText } from '@/components/ui/Skeleton';
@@ -20,7 +20,7 @@ type Props = {
   jobId:               string;
   jobType:             'New' | 'Repeat' | 'Artwork Changed';
   isScheduledRelease:  boolean;
-  dept:                Department;
+  dept:                DeptPermissions;
   refreshKey?:         string;   // pass job.updated_at — re-fetches after status changes
 };
 
@@ -30,6 +30,20 @@ export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept,
   const [error,    setError]    = useState<string | null>(null);
   // Bumped by the releases section after a run/schedule changes, so job totals refresh
   const [tick,     setTick]     = useState(0);
+  // key -> display_name, for showing which department made a past status change —
+  // that log's department may not be the viewer's own, so it can't come from `dept`.
+  const [deptNames, setDeptNames] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    fetch('/api/departments')
+      .then((res) => res.json())
+      .then((data) => {
+        const map: Record<string, string> = {};
+        for (const d of data.departments ?? []) map[d.key] = d.display_name;
+        setDeptNames(map);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -133,7 +147,7 @@ export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept,
 
                   {latestLog && (
                     <p className="text-xs text-[var(--glass-muted)] font-mono mt-0.5">
-                      {DEPT_DISPLAY_NAME[latestLog.changed_by_dept as Department] ?? latestLog.changed_by_dept}
+                      {deptNames[latestLog.changed_by_dept] ?? latestLog.changed_by_dept}
                       {' · '}
                       {formatAdminDate(latestLog.changed_at)}
                     </p>
@@ -169,7 +183,7 @@ export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept,
                   <StageComments
                     jobId={jobId}
                     stage={stage}
-                    dept={dept}
+                    dept={dept.key}
                     existingComments={comments}
                     onCommentAdded={(comment) => {
                       setDetail((current) => {
@@ -231,7 +245,7 @@ function ReleasesSection({
 }: {
   job:                JobDetail;
   isScheduledRelease: boolean;
-  dept:               Department;
+  dept:               DeptPermissions;
   onChanged:          () => void;
 }) {
   const [runs,        setRuns]        = useState<PrintRun[]>([]);
@@ -273,7 +287,7 @@ function ReleasesSection({
   // Non-scheduled multi-run jobs: existing "Start Next Print Run" flow
   const awaitingNext =
     !isScheduledRelease && job.has_partial_runs && !activeRun && remainingQty > 0;
-  const canStartNext = awaitingNext && (dept === 'Production' || dept === 'Admin');
+  const canStartNext = awaitingNext && canDeptManagePrintRuns(dept);
 
   // Scheduled jobs with nothing planned and quantity left
   const awaitingSchedule =
@@ -395,7 +409,7 @@ function ReleasesSection({
         <h4 className="text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide">
           {isScheduledRelease ? 'Releases' : 'Print Runs'}
         </h4>
-        {isScheduledRelease && dept === 'Admin' && !showAddForm && (
+        {isScheduledRelease && dept.isSuperAdmin && !showAddForm && (
           <button
             onClick={() => setShowAddForm(true)}
             className="text-xs px-2.5 py-1 rounded-lg bg-brand-primary text-white font-medium hover:bg-brand-primary/90 transition-colors"
@@ -483,7 +497,7 @@ function ReleasesSection({
                     />
                   ) : (
                     <div className="shrink-0 flex items-center gap-2">
-                      {(dept === 'Production' || dept === 'Admin') && (
+                      {canDeptManagePrintRuns(dept) && (
                         <button
                           onClick={() => startRunForSchedule(s)}
                           disabled={busyId === s.id}
@@ -492,7 +506,7 @@ function ReleasesSection({
                           {busyId === s.id ? 'Starting…' : 'Start Production'}
                         </button>
                       )}
-                      {dept === 'Admin' && (
+                      {dept.isSuperAdmin && (
                         <button
                           onClick={() => setOverrideSched(s)}
                           disabled={busyId === s.id}
@@ -574,7 +588,7 @@ function ReleasesSection({
             <Clock className="w-3.5 h-3.5 shrink-0 mt-px" aria-hidden="true" />
             <span>
               Next release not scheduled yet — {formatQty(remainingQty)} labels remaining.
-              {dept === 'Admin' && ' Add it above as soon as the date is known.'}
+              {dept.isSuperAdmin && ' Add it above as soon as the date is known.'}
             </span>
           </p>
         </div>
@@ -661,14 +675,14 @@ function RunAdvanceControl({
   onAdvance,
 }: {
   run:       PrintRun;
-  dept:      Department;
+  dept:      DeptPermissions;
   busy:      boolean;
   onAdvance: () => void;
 }) {
   const nextStage = nextRunStage(run.current_stage);
   if (!nextStage) return null;
 
-  const mayAdvance = dept === 'Admin' || RUN_STAGE_DEPTS[nextStage].includes(dept);
+  const mayAdvance = canDeptSetRunStage(dept, nextStage);
 
   return mayAdvance ? (
     <button
@@ -687,7 +701,7 @@ function RunAdvanceControl({
   ) : (
     <span className="shrink-0 inline-flex items-center gap-1 text-xs text-[var(--glass-muted)]">
       <Lock className="w-3 h-3" aria-hidden="true" />
-      {RUN_STAGE_DEPTS[nextStage].join('/')}
+      Awaiting another department
     </span>
   );
 }

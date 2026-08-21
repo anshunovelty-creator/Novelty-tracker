@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment, canDeptManageDiesPlates } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageDiesPlates } from '@/lib/constants/departments';
 
 // Optional free text: blank means "not recorded", not an empty string.
 function text(value: unknown): string | null {
@@ -88,10 +88,10 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!dept) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
 
-  if (!canDeptManageDiesPlates(dept)) {
+  if (!canDeptManageDiesPlates(perms)) {
     return NextResponse.json(
       { error: 'Only Prepress or Admin can add flatbed dies' },
       { status: 403 }
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
       shape:           text(body.shape),
       location:        text(body.location),
       die_received_on: text(body.die_received_on),
-      created_by:      user.email ?? dept,
+      created_by:      user.email ?? perms.key,
     })
     .select()
     .single();

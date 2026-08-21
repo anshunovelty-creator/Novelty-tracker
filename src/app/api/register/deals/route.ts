@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment, canDeptManageRegister } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageRegister } from '@/lib/constants/departments';
 
 const STAGES = ['enquiry', 'artwork', 'quotation', 'approval', 'po'] as const;
 
@@ -29,11 +29,11 @@ async function requireAdmin() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) } as const;
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!canDeptManageRegister(dept)) {
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms || !canDeptManageRegister(perms)) {
     return { error: NextResponse.json({ error: 'Register is Admin only' }, { status: 403 }) } as const;
   }
-  return { user, dept, supabase } as const;
+  return { user, perms, supabase } as const;
 }
 
 export async function GET(_request: NextRequest) {
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
       substrate:        text(body.substrate),
       next_action:      text(body.next_action),
       next_action_date: text(body.next_action_date),
-      created_by:       gate.user.email ?? gate.dept,
+      created_by:       gate.user.email ?? gate.perms.key,
     })
     .select()
     .single();

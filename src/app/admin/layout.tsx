@@ -2,7 +2,7 @@
 import React from 'react';
 import { redirect } from 'next/navigation';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { parseDepartment, DEPT_DISPLAY_NAME } from '@/lib/constants/departments';
+import { getDeptPermissions } from '@/lib/constants/departments';
 import AdminHeader from '@/components/admin/AdminHeader';
 import NotesFeed from '@/components/admin/NotesFeed';
 import QueryProvider from '@/components/providers/QueryProvider';
@@ -24,24 +24,22 @@ export default async function AdminLayout({
     redirect('/login');
   }
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!dept) {
-    // Valid Supabase user but no department — mis-configured account
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms) {
+    // Valid Supabase user but no recognised department — mis-configured account
     redirect('/login?error=no_department');
   }
-
-  const displayName = DEPT_DISPLAY_NAME[dept];
 
   return (
     <QueryProvider>
       <div className="admin-light min-h-screen">
-        <AdminHeader dept={dept} displayName={displayName} />
+        <AdminHeader dept={perms} displayName={perms.displayName} />
         <main className="max-w-screen-2xl 3xl:max-w-[1800px] 4xl:max-w-[2200px] mx-auto px-4 py-6">
           {children}
         </main>
         {/* Global internal-note feed. Mounted in the layout so the unread
             badge survives navigation between admin pages. */}
-        <NotesFeed dept={dept} userEmail={user.email ?? ''} />
+        <NotesFeed dept={perms.key} userEmail={user.email ?? ''} />
       </div>
     </QueryProvider>
   );

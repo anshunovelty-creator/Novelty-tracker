@@ -13,7 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment, canDeptDecideBOM } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptDecideBOM } from '@/lib/constants/departments';
 import type { BomDecision } from '@/lib/types';
 
 type Params = { params: Promise<{ id: string; itemId: string }> };
@@ -37,9 +37,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dept = parseDepartment(user.user_metadata?.department);
+  const perms = await getDeptPermissions(user.user_metadata?.department);
   // Production raises and reads, but the buying decision is the owner's.
-  if (!canDeptDecideBOM(dept)) {
+  if (!perms || !canDeptDecideBOM(perms)) {
     return NextResponse.json(
       { error: 'Only Admin can decide a material request' },
       { status: 403 }
@@ -106,7 +106,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       alternative_material: decision === 'alternative' ? alternativeMaterial : null,
       decision_note:        clearing ? null : decisionNote,
       decided_at:           clearing ? null : new Date().toISOString(),
-      decided_by:           clearing ? null : (user.email ?? dept),
+      decided_by:           clearing ? null : (user.email ?? perms.key),
     })
     .eq('id', itemId)
     .select()

@@ -20,7 +20,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { upsertRemainingStock, clearRemainingStock, addExtraStock } from '@/lib/api/labelStock';
-import { parseDepartment, canDeptSetStage } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptSetStage, canDeptOverridePOClosed } from '@/lib/constants/departments';
 import { getPrerequisite, getVisibleStages, isStageSkipped, isPerReleaseStage, NOTIFICATION_TRIGGER_STAGES } from '@/lib/constants/stages';
 import { toMonthKey } from '@/lib/utils';
 import type { Stage } from '@/lib/constants/stages';
@@ -38,8 +38,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!dept) {
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms) {
     return NextResponse.json({ error: 'Invalid department in token' }, { status: 403 });
   }
 
@@ -55,9 +55,10 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'new_status is required' }, { status: 400 });
   }
 
-  // Skipping prerequisites is Admin-only and must be justified with a remark
+  // Skipping prerequisites is a broad "bypass validation" capability, kept
+  // to the one true super-admin rather than independently grantable.
   if (override_prerequisite) {
-    if (dept !== 'Admin') {
+    if (!perms.isSuperAdmin) {
       return NextResponse.json(
         { error: 'Only Admin can skip stage prerequisites' },
         { status: 403 }
@@ -72,9 +73,9 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   // ── 2. Department permission check ────────────────────────
-  if (!canDeptSetStage(dept, new_status)) {
+  if (!canDeptSetStage(perms, new_status)) {
     return NextResponse.json(
-      { error: `${dept} department cannot set status to "${new_status}"` },
+      { error: `${perms.key} department cannot set status to "${new_status}"` },
       { status: 403 }
     );
   }
@@ -96,13 +97,13 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Cannot update a closed PO' }, { status: 400 });
   }
 
-  // Unit1Admin's '*' stage access only covers jobs actually running on
-  // Unit 1 — the department-only check above can't see the job yet, so
-  // it's re-checked here now that we have it. This is the real
-  // enforcement point; the dropdowns just mirror it for UX.
-  if (dept === 'Unit1Admin' && job.printing_method !== 'Offset') {
+  // A department's printing_method_scope (e.g. Unit1Admin → Offset only)
+  // can't be checked above — the department-only check can't see the job
+  // yet. Re-check now that we have it; this is the real enforcement point,
+  // the dropdowns just mirror it for UX.
+  if (!canDeptSetStage(perms, new_status, job.printing_method)) {
     return NextResponse.json(
-      { error: 'Unit 1 Admin can only update Unit 1 (Offset) jobs' },
+      { error: `${perms.key} cannot update this job's printing method (${job.printing_method}).` },
       { status: 403 }
     );
   }
@@ -242,7 +243,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   if (new_status === 'PO Closed') {
-    if (dept !== 'Admin') {
+    if (!canDeptOverridePOClosed(perms)) {
       return NextResponse.json({ error: 'Only Admin can close a PO' }, { status: 403 });
     }
     jobUpdate.is_closed = true;
@@ -297,7 +298,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   //                      to the computed remainder if they sent nothing.
   //   Dispatched       → the balance left the building, so that row closes.
   //                      Any 'Extra' surplus reported is added, not cleared.
-  const stockActor = user.email ?? dept;
+  const stockActor = user.email ?? perms.key;
 
   if (new_status === 'Partial Dispatch') {
     const computedRemaining = (updatedJob.label_qty ?? 0) - (updatedJob.dispatched_qty ?? 0);
@@ -329,7 +330,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     .insert({
       job_id:          id,
       status:          new_status,
-      changed_by_dept: dept,
+      changed_by_dept: perms.key,
       changed_at:      now,
       remark:          new_status === 'On Hold' || new_status === 'Quality Check'
                          ? (remark?.trim() ?? null)
@@ -348,7 +349,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         job_id:     id,
         stage:      new_status,
         comment:    `[Prerequisite skipped] ${override_remark.trim()}`,
-        created_by: dept,
+        created_by: perms.key,
       });
   }
 

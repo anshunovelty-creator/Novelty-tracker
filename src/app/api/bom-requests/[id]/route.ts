@@ -13,7 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment, canDeptUseBOM, canDeptDecideBOM } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptUseBOM, canDeptDecideBOM } from '@/lib/constants/departments';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -24,8 +24,8 @@ async function requireBomAccess() {
     return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) } as const;
   }
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!canDeptUseBOM(dept)) {
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!canDeptUseBOM(perms)) {
     return {
       error: NextResponse.json(
         { error: 'Bill of Material is Production and Admin only' },
@@ -34,7 +34,7 @@ async function requireBomAccess() {
     } as const;
   }
 
-  return { user, dept: dept!, supabase } as const;
+  return { user, perms: perms!, supabase } as const;
 }
 
 export async function PATCH(request: NextRequest, { params }: Params) {
@@ -80,7 +80,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       .update({
         status:       'cancelled',
         cancelled_at: new Date().toISOString(),
-        cancelled_by: gate.user.email ?? gate.dept,
+        cancelled_by: gate.user.email ?? gate.perms.key,
       })
       .eq('id', id)
       .select('*, items:bom_request_items(*)')
@@ -119,7 +119,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
 
   // Production withdraws; only Admin erases. Keeps the paper trail intact
   // for everything except genuine mis-entries.
-  if (!canDeptDecideBOM(gate.dept)) {
+  if (!canDeptDecideBOM(gate.perms)) {
     return NextResponse.json(
       { error: 'Only Admin can delete a request — withdraw it instead' },
       { status: 403 }

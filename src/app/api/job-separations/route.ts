@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment, canDeptManageJobSeparation } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageJobSeparation } from '@/lib/constants/departments';
 
 // Optional free text: blank means "not recorded", not an empty string.
 function text(value: unknown): string | null {
@@ -145,10 +145,10 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!dept) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
 
-  if (!canDeptManageJobSeparation(dept)) {
+  if (!canDeptManageJobSeparation(perms)) {
     return NextResponse.json(
       { error: 'Only Prepress or Admin can add job separation rows' },
       { status: 403 }
@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
       rate:           decimal(body.rate),
       jc_status:      text(body.jc_status),
       aw_send_to:     text(body.aw_send_to),
-      created_by:     user.email ?? dept,
+      created_by:     user.email ?? perms.key,
     })
     .select()
     .single();

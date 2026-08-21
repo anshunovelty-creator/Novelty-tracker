@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment, canDeptManageDispatchNotifications } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageDispatchNotifications } from '@/lib/constants/departments';
 import { getConsolidatedSubject, getConsolidatedEmailHTML, type DispatchItem } from '@/lib/notifications/dispatchEmailTemplate';
 import { isMailerConfigured, sendMail } from '@/lib/notifications/mailer';
 import type { PendingDispatchNotification } from '@/lib/types';
@@ -17,8 +17,8 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!canDeptManageDispatchNotifications(dept)) {
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!canDeptManageDispatchNotifications(perms)) {
     return NextResponse.json({ error: 'Only Dispatch/Admin can send dispatch notifications' }, { status: 403 });
   }
 

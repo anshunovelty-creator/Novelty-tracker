@@ -8,7 +8,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { parseDepartment } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageTeam } from '@/lib/constants/departments';
 import TeamManager from '@/components/admin/TeamManager';
 
 export const dynamic = 'force-dynamic';
@@ -21,9 +21,9 @@ export const metadata = {
 export default async function TeamPage() {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
-  const dept = parseDepartment(user?.user_metadata?.department);
+  const perms = await getDeptPermissions(user?.user_metadata?.department);
 
-  if (dept !== 'Admin') {
+  if (!canDeptManageTeam(perms)) {
     redirect('/admin');
   }
 

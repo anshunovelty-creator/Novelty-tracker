@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment, canDeptManageStock } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageStock } from '@/lib/constants/departments';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -19,10 +19,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!dept) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!perms) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
 
-  if (!canDeptManageStock(dept)) {
+  if (!canDeptManageStock(perms)) {
     return NextResponse.json(
       { error: 'Only Dispatch or Admin can update stock' },
       { status: 403 }
@@ -38,7 +38,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (body.is_dispatched === true) {
     updates.is_dispatched = true;
     updates.dispatched_at = new Date().toISOString();
-    updates.dispatched_by = user.email ?? dept;
+    updates.dispatched_by = user.email ?? perms.key;
   }
 
   if ('qty' in body) {

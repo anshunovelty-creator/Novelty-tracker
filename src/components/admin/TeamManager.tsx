@@ -11,12 +11,14 @@ import { Plus, Trash2, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatAdminDate } from '@/lib/utils';
 import type { Member } from '@/lib/types';
-import { DEPT_DISPLAY_NAME } from '@/lib/constants/departments';
 import AddMemberModal from './AddMemberModal';
 import RemoveAdminModal from './RemoveAdminModal';
 
+type DepartmentOption = { key: string; display_name: string; is_super_admin: boolean };
+
 export default function TeamManager({ currentUserId }: { currentUserId: string }) {
   const [members,       setMembers]       = useState<Member[]>([]);
+  const [departments,   setDepartments]   = useState<DepartmentOption[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [adding,        setAdding]        = useState(false);
   const [confirming,    setConfirming]    = useState<string | null>(null);
@@ -41,7 +43,16 @@ export default function TeamManager({ currentUserId }: { currentUserId: string }
 
   useEffect(() => { load(); }, [load]);
 
-  const adminCount = members.filter((m) => m.department === 'Admin').length;
+  useEffect(() => {
+    fetch('/api/departments')
+      .then((res) => res.json())
+      .then((data) => setDepartments(data.departments ?? []))
+      .catch(() => toast.error('Failed to load the departments list'));
+  }, []);
+
+  const deptNames = Object.fromEntries(departments.map((d) => [d.key, d.display_name]));
+  const superAdminKeys = new Set(departments.filter((d) => d.is_super_admin).map((d) => d.key));
+  const adminCount = members.filter((m) => m.department && superAdminKeys.has(m.department)).length;
 
   async function remove(member: Member) {
     setBusyId(member.id);
@@ -98,7 +109,7 @@ export default function TeamManager({ currentUserId }: { currentUserId: string }
         <ul className="space-y-2">
           {members.map((member) => {
             const isSelf      = member.id === currentUserId;
-            const isAdmin     = member.department === 'Admin';
+            const isAdmin     = member.department != null && superAdminKeys.has(member.department);
             const isLastAdmin = isAdmin && adminCount <= 1;
             const blocked     = isSelf || isLastAdmin;
 
@@ -110,7 +121,7 @@ export default function TeamManager({ currentUserId }: { currentUserId: string }
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
-                      {member.department ? DEPT_DISPLAY_NAME[member.department] : 'No department'}
+                      {member.department ? (deptNames[member.department] ?? member.department) : 'No department'}
                     </span>
                     {isSelf && (
                       <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">

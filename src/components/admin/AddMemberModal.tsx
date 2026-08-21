@@ -8,12 +8,13 @@
 // account has to read it back to hand to the new hire, typically over chat
 // or in person. "Generate" exists so nobody has to invent one on the spot.
 
-import React, { useState, useId } from 'react';
+import React, { useState, useId, useEffect } from 'react';
 import { Check, X, Dices, Copy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { ModalShell } from './modals';
-import { DEPARTMENTS, DEPT_DISPLAY_NAME, type Department } from '@/lib/constants/departments';
+
+type DepartmentOption = { key: string; display_name: string };
 
 const inputCls = cn(
   'w-full px-3 py-2 rounded-lg text-sm bg-[var(--glass-bg)] border border-[var(--glass-border)]',
@@ -38,10 +39,18 @@ type Props = {
 export default function AddMemberModal({ onClose, onAdded }: Props) {
   const titleId = useId();
 
-  const [email,      setEmail]      = useState('');
-  const [department, setDepartment] = useState<Department | ''>('');
-  const [password,   setPassword]   = useState('');
-  const [saving,     setSaving]     = useState(false);
+  const [email,       setEmail]       = useState('');
+  const [department,  setDepartment]  = useState('');
+  const [departments, setDepartments] = useState<DepartmentOption[]>([]);
+  const [password,    setPassword]    = useState('');
+  const [saving,      setSaving]      = useState(false);
+
+  useEffect(() => {
+    fetch('/api/departments')
+      .then((res) => res.json())
+      .then((data) => setDepartments(data.departments ?? []))
+      .catch(() => toast.error('Failed to load the departments list'));
+  }, []);
 
   function fillGeneratedPassword() {
     setPassword(generatePassword());
@@ -127,12 +136,12 @@ export default function AddMemberModal({ onClose, onAdded }: Props) {
             <MemberLabel required>Department</MemberLabel>
             <select
               value={department}
-              onChange={(e) => setDepartment(e.target.value as Department)}
+              onChange={(e) => setDepartment(e.target.value)}
               className={cn(inputCls, 'appearance-none')}
             >
               <option value="" disabled>Choose one</option>
-              {DEPARTMENTS.map((d) => (
-                <option key={d} value={d}>{DEPT_DISPLAY_NAME[d]}</option>
+              {departments.map((d) => (
+                <option key={d.key} value={d.key}>{d.display_name}</option>
               ))}
             </select>
           </div>

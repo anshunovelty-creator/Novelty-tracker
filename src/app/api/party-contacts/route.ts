@@ -13,7 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseDepartment, canDeptManageDispatchNotifications } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageDispatchNotifications, canDeptManagePartyContacts } from '@/lib/constants/departments';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -22,8 +22,8 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (!canDeptManageDispatchNotifications(dept)) {
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!canDeptManageDispatchNotifications(perms)) {
     return NextResponse.json({ error: 'Only Dispatch/Admin can view party contacts' }, { status: 403 });
   }
 
@@ -42,8 +42,8 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dept = parseDepartment(user.user_metadata?.department);
-  if (dept !== 'Admin') {
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!canDeptManagePartyContacts(perms)) {
     return NextResponse.json({ error: 'Only Admin can manage party contacts' }, { status: 403 });
   }
 
