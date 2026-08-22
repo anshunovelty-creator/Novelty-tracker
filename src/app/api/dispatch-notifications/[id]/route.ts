@@ -29,6 +29,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const poNumber = typeof body.po_number === 'string' ? body.po_number.trim() : '';
   const jobName  = typeof body.job_name === 'string' ? body.job_name.trim() : '';
   const remark   = typeof body.remark === 'string' ? body.remark.trim() : '';
+  const pmCode   = typeof body.pm_code === 'string' ? body.pm_code.trim() : '';
   const status   = body.status;
   const qty      = Number.isFinite(body.qty) ? Number(body.qty) : null;
 
@@ -46,6 +47,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       status,
       qty,
       remark:    remark || null,
+      pm_code:   pmCode || null,
     })
     .eq('id', id)
     .is('notified_at', null);

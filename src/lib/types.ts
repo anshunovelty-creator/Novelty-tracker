@@ -671,8 +671,10 @@ export interface PendingDispatchNotification {
   status:      Stage;
   qty:         number | null;
   remark:      string | null;
+  pm_code:     string | null;
   created_at:  string;
-  notified_at: string | null;
+  notified_at: string | null;            // set once the PARTY email is sent — clears it from the pending list
+  internal_notified_at: string | null;   // set once the internal-team email is sent — bookkeeping only
 }
 
 // One party's group of pending dispatch notifications, as returned by

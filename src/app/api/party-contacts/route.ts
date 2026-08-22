@@ -1,13 +1,15 @@
 // src/app/api/party-contacts/route.ts
 // ============================================================
-// GET  /api/party-contacts — list every party's dispatch-email contact
+// GET  /api/party-contacts — list every party's dispatch-email contacts
 //      (Dispatch/Admin can view; needed to know who actually gets emailed)
-// POST /api/party-contacts — add/update a contact for a party (Admin only,
+// POST /api/party-contacts — add a new contact for a party (Admin only,
 //      matches party_contacts' existing RLS — contact management is an
-//      admin responsibility)
+//      admin responsibility). Editing an existing contact goes through
+//      PATCH /api/party-contacts/[id] instead.
 //
 // `party` must match jobs.party exactly (case-sensitive) — see migration
-// 002. Upserts on party so re-adding the same party edits it in place.
+// 002. A party can have multiple contact rows (migration 046) — every
+// email on file for that party gets cc'd on dispatch/status emails.
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -63,10 +65,7 @@ export async function POST(request: NextRequest) {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from('party_contacts')
-    .upsert(
-      { party, contact_name: contactName, email: email || null, whatsapp },
-      { onConflict: 'party' },
-    )
+    .insert({ party, contact_name: contactName, email: email || null, whatsapp })
     .select('*')
     .single();
 

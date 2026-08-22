@@ -58,7 +58,7 @@ export default function PartyContactsManager({ canEdit }: { canEdit: boolean }) 
         {!loading && (
           <p className="text-sm text-[var(--glass-muted)]">
             <strong className="text-[var(--glass-ink)]">{contacts.length}</strong>
-            {' '}{contacts.length === 1 ? 'party' : 'parties'} on file
+            {' '}{contacts.length === 1 ? 'contact' : 'contacts'} on file
           </p>
         )}
         {canEdit && (

@@ -1,10 +1,12 @@
 'use client';
 // src/components/admin/AddPartyContactModal.tsx
-// Add or edit one party's dispatch-email contact. The party field is a
-// dropdown sourced from the master Parties list (/api/parties, the same
-// list Job Separation's Party picker uses) rather than free text — party
-// must match jobs.party exactly (case-sensitive), so picking from the
-// master list avoids a typo silently breaking the email lookup.
+// Add or edit one contact for a party. A party can have several contacts
+// (migration 046) — every one of them gets the dispatch/status emails.
+// The party field is a dropdown sourced from the master Parties list
+// (/api/parties, the same list Job Separation's Party picker uses) rather
+// than free text — party must match jobs.party exactly (case-sensitive),
+// so picking from the master list avoids a typo silently breaking the
+// email lookup.
 
 import React, { useState, useEffect, useId } from 'react';
 import { Check, X } from 'lucide-react';
@@ -50,16 +52,19 @@ export default function AddPartyContactModal({ existing, onClose, onSaved }: Pro
 
     setSaving(true);
     try {
-      const res = await fetch('/api/party-contacts', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          party:        party.trim(),
-          contact_name: contactName.trim() || undefined,
-          email:        email.trim() || undefined,
-          whatsapp:     whatsapp.trim() || undefined,
-        }),
-      });
+      const res = await fetch(
+        existing ? `/api/party-contacts/${existing.id}` : '/api/party-contacts',
+        {
+          method:  existing ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            party:        party.trim(),
+            contact_name: contactName.trim() || undefined,
+            email:        email.trim() || undefined,
+            whatsapp:     whatsapp.trim() || undefined,
+          }),
+        },
+      );
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.error ?? 'Failed to save contact');
@@ -80,10 +85,10 @@ export default function AddPartyContactModal({ existing, onClose, onSaved }: Pro
         <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-white/12 shrink-0">
           <div>
             <h2 id={titleId} className="text-base font-semibold text-[var(--glass-ink)]">
-              {existing ? `Edit ${existing.party}` : 'Add party contact'}
+              {existing ? 'Edit contact' : 'Add party contact'}
             </h2>
             <p className="text-xs text-[var(--glass-muted)] mt-0.5">
-              Their email is picked automatically whenever this party is dispatched to
+              Every contact on file for a party gets cc&rsquo;d on its dispatch/status emails
             </p>
           </div>
           <button
@@ -99,20 +104,16 @@ export default function AddPartyContactModal({ existing, onClose, onSaved }: Pro
         <div className="px-5 py-4 overflow-y-auto space-y-4">
           <div>
             <ContactLabel required>Party</ContactLabel>
-            {existing ? (
-              <input type="text" value={party} disabled className={cn(inputCls, 'opacity-60')} />
-            ) : (
-              <select
-                value={party}
-                onChange={(e) => setParty(e.target.value)}
-                className={cn(inputCls, 'appearance-none')}
-              >
-                <option value="" disabled>Choose a party</option>
-                {parties.map((p) => (
-                  <option key={p.id} value={p.name}>{p.name}</option>
-                ))}
-              </select>
-            )}
+            <select
+              value={party}
+              onChange={(e) => setParty(e.target.value)}
+              className={cn(inputCls, 'appearance-none')}
+            >
+              <option value="" disabled>Choose a party</option>
+              {parties.map((p) => (
+                <option key={p.id} value={p.name}>{p.name}</option>
+              ))}
+            </select>
           </div>
 
           <div>

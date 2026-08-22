@@ -38,6 +38,7 @@ export default function AddCustomDispatchModal({ existing, onClose, onSaved }: P
   );
   const [qty,        setQty]        = useState(existing?.qty != null ? String(existing.qty) : '');
   const [remark,     setRemark]     = useState(existing?.remark ?? '');
+  const [pmCode,     setPmCode]     = useState(existing?.pm_code ?? '');
   const [saving,     setSaving]     = useState(false);
 
   useEffect(() => {
@@ -67,6 +68,7 @@ export default function AddCustomDispatchModal({ existing, onClose, onSaved }: P
             status,
             qty:       qty.trim() ? Number(qty) : undefined,
             remark:    remark.trim() || undefined,
+            pm_code:   pmCode.trim() || undefined,
           }),
         },
       );
@@ -144,6 +146,18 @@ export default function AddCustomDispatchModal({ existing, onClose, onSaved }: P
               placeholder="Optional"
               autoComplete="off"
               className={inputCls}
+            />
+          </div>
+
+          <div>
+            <FieldLabel>PM code</FieldLabel>
+            <input
+              type="text"
+              value={pmCode}
+              onChange={(e) => setPmCode(e.target.value)}
+              placeholder="Optional"
+              autoComplete="off"
+              className={cn(inputCls, 'font-mono')}
             />
           </div>
 

@@ -5,6 +5,7 @@
 // email, via getConsolidatedSubject/getConsolidatedEmailHTML below).
 
 import type { Stage } from '@/lib/constants/stages';
+import { LOGO_DATA_URI } from './logoDataUri';
 
 export type NotifyPayload = {
   job_id:    string;
@@ -38,6 +39,7 @@ export type DispatchItem = {
   status:    Stage;
   qty:       number | null;
   remark:    string | null;
+  pm_code:   string | null;
 };
 
 export function getConsolidatedSubject(itemCount: number, party: string): string {
@@ -62,7 +64,6 @@ export function getConsolidatedEmailHTML(payload: {
     ? `These are the dispatch details of today for <strong>${party}</strong>.`
     : 'Please find the dispatch details below for your reference and records.';
   const subject  = getConsolidatedSubject(items.length, party);
-  const logoUrl  = `${process.env.NEXT_PUBLIC_APP_URL}/novelty-labels-logo.png`;
   const sentAt   = new Date().toLocaleString('en-GB', {
     timeZone: 'Asia/Kolkata',
     day: '2-digit', month: 'short', year: 'numeric',
@@ -78,17 +79,21 @@ export function getConsolidatedEmailHTML(payload: {
     const remarkHtml = (item.remark && item.remark.trim() !== '')
       ? `<br><span style="color:#9a7800;font-size:11px;font-style:italic;">Remark: ${item.remark.trim()}</span>`
       : '';
+    const pmCodeHtml = (item.pm_code && item.pm_code.trim() !== '')
+      ? `<br><span style="color:#5f8a5e;font-weight:400;font-size:11px;font-family:monospace;">PM: ${item.pm_code.trim()}</span>`
+      : '';
     return `
           <tr style="background-color:${bg};">
-            <td style="padding:12px 16px;color:#1a1a1a;font-weight:600;font-size:13px;border-bottom:1px solid #c8e0c7;">
+            <td style="padding:10px 8px;color:#1a1a1a;font-weight:600;font-size:12.5px;border-bottom:1px solid #c8e0c7;word-break:break-word;">
               ${label}<br>
-              <span style="color:#5f8a5e;font-weight:400;font-size:11.5px;font-family:monospace;">PO: ${item.po_number}</span>
+              <span style="color:#5f8a5e;font-weight:400;font-size:11px;font-family:monospace;">PO: ${item.po_number}</span>
+              ${pmCodeHtml}
               ${remarkHtml}
             </td>
-            <td style="padding:12px 16px;color:#10540f;font-weight:600;font-size:12.5px;border-bottom:1px solid #c8e0c7;white-space:nowrap;">
+            <td style="padding:10px 8px;color:#10540f;font-weight:600;font-size:11.5px;border-bottom:1px solid #c8e0c7;word-break:break-word;">
               ${partial ? 'Partial Dispatch' : 'Dispatched'}
             </td>
-            <td style="padding:12px 16px;color:#1a1a1a;font-size:13px;border-bottom:1px solid #c8e0c7;text-align:right;white-space:nowrap;">
+            <td style="padding:10px 8px;color:#1a1a1a;font-size:12.5px;border-bottom:1px solid #c8e0c7;text-align:right;white-space:nowrap;">
               ${item.qty ? item.qty.toLocaleString('en-IN') : '—'}
             </td>
           </tr>`;
@@ -101,51 +106,51 @@ export function getConsolidatedEmailHTML(payload: {
   <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
 <body style="margin:0;padding:0;background-color:#eef4ee;font-family:Arial,sans-serif;">
-  <div style="max-width:600px;margin:28px auto;background-color:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #b8d9b7;">
+  <div style="max-width:600px;width:100%;margin:20px auto;background-color:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #b8d9b7;box-sizing:border-box;">
 
     <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#10540f;">
       <tr>
-        <td style="padding:22px 28px;">
-          <h3 style="margin:0 0 4px;color:#ffffff;font-size:15px;letter-spacing:2.5px;text-transform:uppercase;font-weight:700;">Novelty Labels</h3>
-          <h2 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;letter-spacing:0.8px;">Dispatch Notification</h2>
+        <td style="padding:18px 16px;">
+          <h3 style="margin:0 0 4px;color:#ffffff;font-size:14px;letter-spacing:2px;text-transform:uppercase;font-weight:700;">Novelty Labels / Creations</h3>
+          <h2 style="margin:0;color:#ffffff;font-size:18px;font-weight:700;letter-spacing:0.6px;">Dispatch Notification</h2>
         </td>
-        <td style="padding:22px 28px 22px 0;text-align:right;vertical-align:middle;width:140px;">
-          <img src="${logoUrl}" alt="Novelty Labels" width="110" style="display:block;margin-left:auto;background-color:#ffffff;border-radius:6px;padding:6px 10px;" />
+        <td style="padding:18px 16px 18px 0;text-align:right;vertical-align:middle;width:100px;">
+          <img src="${LOGO_DATA_URI}" alt="Novelty Labels" width="80" style="display:block;margin-left:auto;background-color:#ffffff;border-radius:6px;padding:5px 8px;max-width:100%;height:auto;" />
         </td>
       </tr>
     </table>
 
     <div style="height:3px;background-color:#2d8a2b;"></div>
 
-    <div style="background-color:#f0f7f0;padding:11px 28px;border-bottom:1px solid #b8d9b7;">
-      <p style="margin:0;color:#10540f;font-size:12px;letter-spacing:1px;text-transform:uppercase;font-weight:600;">${subject}</p>
+    <div style="background-color:#f0f7f0;padding:11px 16px;border-bottom:1px solid #b8d9b7;">
+      <p style="margin:0;color:#10540f;font-size:11.5px;letter-spacing:0.5px;text-transform:uppercase;font-weight:600;word-break:break-word;">${subject}</p>
     </div>
 
-    <div style="padding:22px 28px 10px;">
+    <div style="padding:18px 16px 8px;">
       <p style="margin:0;color:#1a1a1a;font-size:15px;font-weight:500;">Dear ${greetingName},</p>
       <p style="margin:9px 0 0;color:#555555;font-size:13.5px;line-height:1.65;">
         ${introText}
       </p>
     </div>
 
-    <div style="padding:10px 28px 26px;">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #b8d9b7;">
+    <div style="padding:10px 16px 22px;">
+      <table style="width:100%;max-width:100%;table-layout:fixed;border-collapse:collapse;font-size:13px;border:1px solid #b8d9b7;">
         <tr style="background-color:#10540f;">
-          <td style="padding:10px 16px;color:#a8d4a7;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Job / PO</td>
-          <td style="padding:10px 16px;color:#a8d4a7;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Status</td>
-          <td style="padding:10px 16px;color:#a8d4a7;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;text-align:right;">Qty</td>
+          <td style="width:48%;padding:8px;color:#a8d4a7;font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:0.5px;">Job / PO</td>
+          <td style="width:28%;padding:8px;color:#a8d4a7;font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:0.5px;">Status</td>
+          <td style="width:24%;padding:8px;color:#a8d4a7;font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:0.5px;text-align:right;">Qty</td>
         </tr>
         ${rows}
         <tr style="background-color:#10540f;">
-          <td style="padding:14px 16px;color:#a8d4a7;font-weight:700;font-size:13px;" colspan="2">Total Quantity Dispatched</td>
-          <td style="padding:14px 16px;color:#ffffff;font-weight:700;font-size:18px;text-align:right;">${totalQty.toLocaleString('en-IN')}</td>
+          <td style="padding:12px 8px;color:#a8d4a7;font-weight:700;font-size:12px;" colspan="2">Total Quantity Dispatched</td>
+          <td style="padding:12px 8px;color:#ffffff;font-weight:700;font-size:16px;text-align:right;">${totalQty.toLocaleString('en-IN')}</td>
         </tr>
       </table>
     </div>
 
-    <div style="background-color:#f0f7f0;padding:15px 28px;border-top:1px solid #b8d9b7;">
+    <div style="background-color:#f0f7f0;padding:15px 16px;border-top:1px solid #b8d9b7;">
       <p style="margin:0 0 5px 0;color:#10540f;font-size:12px;font-weight:600;">Novelty Labels · Dispatch Team</p>
-      <p style="margin:0;color:#10540f;font-size:11px;">${sentAt} · Do not reply</p>
+      <p style="margin:0;color:#10540f;font-size:11px;">${sentAt}</p>
     </div>
 
   </div>

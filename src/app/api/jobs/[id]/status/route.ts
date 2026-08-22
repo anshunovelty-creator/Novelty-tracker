@@ -424,6 +424,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         status:    new_status,
         qty:       qty_dispatched ?? updatedJob.dispatched_qty,
         remark:    remark?.trim() ?? null,
+        pm_code:   job.pm_code,
       });
     if (queueError) console.error('[POST status] queue dispatch notification:', queueError);
   }

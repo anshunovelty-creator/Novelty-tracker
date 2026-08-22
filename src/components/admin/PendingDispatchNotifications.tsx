@@ -1,20 +1,25 @@
 'use client';
 // src/components/admin/PendingDispatchNotifications.tsx
-// One card per party with pending dispatch events — "Send" fires one
-// consolidated email (client + internal team) covering every item queued
-// for that party, then clears them off this list.
+// One card per party with pending dispatch events. Internal team and party
+// are notified independently — the team typically sends internal first,
+// checks it, then sends the party's copy some time later. Only the party
+// send clears the card off this list; the internal send just marks it
+// notified (shown as a small badge) so the card stays until the party
+// copy actually goes out.
 
 import { useState, useEffect, useCallback } from 'react';
-import { Send, PackageCheck, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Send, Mail, PackageCheck, Plus, Pencil, Trash2, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatAdminDate } from '@/lib/utils';
 import type { PendingDispatchGroup, PendingDispatchNotification } from '@/lib/types';
 import AddCustomDispatchModal from './AddCustomDispatchModal';
 
+type SendTarget = 'internal' | 'party';
+
 export default function PendingDispatchNotifications() {
   const [groups,  setGroups]  = useState<PendingDispatchGroup[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sendingParty, setSendingParty] = useState<string | null>(null);
+  const [sendingKey, setSendingKey] = useState<string | null>(null);
   const [modalItem, setModalItem] = useState<PendingDispatchNotification | 'new' | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -54,13 +59,14 @@ export default function PendingDispatchNotifications() {
     }
   }
 
-  async function sendFor(party: string) {
-    setSendingParty(party);
+  async function sendFor(party: string, target: SendTarget) {
+    const key = `${party}:${target}`;
+    setSendingKey(key);
     try {
       const res  = await fetch('/api/dispatch-notifications/send', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ party }),
+        body:    JSON.stringify({ party, target }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -69,21 +75,31 @@ export default function PendingDispatchNotifications() {
       }
       if (data.skipped) {
         toast.error('Nothing pending for this party anymore');
-      } else {
-        const parts: string[] = [];
-        if (data.sent_to_party)    parts.push('party');
-        if (data.sent_to_internal) parts.push('internal team');
-        toast.success(
-          parts.length > 0
-            ? `Sent to ${parts.join(' and ')} — ${data.item_count} item${data.item_count === 1 ? '' : 's'}`
-            : 'Marked sent (no recipients on file to actually deliver to)',
-        );
+        return;
       }
-      setGroups((prev) => prev.filter((g) => g.party !== party));
+
+      const audience = target === 'party' ? 'party' : 'internal team';
+      const delivered = target === 'party' ? data.sent_to_party : data.sent_to_internal;
+      toast.success(
+        delivered
+          ? `Sent to ${audience} — ${data.item_count} item${data.item_count === 1 ? '' : 's'}`
+          : `Marked sent (no ${audience === 'party' ? 'contact' : 'recipients'} on file to actually deliver to)`,
+      );
+
+      if (target === 'party') {
+        setGroups((prev) => prev.filter((g) => g.party !== party));
+      } else {
+        const now = new Date().toISOString();
+        setGroups((prev) => prev.map((g) => (
+          g.party === party
+            ? { ...g, items: g.items.map((i) => ({ ...i, internal_notified_at: now })) }
+            : g
+        )));
+      }
     } catch {
       toast.error('Network error');
     } finally {
-      setSendingParty(null);
+      setSendingKey(null);
     }
   }
 
@@ -144,19 +160,39 @@ export default function PendingDispatchNotifications() {
                   <p className="text-xs text-[var(--glass-muted)] mt-0.5">
                     {group.items.length} item{group.items.length === 1 ? '' : 's'} queued
                   </p>
-                </div>
-                <button
-                  onClick={() => sendFor(group.party)}
-                  disabled={sendingParty === group.party}
-                  className={cn(
-                    'inline-flex items-center justify-center gap-1.5 min-h-11 px-4 rounded-xl shrink-0',
-                    'text-sm font-medium bg-brand-primary text-white hover:bg-brand-primary/90',
-                    'disabled:opacity-40 transition-colors whitespace-nowrap',
+                  {group.items.every((i) => i.internal_notified_at) && (
+                    <p className="flex items-center gap-1 text-xs text-emerald-700 mt-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
+                      Internal team notified
+                    </p>
                   )}
-                >
-                  <Send className="w-4 h-4" aria-hidden="true" />
-                  {sendingParty === group.party ? 'Sending…' : 'Send'}
-                </button>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => sendFor(group.party, 'internal')}
+                    disabled={sendingKey !== null}
+                    className={cn(
+                      'inline-flex items-center justify-center gap-1.5 min-h-11 px-3.5 rounded-xl',
+                      'text-sm font-medium text-[var(--glass-ink)] border border-black/[0.12] hover:bg-black/[0.04]',
+                      'disabled:opacity-40 transition-colors whitespace-nowrap',
+                    )}
+                  >
+                    <Mail className="w-4 h-4" aria-hidden="true" />
+                    {sendingKey === `${group.party}:internal` ? 'Sending…' : 'Send to Team'}
+                  </button>
+                  <button
+                    onClick={() => sendFor(group.party, 'party')}
+                    disabled={sendingKey !== null}
+                    className={cn(
+                      'inline-flex items-center justify-center gap-1.5 min-h-11 px-3.5 rounded-xl',
+                      'text-sm font-medium bg-brand-primary text-white hover:bg-brand-primary/90',
+                      'disabled:opacity-40 transition-colors whitespace-nowrap',
+                    )}
+                  >
+                    <Send className="w-4 h-4" aria-hidden="true" />
+                    {sendingKey === `${group.party}:party` ? 'Sending…' : 'Send to Party'}
+                  </button>
+                </div>
               </div>
 
               <ul className="space-y-1.5 border-t border-black/[0.06] pt-3">
@@ -169,6 +205,7 @@ export default function PendingDispatchNotifications() {
                       {item.job_name ?? item.po_number}
                       <span className="text-[var(--glass-muted)] font-normal font-mono ml-1.5">
                         {item.po_number}
+                        {item.pm_code ? ` · PM: ${item.pm_code}` : ''}
                       </span>
                     </span>
                     <span className="flex items-center gap-2 whitespace-nowrap">
