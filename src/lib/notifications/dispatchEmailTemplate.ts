@@ -72,31 +72,30 @@ export function getConsolidatedEmailHTML(payload: {
 
   const totalQty = items.reduce((sum, i) => sum + (i.qty ?? 0), 0);
 
+  const cellCls = 'padding:8px 6px;border-bottom:1px solid #c8e0c7;word-break:break-word;';
+
   const rows = items.map((item, i) => {
-    const label   = item.job_name ?? item.po_number;
-    const partial = item.status === 'Partial Dispatch';
-    const bg      = i % 2 === 0 ? '#f0f7f0' : '#ffffff';
-    const remarkHtml = (item.remark && item.remark.trim() !== '')
-      ? `<br><span style="color:#9a7800;font-size:11px;font-style:italic;">Remark: ${item.remark.trim()}</span>`
+    const material = item.job_name ?? item.po_number;
+    const partial  = item.status === 'Partial Dispatch';
+    const bg       = i % 2 === 0 ? '#f0f7f0' : '#ffffff';
+
+    const remarkRow = (item.remark && item.remark.trim() !== '')
+      ? `
+          <tr style="background-color:${bg};">
+            <td colspan="5" style="padding:2px 6px 8px;border-bottom:1px solid #c8e0c7;color:#9a7800;font-size:11px;font-style:italic;word-break:break-word;">
+              Remark: ${item.remark.trim()}
+            </td>
+          </tr>`
       : '';
-    const pmCodeHtml = (item.pm_code && item.pm_code.trim() !== '')
-      ? `<br><span style="color:#5f8a5e;font-weight:400;font-size:11px;font-family:monospace;">PM: ${item.pm_code.trim()}</span>`
-      : '';
+
     return `
           <tr style="background-color:${bg};">
-            <td style="padding:10px 8px;color:#1a1a1a;font-weight:600;font-size:12.5px;border-bottom:1px solid #c8e0c7;word-break:break-word;">
-              ${label}<br>
-              <span style="color:#5f8a5e;font-weight:400;font-size:11px;font-family:monospace;">PO: ${item.po_number}</span>
-              ${pmCodeHtml}
-              ${remarkHtml}
-            </td>
-            <td style="padding:10px 8px;color:#10540f;font-weight:600;font-size:11.5px;border-bottom:1px solid #c8e0c7;word-break:break-word;">
-              ${partial ? 'Partial Dispatch' : 'Dispatched'}
-            </td>
-            <td style="padding:10px 8px;color:#1a1a1a;font-size:12.5px;border-bottom:1px solid #c8e0c7;text-align:right;white-space:nowrap;">
-              ${item.qty ? item.qty.toLocaleString('en-IN') : '—'}
-            </td>
-          </tr>`;
+            <td style="${cellCls}color:#1a1a1a;font-weight:600;font-size:12px;">${material}</td>
+            <td style="${cellCls}color:#5f8a5e;font-size:11px;font-family:monospace;">${item.pm_code?.trim() || '—'}</td>
+            <td style="${cellCls}color:#5f8a5e;font-size:11px;font-family:monospace;">${item.po_number}</td>
+            <td style="${cellCls}color:#10540f;font-weight:600;font-size:11px;">${partial ? 'Partial Dispatch' : 'Dispatched'}</td>
+            <td style="${cellCls}color:#1a1a1a;font-size:12px;text-align:right;white-space:nowrap;">${item.qty ? item.qty.toLocaleString('en-IN') : '—'}</td>
+          </tr>${remarkRow}`;
   }).join('');
 
   return `<!DOCTYPE html>
@@ -136,14 +135,16 @@ export function getConsolidatedEmailHTML(payload: {
     <div style="padding:10px 16px 22px;">
       <table style="width:100%;max-width:100%;table-layout:fixed;border-collapse:collapse;font-size:13px;border:1px solid #b8d9b7;">
         <tr style="background-color:#10540f;">
-          <td style="width:48%;padding:8px;color:#a8d4a7;font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:0.5px;">Job / PO</td>
-          <td style="width:28%;padding:8px;color:#a8d4a7;font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:0.5px;">Status</td>
-          <td style="width:24%;padding:8px;color:#a8d4a7;font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:0.5px;text-align:right;">Qty</td>
+          <td style="width:26%;padding:7px 6px;color:#a8d4a7;font-weight:700;font-size:9.5px;text-transform:uppercase;letter-spacing:0.3px;">Material</td>
+          <td style="width:16%;padding:7px 6px;color:#a8d4a7;font-weight:700;font-size:9.5px;text-transform:uppercase;letter-spacing:0.3px;">PM Code</td>
+          <td style="width:20%;padding:7px 6px;color:#a8d4a7;font-weight:700;font-size:9.5px;text-transform:uppercase;letter-spacing:0.3px;">PO No.</td>
+          <td style="width:20%;padding:7px 6px;color:#a8d4a7;font-weight:700;font-size:9.5px;text-transform:uppercase;letter-spacing:0.3px;">Status</td>
+          <td style="width:18%;padding:7px 6px;color:#a8d4a7;font-weight:700;font-size:9.5px;text-transform:uppercase;letter-spacing:0.3px;text-align:right;">Qty</td>
         </tr>
         ${rows}
         <tr style="background-color:#10540f;">
-          <td style="padding:12px 8px;color:#a8d4a7;font-weight:700;font-size:12px;" colspan="2">Total Quantity Dispatched</td>
-          <td style="padding:12px 8px;color:#ffffff;font-weight:700;font-size:16px;text-align:right;">${totalQty.toLocaleString('en-IN')}</td>
+          <td style="padding:12px 6px;color:#a8d4a7;font-weight:700;font-size:12px;" colspan="4">Total Quantity Dispatched</td>
+          <td style="padding:12px 6px;color:#ffffff;font-weight:700;font-size:15px;text-align:right;">${totalQty.toLocaleString('en-IN')}</td>
         </tr>
       </table>
     </div>
