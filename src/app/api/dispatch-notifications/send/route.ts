@@ -53,34 +53,39 @@ export async function POST(request: NextRequest) {
       po_number: i.po_number,
       status:    i.status,
       qty:       i.qty,
+      remark:    i.remark,
     }));
-    const html = getConsolidatedEmailHTML({ party, items: dispatchItems });
 
     // Client — same "no contact on file" skip behavior as the single-job route.
     const { data: contact } = await admin
       .from('party_contacts')
-      .select('email')
+      .select('email, contact_name')
       .eq('party', party)
       .maybeSingle();
 
+    const htmlForParty = getConsolidatedEmailHTML({ party, contactName: contact?.contact_name, items: dispatchItems });
+
     if (contact?.email) {
       try {
-        await sendMail({ to: contact.email, subject, html });
+        await sendMail({ to: contact.email, subject, html: htmlForParty });
         sentToParty = true;
       } catch (err) {
         console.error('[dispatch-notifications send] client email:', err);
       }
     }
 
-    // Internal team.
+    // Internal team — same data, addressed to "Dear Team" instead of the
+    // party's contact so it reads as an internal record, not a copy of the
+    // client's own letter.
     const { data: recipients } = await admin
       .from('internal_notification_recipients')
       .select('email');
     const internalEmails = (recipients ?? []).map((r) => r.email);
 
     if (internalEmails.length > 0) {
+      const htmlForTeam = getConsolidatedEmailHTML({ party, items: dispatchItems, audience: 'team' });
       try {
-        await sendMail({ to: internalEmails, subject, html });
+        await sendMail({ to: internalEmails, subject, html: htmlForTeam });
         sentToInternal = true;
       } catch (err) {
         console.error('[dispatch-notifications send] internal email:', err);

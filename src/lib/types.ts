@@ -664,7 +664,7 @@ export interface InternalNotificationRecipient {
 
 export interface PendingDispatchNotification {
   id:          string;
-  job_id:      string;
+  job_id:      string | null;   // null for a manually-added, free-text entry
   job_name:    string | null;
   po_number:   string;
   party:       string;
