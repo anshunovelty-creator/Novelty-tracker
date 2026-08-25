@@ -5,11 +5,12 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Package, Scissors, Disc, Users, SplitSquareHorizontal, Contact, ClipboardList, Bell, Truck, Mail, Menu, X, Building2 } from 'lucide-react';
+import { Package, Scissors, Disc, Users, SplitSquareHorizontal, Contact, ClipboardList, Truck, Menu, X, Building2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
   canDeptUseBOM,
   canDeptManageDispatchNotifications,
+  canDeptManagePartyContacts,
   canDeptManageRegister,
   canDeptManageTeam,
   canDeptManageNotificationRecipients,
@@ -65,7 +66,15 @@ export default function AdminHeader({ dept, displayName }: Props) {
 
   // Parties with a dispatch batch still waiting to be emailed. Only
   // Dispatch/Admin manage this queue — same poll cadence as the BOM badge.
-  const showDispatchEmails = canDeptManageDispatchNotifications(dept);
+  const canQueue = canDeptManageDispatchNotifications(dept);
+
+  // Dispatch Emails now also holds the party-contact and internal-recipient
+  // lists as tabs, so the entry has to show for anyone holding any of the
+  // three keys — an Admin who manages recipients but not the queue would
+  // otherwise have no way in. The badge stays gated on the queue permission
+  // alone, since /api/dispatch-notifications refuses anyone else.
+  const showDispatchEmails =
+    canQueue || canDeptManagePartyContacts(dept) || canDeptManageNotificationRecipients(dept);
 
   const { data: dispatchPending = 0 } = useQuery({
     queryKey: ['dispatch-notifications', 'pending-count'],
@@ -75,7 +84,7 @@ export default function AdminHeader({ dept, displayName }: Props) {
       const data = await res.json();
       return data.groups?.length ?? 0;
     },
-    enabled: showDispatchEmails,
+    enabled: canQueue,
     refetchInterval: BOM_BADGE_POLL_MS,
   });
 
@@ -202,19 +211,9 @@ export default function AdminHeader({ dept, displayName }: Props) {
                 )}
               </Link>
             )}
-            {/* Party -> email/WhatsApp mapping the dispatch email routes look
-                up automatically. Dispatch/Admin can view; only Admin can
-                edit, mirrored by /api/party-contacts and party_contacts' RLS. */}
-            {showDispatchEmails && (
-              <Link
-                href="/admin/party-contacts"
-                title="Party Contacts"
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
-              >
-                <Mail className="h-4 w-4" aria-hidden="true" />
-                Party Contacts
-              </Link>
-            )}
+            {/* Party Contacts and Dispatch Alerts used to sit here as their own
+                entries. Both configure an audience of the dispatch email, so
+                they are now tabs on /admin/dispatch-notifications above. */}
             {/* Follow-ups (customer CRM) holds sales/contact data with no
                 reason to be shop-floor-visible — Admin only, mirrored by
                 canDeptManageRegister in every /api/register route and by
@@ -240,18 +239,6 @@ export default function AdminHeader({ dept, displayName }: Props) {
               >
                 <Users className="h-4 w-4" aria-hidden="true" />
                 Team
-              </Link>
-            )}
-            {/* Who gets a copy of the dispatch email internally — Admin only,
-                mirrored by the check in every /api/notification-recipients route. */}
-            {canDeptManageNotificationRecipients(dept) && (
-              <Link
-                href="/admin/notifications"
-                title="Dispatch Alerts"
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
-              >
-                <Bell className="h-4 w-4" aria-hidden="true" />
-                Dispatch Alerts
               </Link>
             )}
             {/* Create departments and configure their permission grids —
@@ -377,15 +364,6 @@ export default function AdminHeader({ dept, displayName }: Props) {
               )}
             </Link>
           )}
-          {showDispatchEmails && (
-            <Link
-              href="/admin/party-contacts"
-              className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
-            >
-              <Mail className="h-4 w-4 shrink-0" aria-hidden="true" />
-              Party Contacts
-            </Link>
-          )}
           {canDeptManageRegister(dept) && (
             <Link
               href="/admin/register"
@@ -402,15 +380,6 @@ export default function AdminHeader({ dept, displayName }: Props) {
             >
               <Users className="h-4 w-4 shrink-0" aria-hidden="true" />
               Team
-            </Link>
-          )}
-          {canDeptManageNotificationRecipients(dept) && (
-            <Link
-              href="/admin/notifications"
-              className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
-            >
-              <Bell className="h-4 w-4 shrink-0" aria-hidden="true" />
-              Dispatch Alerts
             </Link>
           )}
           {dept.isSuperAdmin && (
