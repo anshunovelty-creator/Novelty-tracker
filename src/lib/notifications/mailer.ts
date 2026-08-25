@@ -35,12 +35,26 @@ export async function sendMail(opts: {
   to:      string | string[];
   subject: string;
   html:    string;
+  // Stable identifier for the conversation this email belongs to (e.g. one
+  // PO). Every send carrying the same key threads together in the
+  // recipient's client; omit it and the email stands on its own.
+  threadKey?: string | null;
 }): Promise<{ id?: string }> {
+  // Point References/In-Reply-To at a synthetic root id that no real message
+  // ever uses. Mail clients thread on a shared References root, so this
+  // groups the conversation without us having to track the Message-ID of the
+  // first email we ever sent about that PO. The message's own Message-ID is
+  // left to nodemailer so it stays unique per send — reusing an id would let
+  // Gmail treat a later dispatch as a duplicate and hide it.
+  const domain = process.env.GMAIL_USER?.split('@')[1] || 'novelty-labels.local';
+  const threadRoot = opts.threadKey ? `<${opts.threadKey}@${domain}>` : null;
+
   const info = await getTransporter().sendMail({
     from:    `"Novelty Labels & Supplies" <${process.env.GMAIL_USER}>`,
     to:      opts.to,
     subject: opts.subject,
     html:    opts.html,
+    ...(threadRoot ? { references: threadRoot, inReplyTo: threadRoot } : {}),
   });
   return { id: info.messageId };
 }

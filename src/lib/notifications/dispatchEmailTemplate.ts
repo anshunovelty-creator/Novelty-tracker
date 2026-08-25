@@ -42,8 +42,58 @@ export type DispatchItem = {
   pm_code:   string | null;
 };
 
-export function getConsolidatedSubject(itemCount: number, party: string): string {
-  return `Dispatch Details / ${party} — ${itemCount} Order${itemCount === 1 ? '' : 's'}`;
+// Subject + threading. Every send used to produce a byte-identical subject
+// ("… — 1 Order"), so Gmail collapsed unrelated dispatches weeks apart into
+// one conversation. The subject now varies per PO, and getDispatchThreadKey
+// below drives the References header so grouping is deliberate rather than
+// left to Gmail's same-subject guesswork.
+//
+// One email covers every pending item for a party, which may span several
+// POs — so it can only belong to a PO thread when there's exactly one PO in
+// it. Multi-PO sends are date-stamped and stand alone instead.
+
+function uniquePoNumbers(items: Pick<DispatchItem, 'po_number'>[]): string[] {
+  return items
+    .map((i) => i.po_number)
+    .filter((po, idx, all) => Boolean(po) && all.indexOf(po) === idx);
+}
+
+function todayInIndia(): string {
+  return new Date().toLocaleDateString('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit', month: 'short', year: 'numeric',
+  });
+}
+
+export function getConsolidatedSubject(
+  items: Pick<DispatchItem, 'po_number'>[],
+  party: string,
+): string {
+  const pos = uniquePoNumbers(items);
+  if (pos.length === 1) {
+    // Some parties already prefix their own PO numbers ("PO/2026/0012") —
+    // don't render "PO PO/2026/0012".
+    const label = /^po\b|^po[^a-z0-9]/i.test(pos[0]) ? pos[0] : `PO ${pos[0]}`;
+    return `Dispatch Details / ${party} — ${label}`;
+  }
+  return `Dispatch Details / ${party} — ${pos.length} POs · ${todayInIndia()}`;
+}
+
+// Synthetic References root shared by every email about one PO — partial
+// dispatches of the same PO thread together for the recipient however many
+// weeks apart they land. Returns null when the email spans several POs (no
+// single thread it belongs in) so that send stays on its own.
+// The audience is folded in so an internal copy never merges with the
+// party's own letter for anyone sitting on both recipient lists.
+export function getDispatchThreadKey(
+  items: Pick<DispatchItem, 'po_number'>[],
+  party: string,
+  audience: 'party' | 'team',
+): string | null {
+  const pos = uniquePoNumbers(items);
+  if (pos.length !== 1) return null;
+  const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return `dispatch-${audience}-${slug(party)}-${slug(pos[0])}`;
 }
 
 // ── Green "Dispatch Notification" branding ────────────────────────
@@ -63,7 +113,7 @@ export function getConsolidatedEmailHTML(payload: {
   const introText = audience === 'team'
     ? `These are the dispatch details of today for <strong>${party}</strong>.`
     : 'Please find the dispatch details below for your reference and records.';
-  const subject  = getConsolidatedSubject(items.length, party);
+  const subject  = getConsolidatedSubject(items, party);
   const sentAt   = new Date().toLocaleString('en-GB', {
     timeZone: 'Asia/Kolkata',
     day: '2-digit', month: 'short', year: 'numeric',
@@ -91,8 +141,8 @@ export function getConsolidatedEmailHTML(payload: {
     return `
           <tr style="background-color:${bg};">
             <td style="${cellCls}color:#1a1a1a;font-weight:600;font-size:12px;">${material}</td>
-            <td style="${cellCls}color:#5f8a5e;font-size:11px;font-family:monospace;">${item.pm_code?.trim() || '—'}</td>
-            <td style="${cellCls}color:#5f8a5e;font-size:11px;font-family:monospace;">${item.po_number}</td>
+            <td style="${cellCls}color:#4a7549;font-size:13px;font-family:monospace;">${item.pm_code?.trim() || '—'}</td>
+            <td style="${cellCls}color:#4a7549;font-size:13px;font-family:monospace;">${item.po_number}</td>
             <td style="${cellCls}color:#10540f;font-weight:600;font-size:11px;">${partial ? 'Partial Dispatch' : 'Dispatched'}</td>
             <td style="${cellCls}color:#1a1a1a;font-size:12px;text-align:right;white-space:nowrap;">${item.qty ? item.qty.toLocaleString('en-IN') : '—'}</td>
           </tr>${remarkRow}`;

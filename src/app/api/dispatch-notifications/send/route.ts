@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptManageDispatchNotifications } from '@/lib/constants/departments';
-import { getConsolidatedSubject, getConsolidatedEmailHTML, type DispatchItem } from '@/lib/notifications/dispatchEmailTemplate';
+import { getConsolidatedSubject, getConsolidatedEmailHTML, getDispatchThreadKey, type DispatchItem } from '@/lib/notifications/dispatchEmailTemplate';
 import { isMailerConfigured, sendMail } from '@/lib/notifications/mailer';
 import type { PendingDispatchNotification } from '@/lib/types';
 
@@ -50,7 +50,6 @@ export async function POST(request: NextRequest) {
   let sentToInternal = false;
 
   if (isMailerConfigured()) {
-    const subject     = getConsolidatedSubject(items.length, party);
     const dispatchItems: DispatchItem[] = items.map((i) => ({
       job_name:  i.job_name,
       po_number: i.po_number,
@@ -59,6 +58,12 @@ export async function POST(request: NextRequest) {
       remark:    i.remark,
       pm_code:   i.pm_code,
     }));
+
+    // Subject carries the PO so repeat dispatches to one party no longer
+    // share an identical subject (which had Gmail collapsing unrelated
+    // dispatches into a single conversation); threadKey then groups the
+    // ones that genuinely belong together — see dispatchEmailTemplate.
+    const subject = getConsolidatedSubject(dispatchItems, party);
 
     if (target === 'party') {
       // A party can have several contacts on file (migration 046) — every
@@ -78,7 +83,8 @@ export async function POST(request: NextRequest) {
         const contactName = contacts?.length === 1 ? contacts[0].contact_name : null;
         const html = getConsolidatedEmailHTML({ party, contactName, items: dispatchItems });
         try {
-          await sendMail({ to: partyEmails, subject, html });
+          const threadKey = getDispatchThreadKey(dispatchItems, party, 'party');
+          await sendMail({ to: partyEmails, subject, html, threadKey });
           sentToParty = true;
         } catch (err) {
           console.error('[dispatch-notifications send] client email:', err);
@@ -96,7 +102,8 @@ export async function POST(request: NextRequest) {
       if (internalEmails.length > 0) {
         const html = getConsolidatedEmailHTML({ party, items: dispatchItems, audience: 'team' });
         try {
-          await sendMail({ to: internalEmails, subject, html });
+          const threadKey = getDispatchThreadKey(dispatchItems, party, 'team');
+          await sendMail({ to: internalEmails, subject, html, threadKey });
           sentToInternal = true;
         } catch (err) {
           console.error('[dispatch-notifications send] internal email:', err);
