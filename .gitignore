@@ -54,3 +54,11 @@ ruvector.db
 .claude/skills/v3-security-overhaul/
 .claude/skills/v3-swarm-coordination/
 .claude/skills/verification-quality/
+
+# Supabase CLI scratch
+supabase/.temp/
+
+# Customer PO / intake spreadsheets get dropped in the working tree.
+# They are real order data and must never be committed.
+*.xlsx
+*.xls
