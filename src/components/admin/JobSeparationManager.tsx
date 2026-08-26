@@ -47,7 +47,7 @@ function jobPrefillFromRow(row: JobSeparation): Partial<AddJobFormData> {
 // Must stay in the same order as the <td>s rendered below.
 const JOB_SEPARATION_COLUMNS = [
   'Sr No', 'Party', 'PO No / Date', 'PM Code / Material', 'Qty / Rate', 'Unit',
-  'Order Value', 'Artwork Status', 'Job Card Status', 'AW SENT to U1', 'Actions',
+  'Artwork Status', 'Order Value', 'Job Card Status', 'AW SENT to U1', 'Actions',
 ] as const;
 const JOB_SEPARATION_COLS = JOB_SEPARATION_COLUMNS.length;
 
@@ -607,8 +607,8 @@ export default function JobSeparationManager({ canManage, canManageTodo, dept }:
                         <SpecField label="PM Code" value={row.pm_code} mono />
                         <SpecField label="Quantity" value={row.quantity !== null ? formatQty(row.quantity) : null} mono />
                         <SpecField label="Rate" value={formatMoney(row.rate)} mono />
-                        <SpecField label="Order Value" value={formatMoney(row.order_value)} mono />
                         <SpecField label="Artwork Status" value={row.job_status} />
+                        <SpecField label="Order Value" value={formatMoney(row.order_value)} mono />
                         <SpecField label="Added" value={formatNumericDate(row.created_at)} mono />
                       </div>
                     </div>
@@ -762,7 +762,6 @@ export default function JobSeparationManager({ canManage, canManageTodo, dept }:
                           <p className={cn('font-mono text-xs mt-0.5', !isCancelled && 'text-[var(--glass-muted)]')}>@ {formatMoney(row.rate) ?? '—'}</p>
                         </td>
                         <td className="px-3 py-1.5 whitespace-nowrap border-r border-white/8">{row.unit || '—'}</td>
-                        <td className="px-3 py-1.5 font-mono whitespace-nowrap border-r border-white/8">{formatMoney(row.order_value) ?? '—'}</td>
                         <td className="px-3 py-1.5 whitespace-normal break-words min-w-[90px] border-r border-white/8">
                           {row.job_status ? (
                             <span className="inline-block text-[11px] font-medium px-1.5 py-0.5 rounded border no-underline bg-sky-100 text-sky-800 border-sky-200">
@@ -770,6 +769,7 @@ export default function JobSeparationManager({ canManage, canManageTodo, dept }:
                             </span>
                           ) : '—'}
                         </td>
+                        <td className="px-3 py-1.5 font-mono whitespace-nowrap border-r border-white/8">{formatMoney(row.order_value) ?? '—'}</td>
                         <td className="px-3 py-1.5 whitespace-nowrap border-r border-white/8">
                           {row.jc_status ? (
                             <span className={cn(
