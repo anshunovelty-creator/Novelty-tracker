@@ -144,13 +144,14 @@ export async function POST(request: NextRequest) {
     .map((raw, index) => {
       const item = (raw ?? {}) as Record<string, unknown>;
       return {
-        position:      index + 1,
-        material:      text(item.material),
-        specification: text(item.specification),
-        size:          text(item.size),
-        quantity:      decimal(item.quantity),
-        unit:          text(item.unit),
-        note:          text(item.note),
+        position:          index + 1,
+        material:          text(item.material),
+        specification:     text(item.specification),
+        size:              text(item.size),
+        quantity:          decimal(item.quantity),
+        required_quantity: decimal(item.required_quantity),
+        unit:              text(item.unit),
+        note:              text(item.note),
       };
     })
     // A line with no material name is a blank row on the form, not a request.

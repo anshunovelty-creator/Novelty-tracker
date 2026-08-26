@@ -266,6 +266,7 @@ const BOM_COLUMNS: CsvColumn<BomLineRow>[] = [
   { header: 'Material',             value: (i) => i.material },
   { header: 'Specification',        value: (i) => i.specification },
   { header: 'Size',                 value: (i) => i.size },
+  { header: 'Qty Required',         value: (i) => i.required_quantity },
   { header: 'Qty Requested',        value: (i) => i.quantity },
   { header: 'Unit',                 value: (i) => i.unit },
   { header: 'Line Note',            value: (i) => i.note },

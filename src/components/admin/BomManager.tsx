@@ -20,7 +20,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import {
   Plus, Trash2, X, Check, PackageCheck, PackageMinus, Repeat, Ban,
-  Undo2, ClipboardList, AlertTriangle, Search, RotateCcw,
+  Undo2, ClipboardList, AlertTriangle, Search, RotateCcw, Calculator,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatNumericDate, formatQty } from '@/lib/utils';
@@ -107,6 +107,7 @@ const BOM_EXPORT_COLUMNS: CsvColumn<BomExportRow>[] = [
   { header: 'Material',      value: (r) => r.item.material },
   { header: 'Specification', value: (r) => r.item.specification },
   { header: 'Size',          value: (r) => r.item.size },
+  { header: 'Qty Required',  value: (r) => r.item.required_quantity },
   { header: 'Qty Requested', value: (r) => r.item.quantity },
   { header: 'Unit',          value: (r) => r.item.unit },
   { header: 'Line Note',     value: (r) => r.item.note },
@@ -118,17 +119,76 @@ const BOM_EXPORT_COLUMNS: CsvColumn<BomExportRow>[] = [
   { header: 'Decided By',    value: (r) => r.item.decided_by },
 ];
 
+// The metre calculator's own working inputs for one line — kept separate
+// from the line's real quantity/unit because they're scratch numbers on the
+// way to a metre figure, not something the request itself stores.
+type CalcDraft = {
+  labelQty: string;
+  repeat:   string;
+  ups:      string;
+  wastage:  string;
+  extra:    string;  // buffer beyond the formula — needs a remark to justify
+  remark:   string;
+};
+
+function blankCalc(): CalcDraft {
+  return { labelQty: '', repeat: '', ups: '1', wastage: '5', extra: '', remark: '' };
+}
+
 type DraftItem = {
   material:      string;
   specification: string;
   size:          string;
-  quantity:      string;
-  unit:          string;
-  note:          string;
+  // Never typed directly — every line is ordered by the metre, and the
+  // metre figure has to come from the calculator below, not a guess. Qty
+  // and Unit are locked in the form and only ever set by applyCalc().
+  // requiredQuantity is the formula's own answer, before any extra —
+  // quantity is what actually gets requested once extra is added on top.
+  quantity:         string;
+  requiredQuantity: string;
+  unit:             string;
+  note:             string;
+  calc:             CalcDraft;
 };
 
 function blankItem(): DraftItem {
-  return { material: '', specification: '', size: '', quantity: '', unit: '', note: '' };
+  return {
+    material: '', specification: '', size: '',
+    quantity: '', requiredQuantity: '', unit: 'mtr', note: '',
+    calc: blankCalc(),
+  };
+}
+
+// The floor's actual formula for "how much roll stock does this job need" —
+// Qty × Repeat ÷ Ups gives net metres, plus a wastage allowance. Requesting
+// the raw label count (or a guessed roll figure) is how Production used to
+// ask, and how the owner used to under- or over-order; this is what turns
+// the request into an exact, reproducible number instead of a guess.
+type MetreCalcResult = {
+  qty: number; repeat: number; ups: number; wastage: number; extra: number;
+  netMetres:     number;
+  wastageMetres: number;
+  base:          number;  // net + wastage, rounded up — never round down a request
+  final:         number;  // base + any extra requested on top
+};
+
+// Pure so it can drive both the live preview under the inputs and the
+// values actually saved — no separate "trust me, it matches" path.
+function previewMetreCalc(calc: CalcDraft): MetreCalcResult | null {
+  const qty     = parseFloat(calc.labelQty);
+  const repeat  = parseFloat(calc.repeat);
+  const ups     = parseFloat(calc.ups);
+  const wastage = parseFloat(calc.wastage) || 0;
+  const extra   = Math.max(0, parseFloat(calc.extra) || 0);
+  if (!qty || qty <= 0 || !repeat || repeat <= 0 || !ups || ups < 1) return null;
+
+  const labelsPerUp   = qty / ups;
+  const netMetres     = (labelsPerUp * repeat) / 1000;
+  const wastageMetres = netMetres * (wastage / 100);
+  const base          = Math.ceil(netMetres + wastageMetres);
+  const final         = base + Math.ceil(extra);
+
+  return { qty, repeat, ups, wastage, extra, netMetres, wastageMetres, base, final };
 }
 
 // The line-level editor Admin opens for the two decisions that need a value
@@ -237,6 +297,46 @@ export default function BomManager({ canDecide }: { canDecide: boolean }) {
     setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   }
 
+  function updateCalc(index: number, patch: Partial<CalcDraft>) {
+    setItems((prev) => prev.map((item, i) => (i === index ? { ...item, calc: { ...item.calc, ...patch } } : item)));
+  }
+
+  function removeItem(index: number) {
+    setItems((prev) => (prev.length === 1 ? [blankItem()] : prev.filter((_, i) => i !== index)));
+  }
+
+  // Rounded up, never down — a request for material should never fall short
+  // of the job because a fractional metre got dropped. The exact working is
+  // written into the line's note so whoever answers the request can check
+  // it, which is the whole difference between "a number" and "a message".
+  function applyCalc(index: number) {
+    const item = items[index];
+    const result = previewMetreCalc(item.calc);
+    if (!result) {
+      toast.error('Fill label qty, repeat and ups first');
+      return;
+    }
+    if (result.extra > 0 && !item.calc.remark.trim()) {
+      toast.error('Say why you need the extra metres');
+      return;
+    }
+
+    const breakdown =
+      `Metre calc: ${formatQty(result.qty)} lbls × ${result.repeat}mm ÷ ${formatQty(result.ups)} ups ` +
+      `= ${result.netMetres.toFixed(2)}m net + ${result.wastage}% wastage (${result.wastageMetres.toFixed(2)}m) = ${result.base}m` +
+      (result.extra > 0
+        ? ` + ${Math.ceil(result.extra)}m extra (${item.calc.remark.trim()}) = ${result.final}m`
+        : '');
+
+    updateItem(index, {
+      quantity: String(result.final),
+      requiredQuantity: String(result.base),
+      unit: 'mtr',
+      note: breakdown,
+    });
+    toast.success(`Set to ${result.final} m`);
+  }
+
   /**
    * Material field changes go through here so that landing on a catalogue
    * entry fills in the rest of the line. Only blanks are filled — something
@@ -271,9 +371,14 @@ export default function BomManager({ canDecide }: { canDecide: boolean }) {
       material:      item.material,
       specification: item.specification ?? '',
       size:          item.size ?? '',
-      quantity:      item.quantity !== null ? String(item.quantity) : '',
-      unit:          item.unit ?? '',
-      note:          item.note ?? '',
+      quantity:         item.quantity !== null ? String(item.quantity) : '',
+      requiredQuantity: item.required_quantity !== null ? String(item.required_quantity) : '',
+      unit:             item.unit ?? '',
+      note:             item.note ?? '',
+      // A repeat request already carries a vetted quantity from last time,
+      // so it isn't forced through the calculator again — submitRequest
+      // only requires a quantity to be present, not freshly recalculated.
+      calc:             blankCalc(),
     })));
     setRaising(true);
 
@@ -289,6 +394,14 @@ export default function BomManager({ canDecide }: { canDecide: boolean }) {
       return;
     }
 
+    // No quantity means the calculator was never run — every line's metre
+    // figure has to come from it, there's no manual fallback to fall back to.
+    const uncalculated = filled.find((item) => !item.quantity.trim());
+    if (uncalculated) {
+      toast.error(`Run the metre calculator for ${uncalculated.material || 'that material'} before sending`);
+      return;
+    }
+
     setSaving(true);
     try {
       const res = await fetch('/api/bom-requests', {
@@ -297,12 +410,13 @@ export default function BomManager({ canDecide }: { canDecide: boolean }) {
         body: JSON.stringify({
           job_po: jobPo, party, needed_by: neededBy || null, priority, note,
           items: filled.map((item) => ({
-            material:      item.material,
-            specification: item.specification,
-            size:          item.size,
-            quantity:      item.quantity === '' ? null : Number(item.quantity),
-            unit:          item.unit,
-            note:          item.note,
+            material:          item.material,
+            specification:     item.specification,
+            size:              item.size,
+            quantity:          item.quantity === '' ? null : Number(item.quantity),
+            required_quantity: item.requiredQuantity === '' ? null : Number(item.requiredQuantity),
+            unit:              item.unit,
+            note:              item.note,
           })),
         }),
       });
@@ -577,11 +691,14 @@ export default function BomManager({ canDecide }: { canDecide: boolean }) {
               ))}
             </datalist>
 
-            {items.map((item, index) => (
+            {items.map((item, index) => {
+              const preview = previewMetreCalc(item.calc);
+              return (
               <div
                 key={index}
-                className="grid gap-2 rounded-xl border border-black/[0.06] bg-[#F4F8F5] p-3 sm:grid-cols-12"
+                className="space-y-2 rounded-xl border border-black/[0.06] bg-[#F4F8F5] p-3"
               >
+              <div className="grid gap-2 sm:grid-cols-12">
                 <div className="sm:col-span-4">
                   <label className="sr-only" htmlFor={`material-${index}`}>Material</label>
                   <input
@@ -618,28 +735,25 @@ export default function BomManager({ canDecide }: { canDecide: boolean }) {
                     step="any"
                     inputMode="decimal"
                     value={item.quantity}
-                    onChange={(e) => updateItem(index, { quantity: e.target.value })}
-                    placeholder="Qty"
+                    placeholder="Calc below"
                     aria-label={`Quantity for material ${index + 1}`}
-                    className={cn(inputClass, 'font-mono tabular-nums')}
+                    readOnly
+                    title="Set by the metre calculator below"
+                    className={cn(inputClass, 'font-mono tabular-nums cursor-not-allowed bg-black/[0.04] text-[var(--glass-muted)]')}
                   />
                 </div>
                 <div className="sm:col-span-2">
                   <input
-                    list="bom-units"
                     value={item.unit}
-                    onChange={(e) => updateItem(index, { unit: e.target.value })}
-                    placeholder="Unit"
                     aria-label={`Unit for material ${index + 1}`}
-                    className={inputClass}
+                    readOnly
+                    className={cn(inputClass, 'cursor-not-allowed bg-black/[0.04] text-[var(--glass-muted)]')}
                   />
                 </div>
                 <div className="flex items-center justify-end sm:col-span-1">
                   <button
                     type="button"
-                    onClick={() => setItems((prev) =>
-                      prev.length === 1 ? [blankItem()] : prev.filter((_, i) => i !== index)
-                    )}
+                    onClick={() => removeItem(index)}
                     aria-label={`Remove material ${index + 1}`}
                     className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-[var(--glass-muted)] transition-colors hover:bg-red-50 hover:text-red-600"
                   >
@@ -647,7 +761,113 @@ export default function BomManager({ canDecide }: { canDecide: boolean }) {
                   </button>
                 </div>
               </div>
-            ))}
+
+              {/* Turns "however many rolls sounds right" into an exact figure
+                  — the formula the floor already uses for roll stock, just
+                  done in one place instead of on a phone calculator. Always
+                  shown, never optional — it's the only way a line's quantity
+                  gets filled in. */}
+              <div className="rounded-lg border border-black/[0.06] bg-white p-3">
+                  <div className="grid gap-2 sm:grid-cols-4">
+                    <Field label="Label qty">
+                      <input
+                        type="number" min="0" step="any" inputMode="decimal"
+                        value={item.calc.labelQty}
+                        onChange={(e) => updateCalc(index, { labelQty: e.target.value })}
+                        placeholder="e.g. 10000"
+                        aria-label="Label quantity"
+                        className={cn(inputClass, 'font-mono tabular-nums')}
+                      />
+                    </Field>
+                    <Field label="Repeat (mm)">
+                      <input
+                        type="number" min="0" step="any" inputMode="decimal"
+                        value={item.calc.repeat}
+                        onChange={(e) => updateCalc(index, { repeat: e.target.value })}
+                        placeholder="e.g. 279.4"
+                        aria-label="Repeat length in millimetres"
+                        className={cn(inputClass, 'font-mono tabular-nums')}
+                      />
+                    </Field>
+                    <Field label="Ups">
+                      <input
+                        type="number" min="1" step="1" inputMode="numeric"
+                        value={item.calc.ups}
+                        onChange={(e) => updateCalc(index, { ups: e.target.value })}
+                        aria-label="Number of ups across the web"
+                        className={cn(inputClass, 'font-mono tabular-nums')}
+                      />
+                    </Field>
+                    <Field label="Wastage %">
+                      <input
+                        type="number" min="0" max="50" step="1" inputMode="numeric"
+                        value={item.calc.wastage}
+                        onChange={(e) => updateCalc(index, { wastage: e.target.value })}
+                        aria-label="Wastage percentage"
+                        className={cn(inputClass, 'font-mono tabular-nums')}
+                      />
+                    </Field>
+                  </div>
+
+                  {/* The safety valve: the formula covers the job, but the
+                      floor sometimes genuinely needs more (reprint risk, a
+                      die change) — this is how they ask for that without it
+                      just getting typed over the calculated figure unexplained. */}
+                  <div className="mt-2 grid gap-2 sm:grid-cols-4">
+                    <Field label="Extra (m, optional)">
+                      <input
+                        type="number" min="0" step="any" inputMode="decimal"
+                        value={item.calc.extra}
+                        onChange={(e) => updateCalc(index, { extra: e.target.value })}
+                        placeholder="0"
+                        aria-label="Extra metres requested beyond the formula"
+                        className={cn(inputClass, 'font-mono tabular-nums')}
+                      />
+                    </Field>
+                    <div className="sm:col-span-3">
+                      <Field label={Number(item.calc.extra) > 0 ? 'Remark — why the extra?' : 'Remark (optional)'}>
+                        <input
+                          value={item.calc.remark}
+                          onChange={(e) => updateCalc(index, { remark: e.target.value })}
+                          placeholder="e.g. buffer for reprint risk"
+                          aria-label="Remark for this material line"
+                          className={inputClass}
+                        />
+                      </Field>
+                    </div>
+                  </div>
+
+                  {preview && (
+                    <p className="mt-3 font-mono text-xs text-[var(--glass-muted)]">
+                      {formatQty(preview.qty)} × {preview.repeat}mm ÷ {formatQty(preview.ups)} ups ÷ 1000
+                      {' = '}
+                      <span className="text-[var(--glass-ink)]">{preview.netMetres.toFixed(2)}m net</span>
+                      {' + '}{preview.wastage}% wastage{' = '}{preview.base}m
+                      {preview.extra > 0 && <> {'+ '}{Math.ceil(preview.extra)}m extra</>}
+                      {' = '}
+                      <span className="font-semibold text-[#10553F]">{preview.final}m</span>
+                    </p>
+                  )}
+
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    {item.quantity && (
+                      <span className="text-xs text-emerald-700">
+                        Set to {formatQty(Number(item.quantity))} m
+                      </span>
+                    )}
+                    <div className="flex-1" />
+                    <button
+                      type="button"
+                      onClick={() => applyCalc(index)}
+                      className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg bg-[#10553F] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#0C4232]"
+                    >
+                      <Calculator className="h-3.5 w-3.5" aria-hidden="true" />
+                      {item.quantity ? 'Recalculate' : 'Calculate'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );})}
           </div>
 
           <div className="mt-4">
@@ -859,10 +1079,32 @@ export default function BomManager({ canDecide }: { canDecide: boolean }) {
                           <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-[var(--glass-muted)]">
                             {item.specification && <span>{item.specification}</span>}
                             {item.size && <span className="font-mono">{item.size}</span>}
+                            {/* Same figure both ways (the ordinary case) shows once. The
+                                moment Production asked for more than the formula's answer,
+                                both numbers show — the gap is exactly what the extra was
+                                for, and Admin should see it without opening the line. */}
                             {item.quantity !== null && (
-                              <span className="font-mono tabular-nums text-[var(--glass-ink)]">
-                                {formatQty(item.quantity)}{item.unit ? ` ${item.unit}` : ''}
-                              </span>
+                              item.required_quantity !== null && item.required_quantity !== item.quantity ? (
+                                <span className="flex items-center gap-1.5">
+                                  <span>
+                                    Required{' '}
+                                    <span className="font-mono tabular-nums text-[var(--glass-ink)]">
+                                      {formatQty(item.required_quantity)}{item.unit ? ` ${item.unit}` : ''}
+                                    </span>
+                                  </span>
+                                  <span aria-hidden="true">→</span>
+                                  <span className="font-medium text-amber-700">
+                                    Requested{' '}
+                                    <span className="font-mono tabular-nums">
+                                      {formatQty(item.quantity)}{item.unit ? ` ${item.unit}` : ''}
+                                    </span>
+                                  </span>
+                                </span>
+                              ) : (
+                                <span className="font-mono tabular-nums text-[var(--glass-ink)]">
+                                  {formatQty(item.quantity)}{item.unit ? ` ${item.unit}` : ''}
+                                </span>
+                              )
                             )}
                           </p>
                           {item.note && (

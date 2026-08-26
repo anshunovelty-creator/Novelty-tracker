@@ -737,6 +737,11 @@ export interface BomRequestItem {
   specification:        string | null;
   size:                 string | null;
   quantity:             number | null;
+  // What the metre calculator computed, before any extra was added on top —
+  // null on lines never run through it (or raised before this column
+  // existed). `quantity` is what was actually requested; this is the
+  // formula's own answer, kept alongside it so the two can be compared.
+  required_quantity:    number | null;
   unit:                 string | null;
   note:                 string | null;
   decision:             BomDecision;
@@ -796,11 +801,12 @@ export interface BomRequestInput {
   priority?:  BomPriority;
   note?:      string | null;
   items: {
-    material:       string;
-    specification?: string | null;
-    size?:          string | null;
-    quantity?:      number | null;
-    unit?:          string | null;
-    note?:          string | null;
+    material:           string;
+    specification?:     string | null;
+    size?:              string | null;
+    quantity?:          number | null;
+    required_quantity?: number | null;
+    unit?:              string | null;
+    note?:              string | null;
   }[];
 }
