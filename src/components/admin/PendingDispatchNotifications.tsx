@@ -6,6 +6,12 @@
 // send clears the card off this list; the internal send just marks it
 // notified (shown as a small badge) so the card stays until the party
 // copy actually goes out.
+//
+// Team notifications can go out per-item (packing/prep can lag per item
+// even though everything ships together) or in one bulk send for the whole
+// party group. The party always gets a single consolidated email for every
+// item in the group — there's no per-row party send, since the party only
+// cares about the one truck, not which item was ready first.
 
 import { useState, useEffect, useCallback } from 'react';
 import { Send, Mail, PackageCheck, Plus, Pencil, Trash2, CheckCircle2 } from 'lucide-react';
@@ -59,14 +65,14 @@ export default function PendingDispatchNotifications() {
     }
   }
 
-  async function sendFor(party: string, target: SendTarget) {
-    const key = `${party}:${target}`;
+  async function sendFor(party: string, target: SendTarget, itemIds?: string[]) {
+    const key = itemIds && itemIds.length === 1 ? `item:${itemIds[0]}` : `${party}:${target}`;
     setSendingKey(key);
     try {
       const res  = await fetch('/api/dispatch-notifications/send', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ party, target }),
+        body:    JSON.stringify({ party, target, itemIds }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -74,7 +80,7 @@ export default function PendingDispatchNotifications() {
         return;
       }
       if (data.skipped) {
-        toast.error('Nothing pending for this party anymore');
+        toast.error(itemIds ? 'Nothing pending for this item anymore' : 'Nothing left to send for this party');
         return;
       }
 
@@ -92,7 +98,12 @@ export default function PendingDispatchNotifications() {
         const now = new Date().toISOString();
         setGroups((prev) => prev.map((g) => (
           g.party === party
-            ? { ...g, items: g.items.map((i) => ({ ...i, internal_notified_at: now })) }
+            ? {
+                ...g,
+                items: g.items.map((i) => (
+                  !itemIds || itemIds.includes(i.id) ? { ...i, internal_notified_at: now } : i
+                )),
+              }
             : g
         )));
       }
@@ -215,6 +226,26 @@ export default function PendingDispatchNotifications() {
                         {' · '}
                         <span className="font-mono">{formatAdminDate(item.created_at)}</span>
                       </span>
+                      <button
+                        onClick={() => sendFor(group.party, 'internal', [item.id])}
+                        disabled={sendingKey !== null}
+                        aria-label={
+                          item.internal_notified_at
+                            ? `Resend team notification for ${item.po_number}`
+                            : `Send team notification for ${item.po_number}`
+                        }
+                        title={item.internal_notified_at ? 'Resend to Team' : 'Send to Team'}
+                        className={cn(
+                          'inline-flex items-center justify-center min-h-11 min-w-11 rounded-lg transition-colors disabled:opacity-40',
+                          item.internal_notified_at
+                            ? 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50'
+                            : 'text-[var(--glass-muted)] hover:text-[var(--glass-ink)] hover:bg-black/[0.05]',
+                        )}
+                      >
+                        {item.internal_notified_at
+                          ? <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
+                          : <Mail className="w-3.5 h-3.5" aria-hidden="true" />}
+                      </button>
                       <button
                         onClick={() => setModalItem(item)}
                         aria-label={`Edit entry for ${item.po_number}`}

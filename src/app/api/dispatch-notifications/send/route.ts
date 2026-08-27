@@ -1,10 +1,19 @@
 // src/app/api/dispatch-notifications/send/route.ts
-// POST /api/dispatch-notifications/send { party, target } — sends ONE
-// consolidated dispatch email covering every pending item for that party,
-// to EITHER the party's client contact OR the internal team (independent
-// actions — the team sends internal first, then the party's copy some
-// time later). Only the party send clears the rows from the pending list;
-// the internal send just stamps internal_notified_at for bookkeeping.
+// POST /api/dispatch-notifications/send { party, target, itemIds? } — sends
+// ONE consolidated dispatch email to EITHER the party's client contact OR
+// the internal team (independent actions — the team sends internal first,
+// then the party's copy some time later). Only the party send clears rows
+// from the pending list; the internal send just stamps internal_notified_at
+// for bookkeeping.
+//
+// itemIds lets the internal-team send target a single row (or a subset)
+// instead of every pending item for the party — packing/prep can finish at
+// different times per item even though they all ship together, so the team
+// may need to hear about one item before the rest are ready. When itemIds
+// is omitted, the internal send only picks up items not yet internally
+// notified (so it doesn't duplicate a row already sent individually); the
+// party send always covers every pending item, since the party gets exactly
+// one email per truck regardless of how the team was notified.
 // Dispatch/Admin only.
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -25,19 +34,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Only Dispatch/Admin can send dispatch notifications' }, { status: 403 });
   }
 
-  const body   = await request.json();
-  const party  = typeof body.party === 'string' ? body.party.trim() : '';
-  const target = body.target === 'internal' || body.target === 'party' ? body.target : null;
+  const body    = await request.json();
+  const party   = typeof body.party === 'string' ? body.party.trim() : '';
+  const target  = body.target === 'internal' || body.target === 'party' ? body.target : null;
+  const itemIds = Array.isArray(body.itemIds)
+    ? body.itemIds.filter((id: unknown): id is string => typeof id === 'string')
+    : null;
   if (!party)  return NextResponse.json({ error: 'party is required' }, { status: 400 });
   if (!target) return NextResponse.json({ error: "target must be 'internal' or 'party'" }, { status: 400 });
 
   const admin = createAdminClient();
-  const { data: pending, error: pendingError } = await admin
+  let query = admin
     .from('pending_dispatch_notifications')
     .select('*')
     .eq('party', party)
-    .is('notified_at', null)
-    .order('created_at', { ascending: true });
+    .is('notified_at', null);
+
+  if (itemIds && itemIds.length > 0) {
+    query = query.in('id', itemIds);
+  } else if (target === 'internal') {
+    // Bulk internal send: skip rows already sent individually so a later
+    // "one go" send doesn't duplicate a row someone already notified about.
+    query = query.is('internal_notified_at', null);
+  }
+
+  const { data: pending, error: pendingError } = await query.order('created_at', { ascending: true });
 
   if (pendingError) return NextResponse.json({ error: pendingError.message }, { status: 500 });
 
