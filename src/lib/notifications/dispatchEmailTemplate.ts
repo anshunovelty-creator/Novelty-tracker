@@ -141,8 +141,8 @@ export function getConsolidatedEmailHTML(payload: {
     return `
           <tr style="background-color:${bg};">
             <td style="${cellCls}color:#1a1a1a;font-weight:600;font-size:12px;">${material}</td>
-            <td style="${cellCls}color:#4a7549;font-size:13px;font-family:monospace;">${item.pm_code?.trim() || '—'}</td>
-            <td style="${cellCls}color:#4a7549;font-size:13px;font-family:monospace;">${item.po_number}</td>
+            <td style="${cellCls}color:#4a7549;font-size:15px;font-weight:600;font-family:monospace;">${item.pm_code?.trim() || '—'}</td>
+            <td style="${cellCls}color:#4a7549;font-size:15px;font-weight:600;font-family:monospace;">${item.po_number}</td>
             <td style="${cellCls}color:#10540f;font-weight:600;font-size:11px;">${partial ? 'Partial Dispatch' : 'Dispatched'}</td>
             <td style="${cellCls}color:#1a1a1a;font-size:12px;text-align:right;white-space:nowrap;">${item.qty ? item.qty.toLocaleString('en-IN') : '—'}</td>
           </tr>${remarkRow}`;
@@ -155,7 +155,7 @@ export function getConsolidatedEmailHTML(payload: {
   <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
 <body style="margin:0;padding:0;background-color:#eef4ee;font-family:Arial,sans-serif;">
-  <div style="max-width:600px;width:100%;margin:20px auto;background-color:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #b8d9b7;box-sizing:border-box;">
+  <div style="max-width:680px;width:100%;margin:20px auto;background-color:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #b8d9b7;box-sizing:border-box;">
 
     <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#10540f;">
       <tr>
