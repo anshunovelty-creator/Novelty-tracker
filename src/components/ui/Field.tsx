@@ -1,6 +1,7 @@
 'use client';
 // src/components/ui/Field.tsx
-import React, { useId } from 'react';
+import React, { useId, useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const INPUT_BASE =
@@ -24,9 +25,12 @@ type FieldProps = React.InputHTMLAttributes<HTMLInputElement> & {
   rows?: number;
 };
 
-export function Field({ label, multiline, rows = 3, className, id, ...rest }: FieldProps) {
+export function Field({ label, multiline, rows = 3, className, id, type, ...rest }: FieldProps) {
   const autoId = useId();
   const fieldId = id ?? autoId;
+  const isPassword = type === 'password';
+  const [visible, setVisible] = useState(false);
+
   return (
     <div className="relative">
       {multiline ? (
@@ -38,9 +42,28 @@ export function Field({ label, multiline, rows = 3, className, id, ...rest }: Fi
           {...(rest as unknown as React.TextareaHTMLAttributes<HTMLTextAreaElement>)}
         />
       ) : (
-        <input id={fieldId} placeholder=" " className={cn(INPUT_BASE, className)} {...rest} />
+        <input
+          id={fieldId}
+          type={isPassword && visible ? 'text' : type}
+          placeholder=" "
+          className={cn(INPUT_BASE, isPassword && 'pr-11', className)}
+          {...rest}
+        />
       )}
       <label htmlFor={fieldId} className={LABEL_BASE}>{label}</label>
+      {isPassword && (
+        <button
+          type="button"
+          onClick={() => setVisible((v) => !v)}
+          aria-label={visible ? 'Hide password' : 'Show password'}
+          aria-pressed={visible}
+          className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex items-center justify-center min-h-11 min-w-11 rounded-lg text-white/60 hover:text-white transition-colors"
+        >
+          {visible
+            ? <EyeOff className="w-4 h-4" aria-hidden="true" />
+            : <Eye className="w-4 h-4" aria-hidden="true" />}
+        </button>
+      )}
     </div>
   );
 }
