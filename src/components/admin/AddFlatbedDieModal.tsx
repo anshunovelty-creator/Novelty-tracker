@@ -29,8 +29,9 @@ type Props = {
 export default function AddFlatbedDieModal({ editing, onClose, onSaved }: Props) {
   const titleId = useId();
 
-  const [length,   setLength]   = useState(editing?.length ?? '');
-  const [width,    setWidth]    = useState(editing?.width ?? '');
+  const [length,       setLength]       = useState(editing?.length ?? '');
+  const [width,        setWidth]        = useState(editing?.width ?? '');
+  const [repeatLength, setRepeatLength] = useState(editing?.repeat_length ?? '');
   const [ups,      setUps]      = useState(editing?.ups?.toString() ?? '');
   const [gap,      setGap]      = useState(editing?.gap ?? '');
   const [corner,   setCorner]   = useState(editing?.corner ?? '');
@@ -44,8 +45,9 @@ export default function AddFlatbedDieModal({ editing, onClose, onSaved }: Props)
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!length.trim())     { toast.error('Enter the length'); return; }
-    if (!width.trim())      { toast.error('Enter the width'); return; }
+    if (!length.trim())       { toast.error('Enter the length'); return; }
+    if (!width.trim())        { toast.error('Enter the width'); return; }
+    if (!repeatLength.trim()) { toast.error('Enter the repeat length'); return; }
     if (!ups.trim())        { toast.error('Enter the ups'); return; }
     if (!gap.trim())        { toast.error('Enter the gap'); return; }
     if (!corner.trim())     { toast.error('Enter the corner radius'); return; }
@@ -61,6 +63,7 @@ export default function AddFlatbedDieModal({ editing, onClose, onSaved }: Props)
         body: JSON.stringify({
           length:          length.trim(),
           width:           width.trim(),
+          repeat_length:   repeatLength.trim(),
           ups:             ups.trim(),
           gap:             gap.trim(),
           corner:          corner.trim(),
@@ -92,7 +95,7 @@ export default function AddFlatbedDieModal({ editing, onClose, onSaved }: Props)
               {editing ? 'Edit flatbed die' : 'Add flatbed die'}
             </h2>
             <p className="text-xs text-[var(--glass-muted)] mt-0.5">
-              Length, Width, UPS, Gap, Corner Radius, Shape, Location, Date
+              Length, Width, Repeat Length, UPS, Gap, Corner Radius, Shape, Location, Date
             </p>
           </div>
           <button
@@ -129,6 +132,15 @@ export default function AddFlatbedDieModal({ editing, onClose, onSaved }: Props)
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
+              <FlatbedDieLabel required>Repeat length</FlatbedDieLabel>
+              <input
+                value={repeatLength}
+                onChange={(e) => setRepeatLength(e.target.value)}
+                placeholder="e.g. 85"
+                className={cn(inputCls, 'font-mono')}
+              />
+            </div>
+            <div>
               <FlatbedDieLabel required>UPS</FlatbedDieLabel>
               <input
                 type="number"
@@ -139,6 +151,9 @@ export default function AddFlatbedDieModal({ editing, onClose, onSaved }: Props)
                 className={cn(inputCls, 'font-mono')}
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <FlatbedDieLabel required>Gap</FlatbedDieLabel>
               <input
@@ -148,9 +163,6 @@ export default function AddFlatbedDieModal({ editing, onClose, onSaved }: Props)
                 className={inputCls}
               />
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <FlatbedDieLabel required>Corner radius</FlatbedDieLabel>
               <input
@@ -160,6 +172,9 @@ export default function AddFlatbedDieModal({ editing, onClose, onSaved }: Props)
                 className={inputCls}
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <FlatbedDieLabel required>Shape</FlatbedDieLabel>
               <input
@@ -169,9 +184,6 @@ export default function AddFlatbedDieModal({ editing, onClose, onSaved }: Props)
                 className={inputCls}
               />
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <FlatbedDieLabel required>Location</FlatbedDieLabel>
               <input
@@ -181,6 +193,9 @@ export default function AddFlatbedDieModal({ editing, onClose, onSaved }: Props)
                 className={inputCls}
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <FlatbedDieLabel required>Date</FlatbedDieLabel>
               <input

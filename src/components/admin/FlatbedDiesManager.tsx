@@ -23,7 +23,7 @@ import { SkeletonRows } from '@/components/ui/Skeleton';
 // Header labels for the desk table — must stay in the same order as the
 // <td>s rendered below.
 const FLATBED_DIE_COLUMNS = [
-  'Serial No', 'Location', 'Size', 'Ups', 'Gap', 'Shape', 'Corner', 'Received', 'Actions',
+  'Serial No', 'Location', 'Size', 'Repeat Length', 'Ups', 'Gap', 'Shape', 'Corner', 'Received', 'Actions',
 ] as const;
 const FLATBED_DIE_COLS = FLATBED_DIE_COLUMNS.length;
 
@@ -37,22 +37,23 @@ const EMPTY_FLATBED_DIES: FlatbedDie[] = [];
 // (see buildSrNoMap below) — clicking it sorts by created_at instead, which
 // is exactly the order that number reflects.
 type SortField =
-  | 'shape' | 'length' | 'corner' | 'gap' | 'ups' | 'location' | 'die_received_on' | 'created_at';
+  | 'shape' | 'length' | 'repeat_length' | 'corner' | 'gap' | 'ups' | 'location' | 'die_received_on' | 'created_at';
 type SortDir = 'asc' | 'desc';
 
 const COLUMN_SORT_FIELDS: Partial<Record<typeof FLATBED_DIE_COLUMNS[number], SortField>> = {
-  'Serial No': 'created_at',
-  'Location':  'location',
-  'Size':      'length',
-  'Ups':       'ups',
-  'Gap':       'gap',
-  'Shape':     'shape',
-  'Corner':    'corner',
-  'Received':  'die_received_on',
+  'Serial No':      'created_at',
+  'Location':       'location',
+  'Size':           'length',
+  'Repeat Length':  'repeat_length',
+  'Ups':            'ups',
+  'Gap':            'gap',
+  'Shape':          'shape',
+  'Corner':         'corner',
+  'Received':       'die_received_on',
 };
 
 const SORT_FIELD_KIND: Record<SortField, 'text' | 'number' | 'date'> = {
-  shape: 'text', length: 'text', corner: 'text',
+  shape: 'text', length: 'text', repeat_length: 'text', corner: 'text',
   gap: 'text', ups: 'number', location: 'text', die_received_on: 'date', created_at: 'date',
 };
 
@@ -90,6 +91,7 @@ const FLATBED_DIE_SEARCH_FIELDS: { value: string; label: string; placeholder: st
   { value: 'location',  label: 'Location',   placeholder: 'Search by location' },
   { value: 'length',    label: 'Size (length)', placeholder: 'Search by length' },
   { value: 'width',     label: 'Size (width)',  placeholder: 'Search by width' },
+  { value: 'repeat_length', label: 'Repeat length', placeholder: 'Search by repeat length' },
   { value: 'gap',       label: 'Gap',        placeholder: 'Search by gap' },
   { value: 'ups',       label: 'Ups',        placeholder: 'Search by ups' },
 ];
@@ -112,6 +114,7 @@ function buildFlatbedDieExportColumns(srNoMap: Map<string, number>): CsvColumn<F
     { header: 'Corner',           value: (d) => d.corner },
     { header: 'Length',           value: (d) => d.length },
     { header: 'Width',            value: (d) => d.width },
+    { header: 'Repeat Length',    value: (d) => d.repeat_length },
     { header: 'Ups',              value: (d) => d.ups },
     { header: 'Gap',              value: (d) => d.gap },
     { header: 'Location',         value: (d) => d.location },
@@ -355,6 +358,7 @@ export default function FlatbedDiesManager({ canManage }: { canManage: boolean }
                         of a wrapping inline list — each value gets its own space. */}
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-3 mt-3 pt-3 border-t border-black/[0.06]">
                       <SpecField label="Size" value={sizeOf(die)} mono />
+                      <SpecField label="Repeat Length" value={die.repeat_length} mono />
                       <SpecField label="Location" value={die.location} />
                       <SpecField label="Gap" value={die.gap} />
                       <SpecField label="Ups" value={die.ups?.toString()} mono />
@@ -449,6 +453,7 @@ export default function FlatbedDiesManager({ canManage }: { canManage: boolean }
                       </td>
                       <td className="px-3 py-1.5 font-semibold text-[var(--glass-ink)] whitespace-nowrap">{die.location || '—'}</td>
                       <td className="px-3 py-1.5 font-mono whitespace-nowrap">{sizeOf(die) ?? '—'}</td>
+                      <td className="px-3 py-1.5 font-mono whitespace-nowrap">{die.repeat_length || '—'}</td>
                       <td className="px-3 py-1.5 font-mono whitespace-nowrap">{die.ups ?? '—'}</td>
                       <td className="px-3 py-1.5 whitespace-nowrap">{die.gap || '—'}</td>
                       <td className="px-3 py-1.5 w-[180px] min-w-0 whitespace-normal break-words">{die.shape || '—'}</td>

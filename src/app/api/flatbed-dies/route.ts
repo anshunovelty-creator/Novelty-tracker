@@ -38,6 +38,7 @@ const FLATBED_DIE_SEARCH_FIELDS: Record<string, FlatbedDieSearchField> = {
   location:  { column: 'location',  type: 'text' },
   length:    { column: 'length',    type: 'text' },
   width:     { column: 'width',     type: 'text' },
+  repeat_length: { column: 'repeat_length', type: 'text' },
   gap:       { column: 'gap',       type: 'text' },
   ups:       { column: 'ups',       type: 'int' },
 };
@@ -106,6 +107,7 @@ export async function POST(request: NextRequest) {
     .insert({
       length:          text(body.length),
       width:           text(body.width),
+      repeat_length:   text(body.repeat_length),
       ups:             integer(body.ups),
       gap:             text(body.gap),
       corner:          text(body.corner),

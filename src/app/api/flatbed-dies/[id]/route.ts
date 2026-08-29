@@ -16,7 +16,7 @@ import { getDeptPermissions, canDeptManageDiesPlates } from '@/lib/constants/dep
 type Params = { params: Promise<{ id: string }> };
 
 const TEXT_FIELDS = [
-  'length', 'width', 'gap', 'corner', 'shape', 'location', 'die_received_on',
+  'length', 'width', 'repeat_length', 'gap', 'corner', 'shape', 'location', 'die_received_on',
 ] as const;
 
 const INT_FIELDS = ['ups'] as const;

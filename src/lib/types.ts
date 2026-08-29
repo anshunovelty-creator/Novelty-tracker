@@ -158,6 +158,7 @@ export interface FlatbedDie {
   serial_no: number;              // auto-incrementing, DB-assigned
   length: string | null;          // LENGTH
   width: string | null;           // WIDTH — often a combined "H x W" reading
+  repeat_length: string | null;   // REPEAT LENGTH
   ups: number | null;             // Ups — labels per sheet/stroke
   gap: string | null;             // Gap — e.g. "5 MM"
   corner: string | null;          // Corner radius — e.g. "3 MM", "SPECIAL"
