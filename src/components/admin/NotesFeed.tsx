@@ -28,6 +28,9 @@ import { MessageSquare, X, BellRing, Check } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
+import { requestOpen, subscribeActiveWidget } from '@/lib/floatingWidgetCoordinator';
+import { useResizablePanel } from '@/hooks/useResizablePanel';
+import PanelResizeHandles from './PanelResizeHandles';
 import type { NoteFeedItem } from '@/lib/types';
 
 const POLL_MS  = 25_000;
@@ -70,6 +73,16 @@ function relativeTime(iso: string): string {
 
 export default function NotesFeed({ dept, userEmail }: Props) {
   const [open,           setOpen]           = useState(false);
+  const { resizable, style: resizeStyle, startResize } = useResizablePanel({
+    id: 'notes-feed',
+    defaultWidth: 400,
+    defaultHeight: 560,
+    minWidth: 300,
+    minHeight: 340,
+    anchorRight: 20,
+    anchorBottom: 20,
+    open,
+  });
   const [notes,          setNotes]          = useState<NoteFeedItem[]>([]);
   const [unread,         setUnread]         = useState(0);
   const [filter,         setFilter]         = useState<string>('All');
@@ -237,7 +250,17 @@ export default function NotesFeed({ dept, userEmail }: Props) {
     return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [open]);
 
+  // Close this widget whenever another floating widget (To-Do, Meter
+  // Calculator) opens — see floatingWidgetCoordinator.ts.
+  useEffect(() => {
+    if (!open) return;
+    return subscribeActiveWidget((activeId) => {
+      if (activeId !== 'notes') setOpen(false);
+    });
+  }, [open]);
+
   function handleOpen() {
+    requestOpen('notes');
     setOpen(true);
     poll(); // fetch fresh on open
   }
@@ -262,7 +285,7 @@ export default function NotesFeed({ dept, userEmail }: Props) {
         onClick={handleOpen}
         aria-label={unread > 0 ? `Internal notes, ${unread} unread` : 'Internal notes'}
         className={cn(
-          'fixed bottom-5 right-5 z-50 h-14 w-14 rounded-full',
+          'fixed bottom-5 right-5 z-40 h-14 w-14 rounded-full',
           'bg-brand-primary hover:bg-brand-primary-hover text-white',
           'shadow-lg shadow-black/20 flex items-center justify-center',
           'transition-colors focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/40'
@@ -289,13 +312,15 @@ export default function NotesFeed({ dept, userEmail }: Props) {
     <section
       ref={panelRef}
       aria-label="Internal notes"
+      style={resizeStyle}
       className={cn(
-        'fixed bottom-5 right-5 z-50 flex flex-col',
-        'w-[min(92vw,400px)] max-h-[min(70vh,560px)]',
+        'fixed z-50 flex flex-col',
+        !resizable && 'bottom-5 right-5 w-[min(92vw,400px)] max-h-[min(70vh,560px)]',
         'bg-brand-surface border border-brand-border rounded-2xl',
         'shadow-2xl shadow-black/20 overflow-hidden'
       )}
     >
+      {resizable && <PanelResizeHandles onResizeStart={startResize} />}
       {/* Header */}
       <header className="flex items-center justify-between gap-2 px-4 h-12 bg-brand-header text-white shrink-0">
         <div className="flex items-baseline gap-2 min-w-0">

@@ -17,6 +17,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ListChecks, X, Plus, Check, Pencil, Trash2, History, RotateCcw, Search, Download, AlertTriangle, ChevronLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatAdminDate } from '@/lib/utils';
+import { requestOpen, subscribeActiveWidget } from '@/lib/floatingWidgetCoordinator';
+import { useResizablePanel } from '@/hooks/useResizablePanel';
+import PanelResizeHandles from './PanelResizeHandles';
 import { createClient } from '@/lib/supabase/client';
 import type { PrepressTodo, PrepressTodoLog } from '@/lib/types';
 
@@ -41,6 +44,16 @@ const iconBtnCls = cn(
 
 export default function PrepressTodoPanel() {
   const [open,    setOpen]    = useState(false);
+  const { resizable, style: resizeStyle, startResize } = useResizablePanel({
+    id: 'prepress-todo',
+    defaultWidth: 320,
+    defaultHeight: 460,
+    minWidth: 280,
+    minHeight: 320,
+    anchorRight: 20,
+    anchorBottom: 96,
+    open,
+  });
   const [todos,   setTodos]   = useState<PrepressTodo[]>([]);
   const [loading, setLoading] = useState(true);
   const [newTask, setNewTask] = useState('');
@@ -208,7 +221,17 @@ export default function PrepressTodoPanel() {
     return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [open]);
 
+  // Close this widget whenever another floating widget (chat, Meter
+  // Calculator) opens — see floatingWidgetCoordinator.ts.
+  useEffect(() => {
+    if (!open) return;
+    return subscribeActiveWidget((activeId) => {
+      if (activeId !== 'prepress-todo') setOpen(false);
+    });
+  }, [open]);
+
   function handleOpen() {
+    requestOpen('prepress-todo');
     setOpen(true);
     load();
   }
@@ -387,7 +410,7 @@ export default function PrepressTodoPanel() {
         onClick={handleOpen}
         aria-label={todos.length > 0 ? `Prepress To-Do, ${todos.length} pending` : 'Prepress To-Do'}
         className={cn(
-          'fixed bottom-24 right-5 z-50 h-14 w-14 rounded-full',
+          'fixed bottom-24 right-5 z-40 h-14 w-14 rounded-full',
           'bg-brand-primary hover:bg-brand-primary-hover text-white',
           'shadow-lg shadow-black/20 flex items-center justify-center',
           'transition-colors focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/40',
@@ -414,13 +437,15 @@ export default function PrepressTodoPanel() {
     <section
       ref={panelRef}
       aria-label="Prepress To-Do"
+      style={resizeStyle}
       className={cn(
-        'fixed bottom-24 right-5 z-50 grid grid-rows-[auto_minmax(0,1fr)_auto]',
-        'w-[min(90vw,320px)] max-h-[min(70vh,460px)]',
+        'fixed z-50 grid grid-rows-[auto_minmax(0,1fr)_auto]',
+        !resizable && 'bottom-24 right-5 w-[min(90vw,320px)] max-h-[min(70vh,460px)]',
         'bg-brand-surface border border-brand-border rounded-2xl',
         'shadow-2xl shadow-black/20 overflow-hidden',
       )}
     >
+      {resizable && <PanelResizeHandles onResizeStart={startResize} />}
       <header className="flex items-center justify-between gap-2 px-4 h-12 bg-brand-header text-white shrink-0">
         <div className="flex items-center gap-1.5 min-w-0">
           {/* Drill-down wayfinding: History replaces the icon with an explicit
