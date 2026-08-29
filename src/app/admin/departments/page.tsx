@@ -11,7 +11,6 @@ import { ArrowLeft } from 'lucide-react';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getDeptPermissions } from '@/lib/constants/departments';
 import DepartmentsManager from '@/components/admin/DepartmentsManager';
-import MeterCalculatorAccessManager from '@/components/admin/MeterCalculatorAccessManager';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,7 +48,6 @@ export default async function DepartmentsPage() {
       </div>
 
       <DepartmentsManager />
-      <MeterCalculatorAccessManager />
     </div>
   );
 }

@@ -29,6 +29,7 @@ const FEATURES: { key: string; label: string }[] = [
   { key: 'dies_plates_edit',               label: 'Manage dies & plates' },
   { key: 'job_separation_edit',            label: 'Manage job separation' },
   { key: 'prepress_todo_manage',           label: 'Manage Prepress Todo checklist' },
+  { key: 'meter_calculator_use',           label: 'Use Meter Calculator' },
   { key: 'register_manage',                label: 'Access Register (Follow-ups)' },
   { key: 'bom_use',                        label: 'Access Bill of Materials' },
   { key: 'bom_decide',                     label: 'Decide BOM requests' },
