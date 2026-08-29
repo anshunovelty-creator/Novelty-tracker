@@ -42,6 +42,18 @@ export default function AddFlatbedDieModal({ editing, onClose, onSaved }: Props)
   const [receivedOn, setReceivedOn] = useState(editing?.die_received_on ?? '');
   const [saving, setSaving] = useState(false);
 
+  // A single-up die has no meaningful repeat/gap — default them to N/A the
+  // moment UPS is set to 1, purely as a convenience. Only fills in blanks
+  // (never overwrites something already typed) and leaves both inputs as
+  // ordinary editable fields, so the operator can still correct them.
+  function handleUpsChange(value: string) {
+    setUps(value);
+    if (parseFloat(value) === 1) {
+      setRepeatLength((prev) => (prev.trim() ? prev : 'N/A'));
+      setGap((prev) => (prev.trim() ? prev : 'N/A'));
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
@@ -146,7 +158,7 @@ export default function AddFlatbedDieModal({ editing, onClose, onSaved }: Props)
                 type="number"
                 inputMode="numeric"
                 value={ups}
-                onChange={(e) => setUps(e.target.value)}
+                onChange={(e) => handleUpsChange(e.target.value)}
                 placeholder="Labels per sheet/stroke"
                 className={cn(inputCls, 'font-mono')}
               />
