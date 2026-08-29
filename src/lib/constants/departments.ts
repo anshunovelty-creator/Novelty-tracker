@@ -222,3 +222,25 @@ export function canDeptSetStage(
 export function canDeptSetRunStage(perms: DeptPermissions | null, runStage: RunStage): boolean {
   return perms !== null && (perms.isSuperAdmin || perms.runStages.includes(runStage));
 }
+
+/**
+ * Whether this specific user may open the Meter Calculator from Job
+ * Separation. Granted per-person from Control Center (meter_calculator_access
+ * table), not per-department — the department_feature_permissions system
+ * above only grants at department granularity, which doesn't fit "give it to
+ * this one person" the way the user asked for it.
+ */
+export async function canUserUseMeterCalculator(
+  userId: string | undefined,
+  perms: DeptPermissions | null
+): Promise<boolean> {
+  if (perms?.isSuperAdmin) return true;
+  if (!userId) return false;
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from('meter_calculator_access')
+    .select('user_id')
+    .eq('user_id', userId)
+    .maybeSingle();
+  return !!data;
+}

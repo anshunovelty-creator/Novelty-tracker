@@ -22,6 +22,7 @@ import AddJobForm from './AddJobForm';
 import { PromptModal } from './modals';
 import ManagePartiesModal from './ManagePartiesModal';
 import PrepressTodoPanel from './PrepressTodoPanel';
+import MeterCalculatorPanel from './MeterCalculatorPanel';
 import CsvExportButton from './CsvExportButton';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 
@@ -178,9 +179,9 @@ const JOB_SEPARATION_EXPORT_COLUMNS: CsvColumn<JobSeparation>[] = [
   { header: 'Added',          value: (j) => csvTimestamp(j.created_at) },
 ];
 
-type Props = { canManage: boolean; canManageTodo: boolean; dept: Department | null };
+type Props = { canManage: boolean; canManageTodo: boolean; canUseMeterCalculator: boolean; dept: Department | null };
 
-export default function JobSeparationManager({ canManage, canManageTodo, dept }: Props) {
+export default function JobSeparationManager({ canManage, canManageTodo, canUseMeterCalculator, dept }: Props) {
   const [search,      setSearch]      = useState('');
   const [searchField, setSearchField] = useState('all');
   const [range,       setRange]       = useState<DateRangeOption>('month');
@@ -372,6 +373,7 @@ export default function JobSeparationManager({ canManage, canManageTodo, dept }:
   return (
     <div className="space-y-3">
       {canManageTodo && <PrepressTodoPanel />}
+      {canUseMeterCalculator && <MeterCalculatorPanel />}
 
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-2">
@@ -602,7 +604,7 @@ export default function JobSeparationManager({ canManage, canManageTodo, dept }:
                       {/* Specs: one labeled cell per field, aligned in a grid instead
                           of a wrapping inline list — each value gets its own space. */}
                       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-3 mt-3 pt-3 border-t border-black/[0.06]">
-                        <SpecField label="PO No" value={row.po_no} mono />
+                        <SpecField label="PO No" value={row.po_no} mono wrapIfLong />
                         <SpecField label="PO Date" value={formatNumericDate(row.po_date)} mono />
                         <SpecField label="PM Code" value={row.pm_code} mono />
                         <SpecField label="Quantity" value={row.quantity !== null ? formatQty(row.quantity) : null} mono />
@@ -749,8 +751,14 @@ export default function JobSeparationManager({ canManage, canManageTodo, dept }:
                             </p>
                           )}
                         </td>
-                        <td className="px-3 py-1.5 whitespace-nowrap align-top border-r border-white/8">
-                          <p className={cn('font-mono text-[13px] font-bold tracking-wide', !isCancelled && 'text-[var(--glass-ink)]')}>{row.po_no || '—'}</p>
+                        <td className="px-3 py-1.5 max-w-[140px] whitespace-nowrap align-top border-r border-white/8">
+                          <p className={cn(
+                            'font-mono text-[13px] font-bold tracking-wide',
+                            !isCancelled && 'text-[var(--glass-ink)]',
+                            // Long PO numbers would otherwise stretch the column indefinitely —
+                            // wrap them instead once they pass a normal PO's length.
+                            (row.po_no?.length ?? 0) > 12 && 'whitespace-normal break-all',
+                          )}>{row.po_no || '—'}</p>
                           <p className={cn('text-xs mt-0.5', !isCancelled && 'text-[var(--glass-muted)]')}>{formatNumericDate(row.po_date) || '—'}</p>
                         </td>
                         <td className="px-3 py-1.5 w-[200px] min-w-0 whitespace-normal align-top border-r border-white/8">
@@ -931,14 +939,21 @@ export default function JobSeparationManager({ canManage, canManageTodo, dept }:
   );
 }
 
-function SpecField({ label, value, mono }: { label: string; value?: string | null; mono?: boolean }) {
+function SpecField({ label, value, mono, wrapIfLong }: { label: string; value?: string | null; mono?: boolean; wrapIfLong?: boolean }) {
   if (!value || value === '—') return null;
+  // Most values truncate with an ellipsis to keep the grid tidy, but a long
+  // PO number loses meaning if any digit is hidden — wrap it in full instead.
+  const shouldWrap = wrapIfLong && value.length > 12;
   return (
     <div className="min-w-0">
       <p className="text-[10px] font-medium text-[var(--glass-muted)] uppercase tracking-wide">
         {label}
       </p>
-      <p className={cn('text-sm text-[var(--glass-ink)] font-semibold mt-0.5 truncate', mono && 'font-mono')}>
+      <p className={cn(
+        'text-sm text-[var(--glass-ink)] font-semibold mt-0.5',
+        mono && 'font-mono',
+        shouldWrap ? 'whitespace-normal break-all' : 'truncate',
+      )}>
         {value}
       </p>
     </div>

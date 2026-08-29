@@ -10,7 +10,7 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { getDeptPermissions, canDeptManageJobSeparation, canDeptManagePrepressTodo } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageJobSeparation, canDeptManagePrepressTodo, canUserUseMeterCalculator } from '@/lib/constants/departments';
 import JobSeparationManager from '@/components/admin/JobSeparationManager';
 
 export const dynamic = 'force-dynamic';
@@ -24,6 +24,7 @@ export default async function JobSeparationPage() {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   const perms = await getDeptPermissions(user?.user_metadata?.department);
+  const canUseMeterCalculator = await canUserUseMeterCalculator(user?.id, perms);
 
   return (
     <div className="space-y-4">
@@ -46,6 +47,7 @@ export default async function JobSeparationPage() {
       <JobSeparationManager
         canManage={canDeptManageJobSeparation(perms)}
         canManageTodo={canDeptManagePrepressTodo(perms)}
+        canUseMeterCalculator={canUseMeterCalculator}
         dept={perms?.key ?? null}
       />
     </div>
