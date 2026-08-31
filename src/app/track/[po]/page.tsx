@@ -14,7 +14,7 @@ import type { ClientStatusLog, DispatchSchedule, Job, JobStageTimestamp, PrintRu
 
 type Params = {
   params: Promise<{ po: string }>;
-  searchParams: Promise<{ id?: string }>;
+  searchParams: Promise<{ id?: string; party?: string }>;
 };
 
 // Anon client for public reads — reads through client_job_view and client_status_log_view
@@ -28,14 +28,32 @@ export default async function TrackJobPage({ params, searchParams }: Params) {
   const adminClient = createAdminClient();
 
   const { po } = await params;
-  const { id: selectedJobId } = await searchParams;
+  const { id: selectedJobId, party } = await searchParams;
   const searchTerm = decodeURIComponent(po).trim();
+  const partyTerm = (party ?? '').trim();
 
-  // Search by PO number OR job name.
-  const { data: jobs, error } = await anonClient
-    .from('client_job_view')
-    .select('*')
-    .or(`po_number.ilike.%${searchTerm}%,job_name.ilike.%${searchTerm}%`);
+  // Require a real search term — a blank/whitespace-only value would
+  // otherwise ilike-match every job in the system once escaped below.
+  // Escape ilike wildcards (% _) so a typed one matches literally instead
+  // of broadening the search, and strip .or()'s own filter separators
+  // (, ( )) so the term can't inject additional filter clauses.
+  const escape = (s: string) => s.replace(/[%_]/g, '\\$&').replace(/[,()]/g, ' ');
+  const pattern = `%${escape(searchTerm)}%`;
+  const partyPattern = `%${escape(partyTerm)}%`;
+
+  // Search by PO number or PM code, AND require the Company Name to match.
+  // PO numbers are assigned by each client independently, so two different
+  // companies can genuinely share the same PO number — without the Company
+  // Name filter, one client's search could return another client's job.
+  // Job name is deliberately not searchable so an outsider can't fish for
+  // orders by guessing product/item names.
+  const { data: jobs, error } = (searchTerm.length < 2 || partyTerm.length < 2)
+    ? { data: [], error: null }
+    : await anonClient
+        .from('client_job_view')
+        .select('*')
+        .or(`po_number.ilike.${pattern},pm_code.ilike.${pattern}`)
+        .ilike('party', partyPattern);
 
   if (error || !jobs || jobs.length === 0) {
     return (
@@ -43,8 +61,9 @@ export default async function TrackJobPage({ params, searchParams }: Params) {
         <p className="text-2xl mb-2">🔍</p>
         <h2 className="text-lg font-semibold text-white mb-2">No Matching Job Found</h2>
         <p className="text-sm text-green-200">
-          No result found for <strong>{searchTerm}</strong>.
-          Please check and try again.
+          No result found for <strong>{searchTerm}</strong>
+          {partyTerm && <> at <strong>{partyTerm}</strong></>}.
+          Please check your PO Number/PM Code and Company Name and try again.
         </p>
         <a
           href="/track"
@@ -77,9 +96,11 @@ export default async function TrackJobPage({ params, searchParams }: Params) {
           : Promise.resolve({ data: [] }),
         // Always fetch — the client_job_view.has_partial_runs flag is unreliable
         // on drifted databases, so we render the runs card whenever runs exist.
+        // Excludes `notes` — internal free text not meant for the client portal
+        // (see migrations/003_print_runs.sql anon-grant comment).
         anonClient
           .from('print_runs')
-          .select('*')
+          .select('id, job_id, run_number, qty_this_run, qty_remaining_after, status, current_stage, started_at, dispatched_at, qc_remark, schedule_id')
           .eq('job_id', job.id)
           .order('run_number'),
       ]);
@@ -122,6 +143,7 @@ export default async function TrackJobPage({ params, searchParams }: Params) {
       <TrackAutoRefresh />
       <TrackJobAccordion
         poNumber={searchTerm}
+        partyTerm={partyTerm}
         jobs={jobBundles}
         initialJobId={selectedJobId}
       />

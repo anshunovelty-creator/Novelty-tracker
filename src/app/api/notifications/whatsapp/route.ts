@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ skipped: true, reason: 'no_whatsapp_on_file' });
   }
 
-  const trackUrl = `${process.env.NEXT_PUBLIC_APP_URL}/track/${po_number}`;
+  const trackUrl = `${process.env.NEXT_PUBLIC_APP_URL}/track/${encodeURIComponent(po_number)}?party=${encodeURIComponent(party)}`;
   const message  = buildMessage({ name: contact.name, job_name, po_number, status, remark, qty, trackUrl });
 
   const res = await fetch(

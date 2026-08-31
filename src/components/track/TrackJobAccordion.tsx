@@ -30,11 +30,13 @@ type TrackJobBundle = {
 
 type Props = {
   poNumber: string;
+  partyTerm: string;
   jobs: TrackJobBundle[];
   initialJobId?: string;
 };
 
-export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Props) {
+export default function TrackJobAccordion({ poNumber, partyTerm, jobs, initialJobId }: Props) {
+  const partyQuery = `party=${encodeURIComponent(partyTerm)}`;
   const router = useRouter();
   const firstJobId = jobs[0]?.job.id;
   const hasInitialJob = Boolean(initialJobId && jobs.some((bundle) => bundle.job.id === initialJobId));
@@ -86,13 +88,13 @@ export default function TrackJobAccordion({ poNumber, jobs, initialJobId }: Prop
     // Toggle close when clicking the same open row.
     if (openJobId === jobId) {
       setOpenJobId(undefined);
-      router.replace(`/track/${encodeURIComponent(poNumber)}`, { scroll: false });
+      router.replace(`/track/${encodeURIComponent(poNumber)}?${partyQuery}`, { scroll: false });
       return;
     }
 
     // Open the selected job directly (GSAP animates the previous one closed).
     setOpenJobId(jobId);
-    router.replace(`/track/${encodeURIComponent(poNumber)}?id=${jobId}`, { scroll: false });
+    router.replace(`/track/${encodeURIComponent(poNumber)}?${partyQuery}&id=${jobId}`, { scroll: false });
   }
 
   return (

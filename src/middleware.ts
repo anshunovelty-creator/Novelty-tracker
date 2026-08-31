@@ -5,6 +5,9 @@
 // - /display/* → production-room wall displays; also require a session
 // - /track/* → public, no auth required
 // - /api/cron/* → validated by CRON_SECRET header, no auth session needed
+// - /api/notifications/* → internal-only (fired server-to-server from
+//   jobs/[id]/status/route.ts, no user session to forward); validated by
+//   the same CRON_SECRET header convention so they can't be hit directly
 // - /api/* (mutating methods) → rejects the read-only Viewer department;
 //   see the Viewer note in lib/constants/departments.ts. Individual routes
 //   still do their own department checks — this is a backstop, not the
@@ -26,6 +29,16 @@ export async function middleware(request: NextRequest) {
   if (pathname.startsWith('/api/cron/')) {
     const cronSecret = request.headers.get('x-cron-secret');
     if (cronSecret !== process.env.CRON_SECRET) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    return NextResponse.next();
+  }
+
+  // Notification fan-out: internal-only, called server-to-server with no
+  // user session to check — gated by the same secret-header convention.
+  if (pathname.startsWith('/api/notifications/')) {
+    const internalSecret = request.headers.get('x-internal-secret');
+    if (internalSecret !== process.env.CRON_SECRET) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     return NextResponse.next();

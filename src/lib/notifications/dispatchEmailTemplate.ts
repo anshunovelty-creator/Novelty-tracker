@@ -209,9 +209,11 @@ export function getConsolidatedEmailHTML(payload: {
 </html>`;
 }
 
-export function getEmailHTML(payload: Omit<NotifyPayload, 'job_id'> & { party: string }): string {
-  const { job_name, po_number, party, status, remark, qty } = payload;
-  const trackUrl = `${process.env.NEXT_PUBLIC_APP_URL}/track/${po_number}`;
+export function getEmailHTML(
+  payload: Omit<NotifyPayload, 'job_id'> & { party: string; companyName: string }
+): string {
+  const { job_name, po_number, party, companyName, status, remark, qty } = payload;
+  const trackUrl = `${process.env.NEXT_PUBLIC_APP_URL}/track/${encodeURIComponent(po_number)}?party=${encodeURIComponent(companyName)}`;
 
   const messageBody = (() => {
     switch (status) {

@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
   }
 
   const subject = getSubject(status, job_name ?? po_number);
-  const html    = getEmailHTML({ job_name, po_number, party: contact.name, status, remark, qty });
+  const html    = getEmailHTML({ job_name, po_number, party: contact.name, companyName: party, status, remark, qty });
 
   try {
     const { id } = await sendMail({ to: contact.emails, subject, html });

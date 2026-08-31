@@ -10,13 +10,17 @@ import { Field } from '@/components/ui/Field';
 export default function TrackPage() {
   const router = useRouter();
   const [po, setPo] = useState('');
+  const [company, setCompany] = useState('');
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const cleaned = po.trim();
-    if (!cleaned) return;
-    router.push(`/track/${encodeURIComponent(cleaned)}`);
+    const cleanedPo = po.trim();
+    const cleanedCompany = company.trim();
+    if (!cleanedPo || !cleanedCompany) return;
+    router.push(`/track/${encodeURIComponent(cleanedPo)}?party=${encodeURIComponent(cleanedCompany)}`);
   }
+
+  const canSubmit = po.trim() && company.trim();
 
   return (
     <div className="flex flex-col items-center pt-8">
@@ -25,7 +29,7 @@ export default function TrackPage() {
           Track Your Order
         </h1>
         <p className="text-[var(--glass-muted)] text-sm text-center mb-8">
-          Enter your Purchase Order number or Job Name to see the current status.
+          Enter your Purchase Order number or PM Code along with your Company Name to see the current status.
         </p>
       </Reveal>
 
@@ -34,11 +38,12 @@ export default function TrackPage() {
         onSubmit={handleSubmit}
         className="space-y-3"
       >
-        <Field label="PO Number or Job Name" value={po} onChange={(e) => setPo(e.target.value)}
+        <Field label="PO Number or PM Code" value={po} onChange={(e) => setPo(e.target.value)}
                className="font-mono tracking-wide" />
+        <Field label="Company Name" value={company} onChange={(e) => setCompany(e.target.value)} />
         <button
           type="submit"
-          disabled={!po.trim()}
+          disabled={!canSubmit}
           className={cn(
             'w-full bg-brand-primary text-white py-3 rounded-xl text-sm font-medium',
             'hover:bg-brand-primary/90 transition-colors',

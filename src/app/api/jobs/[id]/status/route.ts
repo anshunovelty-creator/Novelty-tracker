@@ -393,17 +393,23 @@ export async function POST(request: NextRequest, { params }: Params) {
       qty:        qty_dispatched ?? updatedJob.dispatched_qty,
     };
 
+    // Internal-only calls — middleware rejects these without the header below.
+    const internalHeaders = {
+      'Content-Type':      'application/json',
+      'x-internal-secret': process.env.CRON_SECRET ?? '',
+    };
+
     const sends: Promise<Response>[] = [];
     if (!isDispatchEvent) {
       sends.push(fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/notifications/email`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: internalHeaders,
         body:    JSON.stringify(notifyPayload),
       }));
     }
     sends.push(fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/notifications/whatsapp`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: internalHeaders,
       body:    JSON.stringify(notifyPayload),
     }));
 
