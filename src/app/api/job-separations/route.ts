@@ -48,10 +48,12 @@ const JOB_SEPARATION_SEARCH_FIELDS: Record<string, JobSeparationSearchField> = {
 
 // Default scope keeps both the payload and the query small — at 400-700
 // rows added a month, "all time" grows unbounded while "this month" stays
-// flat. Mirrors job_separation_period() in the migration (Asia/Kolkata,
-// no DST) so a row's sr_no prefix (e.g. AUG26-1) always agrees with which
-// range bucket it falls into — a UTC-based cutoff would disagree with the
-// trigger for the ~5.5h each day they're on different sides of midnight.
+// flat. Buckets on the same date the Sr. No. trigger uses — po_date when
+// present, created_at otherwise (see trigger_set_job_separation_sr_no() in
+// 051_job_separation_sr_no_by_po_date.sql) — so "Current month" always
+// means "this month's Sr. No. series", not "entered this month". A PO
+// dated 31 Aug added a few days into September must still show up under
+// August, matching its AUG26 number.
 type DateRange = 'month' | '3months' | 'all';
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
@@ -62,9 +64,22 @@ function istMonthStartUTC(monthsAgo: number): Date {
   );
 }
 
-function rangeStartISO(range: DateRange): string | null {
+// po_date is a plain DATE — no time-of-day/timezone to resolve — so the
+// boundary is a calendar date string, not an IST-adjusted instant.
+function istMonthStartDateStr(monthsAgo: number): string {
+  const ist = new Date(Date.now() + IST_OFFSET_MS);
+  return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth() - monthsAgo, 1))
+    .toISOString()
+    .slice(0, 10);
+}
+
+function rangeBounds(range: DateRange): { poDateStart: string; createdAtStart: string } | null {
   if (range === 'all') return null;
-  return istMonthStartUTC(range === '3months' ? 2 : 0).toISOString();
+  const monthsAgo = range === '3months' ? 2 : 0;
+  return {
+    poDateStart: istMonthStartDateStr(monthsAgo),
+    createdAtStart: istMonthStartUTC(monthsAgo).toISOString(),
+  };
 }
 
 // Caps the payload the same way `range` caps the query — "Current month"
@@ -101,8 +116,15 @@ export async function GET(request: NextRequest) {
     .order('created_at', { ascending: false })
     .limit(limit + 1);
 
-  const start = rangeStartISO(range);
-  if (start) query = query.gte('created_at', start);
+  const bounds = rangeBounds(range);
+  if (bounds) {
+    // A row belongs to the bucket its Sr. No. belongs to: po_date's month
+    // when po_date is set, created_at's month for the legacy rows it
+    // isn't (mirrors the trigger's own COALESCE).
+    query = query.or(
+      `po_date.gte.${bounds.poDateStart},and(po_date.is.null,created_at.gte.${bounds.createdAtStart})`
+    );
+  }
 
   if (search) {
     const config = field ? JOB_SEPARATION_SEARCH_FIELDS[field] : undefined;
