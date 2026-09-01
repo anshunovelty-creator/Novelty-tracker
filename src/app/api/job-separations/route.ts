@@ -162,6 +162,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Party is required' }, { status: 400 });
   }
 
+  // Required now, not just recorded: the DB trigger files the Sr. No.
+  // under the PO's own month, so a row with no PO Date has nothing to
+  // key its series on.
+  const poDate = text(body.po_date);
+  if (!poDate) {
+    return NextResponse.json({ error: 'PO Date is required' }, { status: 400 });
+  }
+
   // A caller may pin an explicit Sr. No. (e.g. correcting an import); blank
   // means "let the database trigger auto-assign one".
   const srNo = text(body.sr_no);
@@ -173,7 +181,7 @@ export async function POST(request: NextRequest) {
       sr_no:          srNo,
       party,
       po_no:          text(body.po_no),
-      po_date:        text(body.po_date),
+      po_date:        poDate,
       pm_code:        text(body.pm_code),
       material_name:  text(body.material_name),
       quantity:       integer(body.quantity),

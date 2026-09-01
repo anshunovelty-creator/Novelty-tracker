@@ -118,6 +118,7 @@ export default function AddJobSeparationModal({ editing, prefill, onClose, onSav
       return;
     }
     if (!poNo.trim())         { toast.error('Enter the PO no'); return; }
+    if (!poDate.trim())       { toast.error("Enter the PO date — it decides which month's series this row gets"); return; }
     if (!materialName.trim()) { toast.error('Enter the material name'); return; }
     if (!quantity.trim())     { toast.error('Enter the quantity'); return; }
     if (!rate.trim())         { toast.error('Enter the rate'); return; }
@@ -167,8 +168,8 @@ export default function AddJobSeparationModal({ editing, prefill, onClose, onSav
               {editing && editing.sr_no
                 ? `${editing.sr_no} · fields follow the PO sheet, left to right`
                 : prefill
-                  ? `Duplicated from ${prefill.sr_no ?? 'previous row'} · Sr. No. is assigned automatically`
-                  : 'Sr. No. is assigned automatically · fields follow the PO sheet, left to right'}
+                  ? `Duplicated from ${prefill.sr_no ?? 'previous row'} · Sr. No. is assigned from the PO date`
+                  : 'Sr. No. is assigned from the PO date · fields follow the PO sheet, left to right'}
             </p>
           </div>
           <button
@@ -234,7 +235,7 @@ export default function AddJobSeparationModal({ editing, prefill, onClose, onSav
               />
             </div>
             <div>
-              <JsLabel>PO Date</JsLabel>
+              <JsLabel required>PO Date</JsLabel>
               <input
                 type="date"
                 value={poDate}
