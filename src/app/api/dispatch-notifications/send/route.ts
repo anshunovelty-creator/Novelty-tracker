@@ -80,12 +80,6 @@ export async function POST(request: NextRequest) {
       pm_code:   i.pm_code,
     }));
 
-    // Subject carries the PO so repeat dispatches to one party no longer
-    // share an identical subject (which had Gmail collapsing unrelated
-    // dispatches into a single conversation); threadKey then groups the
-    // ones that genuinely belong together — see dispatchEmailTemplate.
-    const subject = getConsolidatedSubject(dispatchItems, party);
-
     if (target === 'party') {
       // A party can have several contacts on file (migration 046) — every
       // one of them gets this email. The individual-name greeting only
@@ -104,8 +98,15 @@ export async function POST(request: NextRequest) {
         const contactName = contacts?.length === 1 ? contacts[0].contact_name : null;
         const html = getConsolidatedEmailHTML({ party, contactName, items: dispatchItems });
         try {
+          // Subject carries the PO so repeat dispatches to one party no
+          // longer share an identical subject (which had Gmail collapsing
+          // unrelated dispatches into a single conversation); threadKey
+          // then groups the ones that genuinely belong together — see
+          // dispatchEmailTemplate. The party copy threads across dates on
+          // purpose, so the client sees the full PO history in one place.
+          const subject   = getConsolidatedSubject(dispatchItems, party, 'party');
           const threadKey = getDispatchThreadKey(dispatchItems, party, 'party');
-          await sendMail({ to: partyEmails, subject, html, threadKey });
+          await sendMail({ to: partyEmails, subject, html, threadKey, inlineLogo: true });
           sentToParty = true;
         } catch (err) {
           console.error('[dispatch-notifications send] client email:', err);
@@ -123,8 +124,12 @@ export async function POST(request: NextRequest) {
       if (internalEmails.length > 0) {
         const html = getConsolidatedEmailHTML({ party, items: dispatchItems, audience: 'team' });
         try {
+          // Team copy is date-stamped and threads per-day — a dispatch of
+          // the same PO on a later date must not collapse into the earlier
+          // day's team email (see dispatchEmailTemplate).
+          const subject   = getConsolidatedSubject(dispatchItems, party, 'team');
           const threadKey = getDispatchThreadKey(dispatchItems, party, 'team');
-          await sendMail({ to: internalEmails, subject, html, threadKey });
+          await sendMail({ to: internalEmails, subject, html, threadKey, inlineLogo: true });
           sentToInternal = true;
         } catch (err) {
           console.error('[dispatch-notifications send] internal email:', err);

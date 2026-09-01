@@ -10,6 +10,7 @@
 // email) — all send through this one transporter.
 
 import nodemailer from 'nodemailer';
+import { LOGO_DATA_URI, LOGO_CID } from './logoDataUri';
 
 let transporter: nodemailer.Transporter | null = null;
 
@@ -39,6 +40,12 @@ export async function sendMail(opts: {
   // PO). Every send carrying the same key threads together in the
   // recipient's client; omit it and the email stands on its own.
   threadKey?: string | null;
+  // Attach the Novelty Labels logo as an inline CID image and reference it
+  // in html via <img src="cid:...">. Set this instead of putting the logo
+  // in the HTML as a data: URI — Outlook desktop, Outlook.com/Office 365,
+  // and Yahoo Mail strip data: URIs from <img src> outright, which showed
+  // as a broken image icon for recipients on those clients.
+  inlineLogo?: boolean;
 }): Promise<{ id?: string }> {
   // Point References/In-Reply-To at a synthetic root id that no real message
   // ever uses. Mail clients thread on a shared References root, so this
@@ -55,6 +62,16 @@ export async function sendMail(opts: {
     subject: opts.subject,
     html:    opts.html,
     ...(threadRoot ? { references: threadRoot, inReplyTo: threadRoot } : {}),
+    ...(opts.inlineLogo
+      ? {
+          attachments: [{
+            filename:    'novelty-labels-logo.png',
+            cid:         LOGO_CID,
+            content:     Buffer.from(LOGO_DATA_URI.split(',')[1], 'base64'),
+            contentType: 'image/png',
+          }],
+        }
+      : {}),
   });
   return { id: info.messageId };
 }

@@ -5,7 +5,7 @@
 // email, via getConsolidatedSubject/getConsolidatedEmailHTML below).
 
 import type { Stage } from '@/lib/constants/stages';
-import { LOGO_DATA_URI } from './logoDataUri';
+import { LOGO_CID } from './logoDataUri';
 
 export type NotifyPayload = {
   job_id:    string;
@@ -68,13 +68,22 @@ function todayInIndia(): string {
 export function getConsolidatedSubject(
   items: Pick<DispatchItem, 'po_number'>[],
   party: string,
+  audience: 'party' | 'team' = 'party',
 ): string {
   const pos = uniquePoNumbers(items);
   if (pos.length === 1) {
     // Some parties already prefix their own PO numbers ("PO/2026/0012") —
     // don't render "PO PO/2026/0012".
     const label = /^po\b|^po[^a-z0-9]/i.test(pos[0]) ? pos[0] : `PO ${pos[0]}`;
-    return `Dispatch Details / ${party} — ${label}`;
+    // The team copy is date-stamped so a repeat dispatch of the same PO on a
+    // later day gets its own subject (and, via getDispatchThreadKey below,
+    // its own thread) instead of collapsing into the earlier day's email.
+    // The party-facing copy is left unstamped — those intentionally thread
+    // together across dates so the client sees the full PO history in one
+    // conversation.
+    return audience === 'team'
+      ? `Dispatch Details / ${party} — ${label} — ${todayInIndia()}`
+      : `Dispatch Details / ${party} — ${label}`;
   }
   return `Dispatch Details / ${party} — ${pos.length} POs · ${todayInIndia()}`;
 }
@@ -93,7 +102,11 @@ export function getDispatchThreadKey(
   const pos = uniquePoNumbers(items);
   if (pos.length !== 1) return null;
   const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  return `dispatch-${audience}-${slug(party)}-${slug(pos[0])}`;
+  // Team copies split by day (see getConsolidatedSubject) — a dispatch to
+  // the team stands on its own each day even though the party thread keeps
+  // partial dispatches of the same PO together long-term.
+  const dayKey = audience === 'team' ? `-${slug(todayInIndia())}` : '';
+  return `dispatch-${audience}-${slug(party)}-${slug(pos[0])}${dayKey}`;
 }
 
 // ── Green "Dispatch Notification" branding ────────────────────────
@@ -164,7 +177,7 @@ export function getConsolidatedEmailHTML(payload: {
           <h2 style="margin:0;color:#ffffff;font-size:18px;font-weight:700;letter-spacing:0.6px;">Dispatch Notification</h2>
         </td>
         <td style="padding:18px 16px 18px 0;text-align:right;vertical-align:middle;width:100px;">
-          <img src="${LOGO_DATA_URI}" alt="Novelty Labels" width="80" style="display:block;margin-left:auto;background-color:#ffffff;border-radius:6px;padding:5px 8px;max-width:100%;height:auto;" />
+          <img src="cid:${LOGO_CID}" alt="Novelty Labels" width="80" style="display:block;margin-left:auto;background-color:#ffffff;border-radius:6px;padding:5px 8px;max-width:100%;height:auto;" />
         </td>
       </tr>
     </table>
