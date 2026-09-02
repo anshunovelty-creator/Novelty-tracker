@@ -24,6 +24,7 @@ import HistoryPanel from './HistoryPanel';
 import DeliveryDateEdit from './DeliveryDateEdit';
 import EditJobModal from './EditJobModal';
 import JobDuplicateButton from './JobDuplicateButton';
+import { Button } from '@/components/ui/Button';
 import JobActionModals from './JobActionModals';
 
 /** Number of <td>s in a row — the expanded history panel has to span them all. */
@@ -297,52 +298,41 @@ export default function JobRow({
         {/* ── Actions ──────────────────────────────────────────────── */}
         <td className="px-4 py-4 align-top w-[200px]">
           <div className="flex items-center justify-end gap-1.5">
-            <button
+            <Button
+              size="sm"
+              icon={isExpanded ? ChevronUp : ChevronDown}
               onClick={onToggleExpand}
               aria-expanded={isExpanded}
               aria-label={isExpanded ? 'Hide job history' : 'Show job history'}
-              className={cn(
-                'inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md',
-                'bg-white border border-white/15 text-[var(--glass-ink)]',
-                'hover:bg-black/[0.04] transition-colors whitespace-nowrap',
-              )}
             >
-              {isExpanded
-                ? <><ChevronUp className="w-3.5 h-3.5" aria-hidden="true" /> Less</>
-                : <><ChevronDown className="w-3.5 h-3.5" aria-hidden="true" /> More</>}
-            </button>
+              {isExpanded ? 'Less' : 'More'}
+            </Button>
 
             {canDeptEditJobDetails(dept) && (
-              <button
+              <Button
+                size="sm"
+                icon={Pencil}
                 onClick={() => setEditing(true)}
                 aria-label={`Edit job ${cardNo ?? job.po_number}`}
                 title="Edit job details"
-                className={cn(
-                  'inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md',
-                  'bg-white border border-white/15 text-[var(--glass-ink)]',
-                  'hover:bg-black/[0.04] transition-colors whitespace-nowrap',
-                )}
               >
-                <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
                 Edit
-              </button>
+              </Button>
             )}
 
             <JobDuplicateButton job={job} onDuplicate={onDuplicate} />
 
             {dept.isSuperAdmin && (
-              <button
+              <Button
+                size="sm"
+                intent="danger"
+                icon={Trash2}
                 onClick={actions.openDeleteModal}
                 aria-label={`Delete job ${cardNo ?? job.po_number}`}
                 title="Delete job"
-                className={cn(
-                  'inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md',
-                  'border border-transparent text-red-300 hover:bg-red-400/15 transition-colors',
-                )}
               >
-                <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                 Del
-              </button>
+              </Button>
             )}
           </div>
         </td>

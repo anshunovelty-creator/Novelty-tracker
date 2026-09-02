@@ -11,6 +11,7 @@ import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-quer
 import { Search, Plus, Pencil, Trash2, Scissors, ArrowUp, ArrowDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatNumericDate } from '@/lib/utils';
+import { Button } from '@/components/ui/Button';
 import { csvDate, csvTimestamp, type CsvColumn } from '@/lib/export/csv';
 import type { Die, DieStatus } from '@/lib/types';
 import AddDieModal from './AddDieModal';
@@ -288,16 +289,9 @@ export default function DiesManager({ canManage }: { canManage: boolean }) {
         <CsvExportButton rows={dies} columns={exportColumns} filename="dies" />
 
         {canManage && (
-          <button
-            onClick={() => setAdding(true)}
-            className={cn(
-              'inline-flex items-center justify-center gap-1.5 min-h-11 px-4 rounded-xl',
-              'text-sm font-medium bg-brand-primary text-white hover:bg-brand-primary/90 transition-colors',
-            )}
-          >
-            <Plus className="w-4 h-4" aria-hidden="true" />
-            Add die
-          </button>
+          <Button intent="primary" icon={Plus} onClick={() => setAdding(true)}>
+              Add die
+          </Button>
         )}
       </div>
 

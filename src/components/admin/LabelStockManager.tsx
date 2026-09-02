@@ -11,6 +11,7 @@ import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-quer
 import { Search, Plus, PackageCheck, History, Package } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatQty, formatAdminDate } from '@/lib/utils';
+import { Button } from '@/components/ui/Button';
 import { csvTimestamp, type CsvColumn } from '@/lib/export/csv';
 import type { LabelStock, StockKind } from '@/lib/types';
 import ManualStockModal from './ManualStockModal';
@@ -163,16 +164,9 @@ export default function LabelStockManager({ canManage }: { canManage: boolean })
         <CsvExportButton rows={stock} columns={STOCK_EXPORT_COLUMNS} filename="label-stock" />
 
         {canManage && (
-          <button
-            onClick={() => setAdding(true)}
-            className={cn(
-              'inline-flex items-center justify-center gap-1.5 min-h-11 px-4 rounded-xl',
-              'text-sm font-medium bg-brand-primary text-white hover:bg-brand-primary/90 transition-colors',
-            )}
-          >
-            <Plus className="w-4 h-4" aria-hidden="true" />
-            Add stock
-          </button>
+          <Button intent="primary" icon={Plus} onClick={() => setAdding(true)}>
+              Add stock
+          </Button>
         )}
       </div>
 

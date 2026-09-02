@@ -14,6 +14,7 @@ import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-quer
 import { Search, Plus, Pencil, Trash2, Scissors, ArrowUp, ArrowDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatNumericDate } from '@/lib/utils';
+import { Button } from '@/components/ui/Button';
 import { csvDate, csvTimestamp, type CsvColumn } from '@/lib/export/csv';
 import type { FlatbedDie } from '@/lib/types';
 import AddFlatbedDieModal from './AddFlatbedDieModal';
@@ -273,16 +274,9 @@ export default function FlatbedDiesManager({ canManage }: { canManage: boolean }
         <CsvExportButton rows={flatbedDies} columns={exportColumns} filename="flatbed-dies" />
 
         {canManage && (
-          <button
-            onClick={() => setAdding(true)}
-            className={cn(
-              'inline-flex items-center justify-center gap-1.5 min-h-11 px-4 rounded-xl',
-              'text-sm font-medium bg-brand-primary text-white hover:bg-brand-primary/90 transition-colors',
-            )}
-          >
-            <Plus className="w-4 h-4" aria-hidden="true" />
-            Add flatbed die
-          </button>
+          <Button intent="primary" icon={Plus} onClick={() => setAdding(true)}>
+              Add flatbed die
+          </Button>
         )}
       </div>
 

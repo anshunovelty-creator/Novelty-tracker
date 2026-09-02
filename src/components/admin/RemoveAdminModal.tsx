@@ -10,6 +10,7 @@ import React, { useState, useId } from 'react';
 import { Check, X, ShieldAlert } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/Button';
 import { ModalShell } from './modals';
 import type { Member } from '@/lib/types';
 
@@ -100,14 +101,13 @@ export default function RemoveAdminModal({ member, onClose, onRemoved }: Props) 
         </div>
 
         <div className="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-white/12 shrink-0">
-          <button
+          <Button
             type="button"
             onClick={onClose}
             disabled={removing}
-            className="px-4 py-2 text-sm font-medium text-[var(--glass-muted)] hover:text-[var(--glass-ink)] disabled:opacity-40 transition-colors"
-          >
-            Cancel
-          </button>
+            >
+              Cancel
+          </Button>
           <button
             type="submit"
             disabled={removing}

@@ -10,6 +10,7 @@ import React, { useState, useEffect, useId } from 'react';
 import { Check, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/Button';
 import { ModalShell } from './modals';
 import type { Party, PendingDispatchNotification } from '@/lib/types';
 
@@ -200,26 +201,21 @@ export default function AddCustomDispatchModal({ existing, onClose, onSaved }: P
         </div>
 
         <div className="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-white/12 shrink-0">
-          <button
+          <Button
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-2 text-sm font-medium text-[var(--glass-muted)] hover:text-[var(--glass-ink)] disabled:opacity-40 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
+            >
+              Cancel
+          </Button>
+          <Button
             type="submit"
+            intent="primary"
+            icon={Check}
             disabled={saving}
-            className={cn(
-              'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium',
-              'bg-brand-primary text-white hover:bg-brand-primary/90',
-              'disabled:opacity-40 transition-colors',
-            )}
-          >
-            <Check className="w-4 h-4" aria-hidden="true" />
-            {saving ? 'Saving…' : existing ? 'Save changes' : 'Add entry'}
-          </button>
+            >
+              {saving ? 'Saving…' : existing ? 'Save changes' : 'Add entry'}
+          </Button>
         </div>
       </form>
     </ModalShell>

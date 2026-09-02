@@ -17,6 +17,7 @@ import React, { useState, useEffect, useId } from 'react';
 import { Save, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/Button';
 import { ModalShell } from './modals';
 import type { Job, PrintingUnit, JobType, PrintingMethod } from '@/lib/types';
 import { canDeptEditDeliveryDate } from '@/lib/constants/departments';
@@ -305,14 +306,13 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
 
         {/* Save sits at the bottom, always visible */}
         <div className="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-white/12 shrink-0">
-          <button
+          <Button
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-2 text-sm font-medium text-[var(--glass-muted)] hover:text-[var(--glass-ink)] disabled:opacity-40 transition-colors"
-          >
-            Cancel
-          </button>
+            >
+              Cancel
+          </Button>
           <button
             type="submit"
             disabled={saving}

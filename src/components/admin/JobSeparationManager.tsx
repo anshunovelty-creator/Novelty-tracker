@@ -14,6 +14,7 @@ import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-quer
 import { Search, Plus, Pencil, Copy, Ban, SplitSquareHorizontal, ArrowUp, ArrowDown, Users, FilePlus2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatQty, formatNumericDate, formatJobCardNumber } from '@/lib/utils';
+import { Button } from '@/components/ui/Button';
 import { csvDate, csvTimestamp, type CsvColumn } from '@/lib/export/csv';
 import type { JobSeparation, AddJobFormData, Job } from '@/lib/types';
 import type { Department } from '@/lib/constants/departments';
@@ -447,16 +448,9 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
         )}
 
         {canManage && (
-          <button
-            onClick={() => { setDuplicateSource(null); setAdding(true); }}
-            className={cn(
-              'inline-flex items-center justify-center gap-1.5 min-h-11 px-4 rounded-xl',
-              'text-sm font-medium bg-brand-primary text-white hover:bg-brand-primary/90 transition-colors',
-            )}
-          >
-            <Plus className="w-4 h-4" aria-hidden="true" />
-            Add row
-          </button>
+          <Button intent="primary" icon={Plus} onClick={() => { setDuplicateSource(null); setAdding(true); }}>
+              Add row
+          </Button>
         )}
       </div>
 

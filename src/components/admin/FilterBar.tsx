@@ -5,6 +5,7 @@ import { Flame, Search, X } from 'lucide-react';
 import { cn, JOB_SORT_OPTIONS, type JobSortOption } from '@/lib/utils';
 import { PIPELINE_STAGES } from '@/lib/constants/stages';
 import { SelectField } from '@/components/ui/Field';
+import { Button } from '@/components/ui/Button';
 
 type Props = {
   search:               string;
@@ -108,20 +109,19 @@ export default function FilterBar({
           ))}
         </SelectField>
 
-        {/* Urgent filter */}
-        <button
+        {/* Urgent filter.
+            A toggle, not an action — so when it is on it wears the red of the
+            state it is filtering to, and when off it is an ordinary ghost. */}
+        <Button
+          icon={Flame}
           onClick={() => onUrgentOnlyChange(!urgentOnly)}
           aria-pressed={urgentOnly}
           className={cn(
-            'inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg border text-sm font-medium transition-colors',
-            urgentOnly
-              ? 'bg-red-50 border-red-200 text-red-700'
-              : 'glass text-[var(--glass-muted)] hover:text-[var(--glass-ink)]'
+            urgentOnly && 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100',
           )}
         >
-          <Flame className="w-4 h-4" aria-hidden="true" />
           {urgentOnly ? 'Urgent Only' : 'Urgent'}
-        </button>
+        </Button>
       </div>
 
       {/* Active filters.

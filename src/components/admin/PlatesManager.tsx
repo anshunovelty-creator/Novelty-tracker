@@ -12,6 +12,7 @@ import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-quer
 import { Search, Plus, Pencil, Trash2, Layers } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatAdminDate } from '@/lib/utils';
+import { Button } from '@/components/ui/Button';
 import { csvDate, csvTimestamp, type CsvColumn } from '@/lib/export/csv';
 import type { Plate } from '@/lib/types';
 import AddPlateModal from './AddPlateModal';
@@ -160,16 +161,9 @@ export default function PlatesManager({ canManage }: { canManage: boolean }) {
         <CsvExportButton rows={plates} columns={PLATE_EXPORT_COLUMNS} filename="plates" />
 
         {canManage && (
-          <button
-            onClick={() => setAdding(true)}
-            className={cn(
-              'inline-flex items-center justify-center gap-1.5 min-h-11 px-4 rounded-xl',
-              'text-sm font-medium bg-brand-primary text-white hover:bg-brand-primary/90 transition-colors',
-            )}
-          >
-            <Plus className="w-4 h-4" aria-hidden="true" />
-            Add plate
-          </button>
+          <Button intent="primary" icon={Plus} onClick={() => setAdding(true)}>
+              Add plate
+          </Button>
         )}
       </div>
 

@@ -11,6 +11,7 @@ import React, { useState, useId } from 'react';
 import { Check, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/Button';
 import { ModalShell } from './modals';
 import type { Plate } from '@/lib/types';
 
@@ -232,26 +233,21 @@ export default function AddPlateModal({ editing, onClose, onSaved }: Props) {
         </div>
 
         <div className="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-white/12 shrink-0">
-          <button
+          <Button
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-2 text-sm font-medium text-[var(--glass-muted)] hover:text-[var(--glass-ink)] disabled:opacity-40 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
+            >
+              Cancel
+          </Button>
+          <Button
             type="submit"
+            intent="primary"
+            icon={Check}
             disabled={saving}
-            className={cn(
-              'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium',
-              'bg-brand-primary text-white hover:bg-brand-primary/90',
-              'disabled:opacity-40 transition-colors',
-            )}
-          >
-            <Check className="w-4 h-4" aria-hidden="true" />
-            {saving ? 'Saving…' : editing ? 'Save changes' : 'Add plate'}
-          </button>
+            >
+              {saving ? 'Saving…' : editing ? 'Save changes' : 'Add plate'}
+          </Button>
         </div>
       </form>
     </ModalShell>

@@ -9,6 +9,7 @@ import React, { useState, useEffect, useRef, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle } from 'lucide-react';
 import { cn, formatQty } from '@/lib/utils';
+import { buttonClass } from '@/components/ui/Button';
 import type { Stage } from '@/lib/constants/stages';
 import type { Job } from '@/lib/types';
 
@@ -21,10 +22,19 @@ const inputCls = cn(
 );
 
 // Shared button styles — on-brand, all AA-legible on the dark glass panel
-const btnCancel  = 'px-4 py-2 text-sm font-medium text-[var(--glass-muted)] hover:text-[var(--glass-ink)] transition-colors';
-const btnPrimary = 'px-4 py-2 text-sm font-medium rounded-lg bg-brand-primary text-white hover:bg-brand-primary/90 disabled:opacity-40 transition-colors';
-const btnCaution = 'px-4 py-2 text-sm font-medium rounded-lg bg-amber-400/20 border border-amber-300/30 text-amber-100 hover:bg-amber-400/30 disabled:opacity-40 transition-colors';
-const btnDanger  = 'px-4 py-2 text-sm font-medium rounded-lg bg-red-400/20 border border-red-300/30 text-red-200 hover:bg-red-400/30 disabled:opacity-40 transition-colors';
+// Modal footer buttons now draw from the shared Button vocabulary
+// (components/ui/Button). These aliases keep the ~22 call sites below reading
+// as they did, while sizing, radius, focus and disabled stop being redefined
+// per dialog.
+//
+// btnCaution stays amber deliberately: every action wearing it — Mark On
+// Hold, Save Partial Dispatch, Skip & Continue, "More labels to be printed
+// later" — moves the job into an amber-coded state, so the colour is state,
+// not decoration. See the State-Only Spectrum note in Button.tsx.
+const btnCancel  = buttonClass('ghost');
+const btnPrimary = buttonClass('primary');
+const btnCaution = buttonClass('caution');
+const btnDanger  = buttonClass('danger');
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';

@@ -22,6 +22,7 @@ import HistoryPanel from './HistoryPanel';
 import DeliveryDateEdit from './DeliveryDateEdit';
 import EditJobModal from './EditJobModal';
 import JobDuplicateButton from './JobDuplicateButton';
+import { Button } from '@/components/ui/Button';
 import JobActionModals from './JobActionModals';
 
 type Props = {
@@ -41,11 +42,6 @@ const COUNTDOWN_TEXT: Record<'green' | 'amber' | 'red' | 'muted', string> = {
   red:   'text-red-700 font-semibold',
   muted: 'text-[var(--glass-muted)]',
 };
-
-// 44px minimum tap target (PRODUCT.md) for every control on this surface.
-const cardBtn =
-  'inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 rounded-lg ' +
-  'text-xs font-medium border transition-colors';
 
 export default function JobCard({
   job, dept, isExpanded, onToggleExpand, onJobUpdated, onJobDeleted, onDuplicate,
@@ -230,65 +226,54 @@ export default function JobCard({
         )}
 
         {actions.canConfirmSlitting && (
-          <button
+          <Button
+            intent="tinted"
+            block
+            icon={CheckCircle2}
+            busy={actions.submitting}
             onClick={actions.confirmSlitting}
-            disabled={actions.submitting}
-            className={cn(
-              cardBtn, 'w-full mt-2',
-              'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100',
-            )}
+            className="mt-2"
           >
-            <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" /> Mark Slitting Complete
-          </button>
+            Mark Slitting Complete
+          </Button>
         )}
       </div>
 
       {/* ── Secondary actions ────────────────────────────────── */}
       <div className="flex items-stretch gap-2 px-4 pb-3.5">
-        <button
+        <Button
+          icon={isExpanded ? ChevronUp : ChevronDown}
           onClick={onToggleExpand}
           aria-expanded={isExpanded}
           aria-controls={`history-${job.id}`}
-          className={cn(
-            cardBtn, 'flex-1 border-black/10 text-[var(--glass-ink)]',
-            'hover:bg-black/[0.04] active:bg-black/[0.07]',
-          )}
+          className="flex-1"
         >
-          {isExpanded
-            ? <><ChevronUp className="w-3.5 h-3.5" aria-hidden="true" /> Hide history</>
-            : <><ChevronDown className="w-3.5 h-3.5" aria-hidden="true" /> History</>}
-        </button>
+          {isExpanded ? 'Hide history' : 'History'}
+        </Button>
 
         {canDeptEditJobDetails(dept) && (
-          <button
+          <Button
+            icon={Pencil}
             onClick={() => setEditing(true)}
             aria-label={`Edit job ${job.po_number}`}
             title="Edit job details"
-            className={cn(
-              cardBtn, 'border-black/10 text-[var(--glass-ink)]',
-              'hover:bg-black/[0.04] active:bg-black/[0.07]',
-            )}
           >
-            <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
             Edit
-          </button>
+          </Button>
         )}
 
         <JobDuplicateButton job={job} onDuplicate={onDuplicate} size="touch" />
 
         {dept.isSuperAdmin && (
-          <button
+          <Button
+            intent="danger"
+            icon={Trash2}
             onClick={actions.openDeleteModal}
             aria-label={`Delete job ${job.po_number}`}
             title="Delete job"
-            className={cn(
-              cardBtn, 'border-red-200 text-red-700 bg-red-50/60',
-              'hover:bg-red-100 active:bg-red-100',
-            )}
           >
-            <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
             <span className="sr-only">Delete</span>
-          </button>
+          </Button>
         )}
       </div>
 

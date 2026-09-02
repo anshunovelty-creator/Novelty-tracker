@@ -6,8 +6,8 @@
 
 import React from 'react';
 import { Copy } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import type { Job } from '@/lib/types';
+import { Button } from '@/components/ui/Button';
 
 type Props = {
   job:       Job;
@@ -38,36 +38,17 @@ export default function JobDuplicateButton({ job, onDuplicate, size = 'compact' 
     });
   }
 
-  if (size === 'touch') {
-    return (
-      <button
-        onClick={handleClick}
-        aria-label="Duplicate this job"
-        className={cn(
-          'inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 rounded-lg',
-          'text-xs font-medium border border-black/10 text-[var(--glass-ink)]',
-          'hover:bg-black/[0.04] active:bg-black/[0.07] transition-colors',
-        )}
-      >
-        <Copy className="w-3.5 h-3.5" aria-hidden="true" />
-        Duplicate
-      </button>
-    );
-  }
-
+  // 'touch' maps to the md size, which already carries the 44px minimum
+  // PRODUCT.md asks for on the card surface; 'compact' is the in-row sm.
   return (
-    <button
+    <Button
+      size={size === 'touch' ? 'md' : 'sm'}
+      icon={Copy}
       onClick={handleClick}
       title="Duplicate this job"
       aria-label="Duplicate this job"
-      className={cn(
-        'inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md',
-        'bg-white border border-white/15 text-[var(--glass-ink)]',
-        'hover:bg-black/[0.04] transition-colors whitespace-nowrap',
-      )}
     >
-      <Copy className="w-3.5 h-3.5" aria-hidden="true" />
       Duplicate
-    </button>
+    </Button>
   );
 }
