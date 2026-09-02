@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { STAGES } from '@/lib/constants/stages';
 import { RUN_STAGES, RUN_STAGE_LABELS } from '@/lib/constants/runStages';
 import type { DepartmentRecord } from '@/lib/types';
+import { ConfirmModal } from './modals';
 import AddDepartmentModal from './AddDepartmentModal';
 
 const FEATURES: { key: string; label: string }[] = [
@@ -65,8 +66,17 @@ export default function DepartmentsManager() {
 
   useEffect(() => { load(); }, [load]);
 
-  async function remove(dept: DepartmentRecord) {
-    if (!confirm(`Delete "${dept.display_name}"? Any user still assigned to it will lose access.`)) return;
+  // Deleting a department revokes access for everyone still assigned to it —
+  // the most consequential action on this page. It used to be gated by
+  // window.confirm: unstyled, unbranded, no danger colour, and dismissible
+  // with a stray Enter. ConfirmModal exists precisely to replace that.
+  const [pendingDelete, setPendingDelete] = useState<DepartmentRecord | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function confirmRemove() {
+    const dept = pendingDelete;
+    if (!dept) return;
+    setDeleting(true);
     try {
       const res = await fetch(`/api/departments/${dept.id}`, { method: 'DELETE' });
       const data = await res.json();
@@ -76,8 +86,11 @@ export default function DepartmentsManager() {
       }
       setDepartments((prev) => prev.filter((d) => d.id !== dept.id));
       toast.success(`${dept.display_name} deleted`);
+      setPendingDelete(null);
     } catch {
       toast.error('Network error');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -120,7 +133,7 @@ export default function DepartmentsManager() {
                 setDepartments((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
                 toast.success(`${updated.display_name} saved`);
               }}
-              onDelete={() => remove(dept)}
+              onDelete={() => setPendingDelete(dept)}
             />
           ))}
         </ul>
@@ -130,6 +143,18 @@ export default function DepartmentsManager() {
         <AddDepartmentModal
           onClose={() => setAdding(false)}
           onSaved={() => { setAdding(false); load(); }}
+        />
+      )}
+
+      {pendingDelete && (
+        <ConfirmModal
+          title={`Delete ${pendingDelete.display_name}?`}
+          message="Any user still assigned to this department will lose access at their next sign-in. This cannot be undone."
+          confirmLabel="Delete department"
+          tone="danger"
+          busy={deleting}
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={confirmRemove}
         />
       )}
     </div>

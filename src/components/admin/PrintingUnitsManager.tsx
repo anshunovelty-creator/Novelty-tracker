@@ -15,6 +15,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Loader2, Plus, Trash2, Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PRINTING_METHODS, type PrintingMethod, type PrintingUnit } from '@/lib/types';
+import { ConfirmModal } from './modals';
 
 const inputCls =
   'rounded-lg border border-black/[0.12] bg-white px-3 py-2 text-sm ' +
@@ -119,15 +120,16 @@ export default function PrintingUnitsManager() {
     }
   }
 
-  async function remove(unit: PrintingUnit) {
-    // Deleting unassigns every job on this unit (FK is ON DELETE SET NULL),
-    // so make that consequence explicit before it happens.
-    const ok = window.confirm(
-      `Delete "${unit.name}"?\n\n` +
-      `Any job currently assigned to this unit will be left with no unit ` +
-      `and must be reassigned. Retiring it instead keeps the history intact.`,
-    );
-    if (!ok) return;
+  // Deleting unassigns every job on this unit (FK is ON DELETE SET NULL), so
+  // the consequence is made explicit before it happens — in the app's own
+  // danger dialog rather than window.confirm, which carried no danger colour
+  // and could be dismissed with a stray Enter.
+  const [pendingDelete, setPendingDelete] = useState<PrintingUnit | null>(null);
+
+  async function confirmRemove() {
+    const unit = pendingDelete;
+    if (!unit) return;
+    setPendingDelete(null);
 
     setBusyId(unit.id);
     setError(null);
@@ -319,7 +321,7 @@ export default function PrintingUnitsManager() {
                         {u.is_active ? 'Retire' : 'Reactivate'}
                       </button>
                       <button
-                        onClick={() => remove(u)}
+                        onClick={() => setPendingDelete(u)}
                         disabled={busy}
                         aria-label={`Delete ${u.name}`}
                         className={cn(btnCls, 'border border-red-200 text-red-700 hover:bg-red-50')}
@@ -339,6 +341,18 @@ export default function PrintingUnitsManager() {
         A job&apos;s unit is auto-set from its printing method using the default
         unit above. Prepress can override it per job from the job card.
       </p>
+
+      {pendingDelete && (
+        <ConfirmModal
+          title={`Delete ${pendingDelete.name}?`}
+          message="Any job currently assigned to this unit will be left with no unit and must be reassigned. Retiring it instead keeps the history intact."
+          confirmLabel="Delete unit"
+          tone="danger"
+          busy={busyId === pendingDelete.id}
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={confirmRemove}
+        />
+      )}
     </div>
   );
 }

@@ -143,10 +143,18 @@ export default function JobsTable({ initialJobs, dept }: Props) {
     <div>
       {/* Toolbar + Add Job Form */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-4">
+        {/* The count used to read "Active Jobs (3)" whether that was every job
+            or three survivors of a filter — the same number silently meaning
+            two different things, which on a production tracker is a genuinely
+            misleading thing to read at a glance. It now says which it is. */}
         <h2 className="text-base font-semibold text-[var(--glass-ink)] pt-2">
           Active Jobs
           {jobs.length > 0 && (
-            <span className="ml-2 text-[var(--glass-muted)] font-normal text-sm">({jobs.length})</span>
+            <span className="ml-2 font-normal text-sm text-[var(--glass-muted)]">
+              {hasFilters
+                ? `— ${jobs.length} matching`
+                : `(${jobs.length})`}
+            </span>
           )}
         </h2>
         <AddJobForm
@@ -170,12 +178,15 @@ export default function JobsTable({ initialJobs, dept }: Props) {
         onUrgentOnlyChange={setUrgentOnly}
         sortBy={sortBy}
         onSortByChange={setSortBy}
+        onClearFilters={clearFilters}
       />
 
-      {/* Jobs — cards on phones, table from sm up.
-          The table's 900px min-width is 2.4 screens of horizontal scrolling on
-          a 375px phone, which buries the Status control. Floor operators get
-          the card list instead; see JobCard. */}
+      {/* Jobs — cards below lg, table from lg up.
+          The table is 1400px wide, so anything narrower scrolls sideways to
+          reach Status and Actions. The switch used to sit at sm (640px),
+          which handed the full-width table to every tablet on the floor —
+          2.2 screens of horizontal scrolling on a 768px screen. Cards now
+          cover phones and tablets both; see JobCard. */}
       <div ref={tableRef} className="mt-3">
         {loading && (
           <div className="h-1 bg-brand-primary/20 relative overflow-hidden rounded-full mb-3" role="status" aria-label="Loading jobs">
@@ -183,8 +194,8 @@ export default function JobsTable({ initialJobs, dept }: Props) {
           </div>
         )}
 
-        {/* Phone: card list */}
-        <div className="sm:hidden">
+        {/* Phone + tablet: card list */}
+        <div className="lg:hidden">
           {loading && sortedJobs.length === 0 ? (
             <div className="space-y-3" aria-hidden="true">
               {Array.from({ length: 3 }).map((_, i) => (
@@ -226,7 +237,7 @@ export default function JobsTable({ initialJobs, dept }: Props) {
             Nine columns across 1400px: the header row and the Job Card cell
             both stay put, so scrolling right to reach Actions never costs you
             sight of which job you are acting on. */}
-        <div className="hidden sm:block rounded-xl glass overflow-hidden">
+        <div className="hidden lg:block rounded-xl glass overflow-hidden">
           <div className="table-scroll-wrapper max-h-[72vh] overflow-y-auto">
           <table className="w-full min-w-[1400px] border-collapse text-sm">
             <thead>

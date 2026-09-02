@@ -1,6 +1,7 @@
 'use client';
 // src/components/admin/DashboardSummaryCard.tsx
 
+import { ListFilter } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { JOBS_FILTER_EVENT, type JobsFilterDetail } from '@/lib/constants/events';
 import type { DashboardSummary } from '@/lib/types';
@@ -83,15 +84,34 @@ export default function DashboardSummaryCard({ summary }: Props) {
         // all five look clickable would promise a drill-down that three of
         // them cannot honour — those describe closed or historical jobs the
         // active table does not contain.
+        //
+        // That distinction was correct but invisible: button and div carried
+        // identical classes, so the only tell was a hover fill nobody went
+        // looking for. The drillable pair now says so standing still — a
+        // filter glyph in the corner and a caption naming the action — and
+        // answers the pointer with a lift.
         return stat.filter ? (
           <button
             key={stat.label}
             type="button"
             onClick={() => applyFilter(stat.filter!)}
             aria-label={`${stat.label}: ${stat.value}. ${stat.action}`}
-            className="glass rounded-xl px-4 py-4 text-left transition-colors hover:bg-white/10"
+            className={cn(
+              'group glass rounded-xl px-4 py-4 text-left relative',
+              'transition-[background-color,box-shadow,transform] duration-150',
+              'hover:bg-white/10 hover:-translate-y-px',
+              'hover:shadow-[0_4px_14px_rgba(12,42,32,0.10)]',
+              'active:translate-y-0 motion-reduce:hover:translate-y-0',
+            )}
           >
+            <ListFilter
+              className="absolute right-3 top-3.5 h-3.5 w-3.5 text-[var(--glass-muted)] opacity-60 transition-opacity group-hover:opacity-100"
+              aria-hidden="true"
+            />
             {body}
+            <span className="mt-1 block text-[10px] font-medium uppercase tracking-[0.06em] text-[var(--glass-muted)] opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+              Filter table
+            </span>
           </button>
         ) : (
           <div key={stat.label} className="glass rounded-xl px-4 py-4">
