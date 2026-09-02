@@ -75,12 +75,12 @@ function NavLink({
         variant === 'desk'
           ? 'px-2.5 py-1.5 text-xs font-medium'
           : 'flex w-full gap-2.5 min-h-11 px-2 text-sm font-medium',
-        // The active entry gets three cues, not one: a brighter fill, full-
-        // strength text, and a mint underline keyed to the focus/live colour.
-        // Colour alone would fail for anyone who cannot separate white/75
-        // from white.
+        // The active entry reads by fill plus full-strength text. The fill is
+        // an area cue rather than a colour one, so it still separates for
+        // anyone who cannot tell white/75 from white; aria-current above
+        // carries it for assistive tech.
         active
-          ? 'bg-white/15 text-white shadow-[inset_0_-2px_0_0_#7CF0BE]'
+          ? 'bg-white/15 text-white'
           : cn(
               'hover:bg-white/10 hover:text-white',
               variant === 'desk' ? 'text-white/75' : 'text-white/85',
