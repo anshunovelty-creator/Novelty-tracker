@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Package, Scissors, Disc, Users, SplitSquareHorizontal, Contact, ClipboardList, Truck, Menu, X, Building2 } from 'lucide-react';
+import { Package, Scissors, Disc, Users, SplitSquareHorizontal, Contact, ClipboardList, Truck, Menu, X, Building2, LayoutDashboard, type LucideIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import {
   canDeptUseBOM,
@@ -29,6 +30,76 @@ type Props = {
 // Slow on purpose: this is a badge, not a wall display, and it rides the
 // count-only branch of the API so it never pulls the request bodies.
 const BOM_BADGE_POLL_MS = 60_000;
+
+type NavItem = {
+  href:   string;
+  label:  string;
+  icon:   LucideIcon;
+  /** Unanswered-work count; rendered as an amber pill when > 0. */
+  badge?: number;
+  /** Spoken form of the badge, e.g. "3 requests awaiting a decision". */
+  badgeLabel?: (n: number) => string;
+};
+
+/** Is `href` the section the user is currently in?
+ *  /admin is the dashboard itself, so it only matches exactly — otherwise it
+ *  would light up on every child route and two entries would read as active. */
+function isActive(pathname: string, href: string) {
+  return href === '/admin' ? pathname === '/admin' : pathname.startsWith(href);
+}
+
+/** One nav entry, in either of the header's two layouts.
+ *
+ *  Both lists render from the same NAV model through this component. The
+ *  desktop and mobile navs used to be eighteen hand-copied <Link> blocks, and
+ *  that duplication is exactly why the active state was never applied: there
+ *  was no single place to put it. Anything added here shows up in both. */
+function NavLink({
+  item, pathname, variant,
+}: {
+  item:     NavItem;
+  pathname: string;
+  variant:  'desk' | 'mobile';
+}) {
+  const active = isActive(pathname, item.href);
+  const Icon   = item.icon;
+  const n      = item.badge ?? 0;
+
+  return (
+    <Link
+      href={item.href}
+      title={item.label}
+      aria-current={active ? 'page' : undefined}
+      className={cn(
+        'relative inline-flex items-center gap-1.5 rounded-lg transition-colors whitespace-nowrap',
+        variant === 'desk'
+          ? 'px-2.5 py-1.5 text-xs font-medium'
+          : 'flex w-full gap-2.5 min-h-11 px-2 text-sm font-medium',
+        // The active entry gets three cues, not one: a brighter fill, full-
+        // strength text, and a mint underline keyed to the focus/live colour.
+        // Colour alone would fail for anyone who cannot separate white/75
+        // from white.
+        active
+          ? 'bg-white/15 text-white shadow-[inset_0_-2px_0_0_#7CF0BE]'
+          : cn(
+              'hover:bg-white/10 hover:text-white',
+              variant === 'desk' ? 'text-white/75' : 'text-white/85',
+            ),
+      )}
+    >
+      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+      {item.label}
+      {n > 0 && (
+        <span
+          className="ml-0.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-300 px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-[#0A1F18]"
+          aria-label={item.badgeLabel?.(n)}
+        >
+          {n}
+        </span>
+      )}
+    </Link>
+  );
+}
 
 export default function AdminHeader({ dept, displayName }: Props) {
   const router = useRouter();
@@ -107,6 +178,54 @@ export default function AdminHeader({ dept, displayName }: Props) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [router]);
 
+  // The single source of truth for both navs. Permission gates live here
+  // rather than beside the markup, so desktop and mobile can never drift on
+  // who is allowed to see what.
+  //
+  // Dashboard leads: it had no entry at all before, reachable only by clicking
+  // the logo — which is why ten sub-pages each grew their own "Back to
+  // dashboard" link to compensate.
+  const navItems: NavItem[] = [
+    { href: '/admin',                label: 'Dashboard',      icon: LayoutDashboard },
+    { href: '/admin/stock',          label: 'Label Stock',    icon: Package },
+    { href: '/admin/dies',           label: 'Dies',           icon: Scissors },
+    { href: '/admin/plates',         label: 'Plates',         icon: Disc },
+    { href: '/admin/job-separation', label: 'Job Separation', icon: SplitSquareHorizontal },
+    // Bill of Material — Production raises material requests here and Admin
+    // answers them. Production + Admin only, mirrored by canDeptUseBOM in
+    // every /api/bom-requests route and by RLS on the bom_* tables. The badge
+    // counts requests nobody has acted on yet.
+    ...(showBom ? [{
+      href: '/admin/bom', label: 'BOM', icon: ClipboardList,
+      badge: bomPending,
+      badgeLabel: (n: number) => `${n} request${n === 1 ? '' : 's'} awaiting a decision`,
+    }] : []),
+    // Consolidated dispatch email queue — Dispatch/Admin only, mirrored by
+    // canDeptManageDispatchNotifications in every /api/dispatch-notifications
+    // route and by RLS on pending_dispatch_notifications. The badge counts
+    // parties with an unsent batch waiting.
+    ...(showDispatchEmails ? [{
+      href: '/admin/dispatch-notifications', label: 'Dispatch Emails', icon: Truck,
+      badge: dispatchPending,
+      badgeLabel: (n: number) => `${n} part${n === 1 ? 'y' : 'ies'} with an unsent dispatch email`,
+    }] : []),
+    // Follow-ups (customer CRM) holds sales/contact data with no reason to be
+    // shop-floor-visible — Admin only, mirrored by canDeptManageRegister in
+    // every /api/register route and by RLS on the register_* tables. Ordered
+    // before Team on request.
+    ...(canDeptManageRegister(dept)
+      ? [{ href: '/admin/register', label: 'Follow-ups', icon: Contact }] : []),
+    // Team management touches login accounts directly — Admin only, mirrored
+    // by the check in every /api/team route.
+    ...(canDeptManageTeam(dept)
+      ? [{ href: '/admin/team', label: 'Team', icon: Users }] : []),
+    // Create departments and configure their permission grids — the
+    // super-admin department only, since this page edits the permission
+    // system itself.
+    ...(dept.isSuperAdmin
+      ? [{ href: '/admin/departments', label: 'Departments', icon: Building2 }] : []),
+  ];
+
   async function handleLogout() {
     await supabase.auth.signOut();
     // Drop every cached response — this is a shared shop-floor terminal, and
@@ -131,129 +250,14 @@ export default function AdminHeader({ dept, displayName }: Props) {
               every department — Dispatch (stock) and Prepress (dies/plates/
               job separation) are the only ones who can change them, enforced
               in /api/stock, /api/dies, /api/plates, /api/job-separations. */}
+          {/* Label stock, dies, plates and job separation are readable by
+              every department — Dispatch (stock) and Prepress (dies/plates/
+              job separation) are the only ones who can change them, enforced
+              in /api/stock, /api/dies, /api/plates, /api/job-separations. */}
           <nav aria-label="Admin sections" className="hidden lg:flex items-center">
-            <Link
-              href="/admin/stock"
-              title="Label Stock"
-              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
-            >
-              <Package className="h-4 w-4" aria-hidden="true" />
-              Label Stock
-            </Link>
-            <Link
-              href="/admin/dies"
-              title="Dies"
-              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
-            >
-              <Scissors className="h-4 w-4" aria-hidden="true" />
-              Dies
-            </Link>
-            <Link
-              href="/admin/plates"
-              title="Plates"
-              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
-            >
-              <Disc className="h-4 w-4" aria-hidden="true" />
-              Plates
-            </Link>
-            <Link
-              href="/admin/job-separation"
-              title="Job Separation"
-              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
-            >
-              <SplitSquareHorizontal className="h-4 w-4" aria-hidden="true" />
-              Job Separation
-            </Link>
-            {/* Bill of Material — Production raises material requests here
-                and Admin answers them. Production + Admin only, mirrored by
-                canDeptUseBOM in every /api/bom-requests route and by RLS on
-                the bom_* tables. The badge counts requests nobody has
-                acted on yet, so the owner can see work waiting without
-                opening the page. */}
-            {showBom && (
-              <Link
-                href="/admin/bom"
-                title="Bill of Material"
-                className="relative inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
-              >
-                <ClipboardList className="h-4 w-4" aria-hidden="true" />
-                BOM
-                {bomPending > 0 && (
-                  <span
-                    className="ml-0.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-300 px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-[#0A1F18]"
-                    aria-label={`${bomPending} request${bomPending === 1 ? '' : 's'} awaiting a decision`}
-                  >
-                    {bomPending}
-                  </span>
-                )}
-              </Link>
-            )}
-            {/* Consolidated dispatch email queue — Dispatch/Admin only,
-                mirrored by canDeptManageDispatchNotifications in every
-                /api/dispatch-notifications route and by RLS on
-                pending_dispatch_notifications. The badge counts parties
-                with an unsent batch waiting. */}
-            {showDispatchEmails && (
-              <Link
-                href="/admin/dispatch-notifications"
-                title="Dispatch Emails"
-                className="relative inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
-              >
-                <Truck className="h-4 w-4" aria-hidden="true" />
-                Dispatch Emails
-                {dispatchPending > 0 && (
-                  <span
-                    className="ml-0.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-300 px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-[#0A1F18]"
-                    aria-label={`${dispatchPending} part${dispatchPending === 1 ? 'y' : 'ies'} with an unsent dispatch email`}
-                  >
-                    {dispatchPending}
-                  </span>
-                )}
-              </Link>
-            )}
-            {/* Party Contacts and Dispatch Alerts used to sit here as their own
-                entries. Both configure an audience of the dispatch email, so
-                they are now tabs on /admin/dispatch-notifications above. */}
-            {/* Follow-ups (customer CRM) holds sales/contact data with no
-                reason to be shop-floor-visible — Admin only, mirrored by
-                canDeptManageRegister in every /api/register route and by
-                RLS on the register_* tables themselves. Ordered before
-                Team on request. */}
-            {canDeptManageRegister(dept) && (
-              <Link
-                href="/admin/register"
-                title="Follow-ups"
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
-              >
-                <Contact className="h-4 w-4" aria-hidden="true" />
-                Follow-ups
-              </Link>
-            )}
-            {/* Team management touches login accounts directly — Admin only,
-                mirrored by the check in every /api/team route. */}
-            {canDeptManageTeam(dept) && (
-              <Link
-                href="/admin/team"
-                title="Team"
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
-              >
-                <Users className="h-4 w-4" aria-hidden="true" />
-                Team
-              </Link>
-            )}
-            {/* Create departments and configure their permission grids —
-                the super-admin department only, since this page edits the
-                permission system itself. */}
-            {dept.isSuperAdmin && (
-              <Link
-                href="/admin/departments"
-                title="Departments"
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
-              >
-                <Building2 className="h-4 w-4" aria-hidden="true" />
-                Departments
-              </Link>
-            )}
+            {navItems.map((item) => (
+              <NavLink key={item.href} item={item} pathname={pathname} variant="desk" />
+            ))}
           </nav>
         </div>
 
@@ -302,95 +306,9 @@ export default function AdminHeader({ dept, displayName }: Props) {
           aria-label="Admin sections (mobile)"
           className="lg:hidden border-t border-white/10 bg-brand-header px-4 py-2"
         >
-          <Link
-            href="/admin/stock"
-            className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
-          >
-            <Package className="h-4 w-4 shrink-0" aria-hidden="true" />
-            Label Stock
-          </Link>
-          <Link
-            href="/admin/dies"
-            className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
-          >
-            <Scissors className="h-4 w-4 shrink-0" aria-hidden="true" />
-            Dies
-          </Link>
-          <Link
-            href="/admin/plates"
-            className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
-          >
-            <Disc className="h-4 w-4 shrink-0" aria-hidden="true" />
-            Plates
-          </Link>
-          <Link
-            href="/admin/job-separation"
-            className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
-          >
-            <SplitSquareHorizontal className="h-4 w-4 shrink-0" aria-hidden="true" />
-            Job Separation
-          </Link>
-          {showBom && (
-            <Link
-              href="/admin/bom"
-              className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
-            >
-              <ClipboardList className="h-4 w-4 shrink-0" aria-hidden="true" />
-              BOM
-              {bomPending > 0 && (
-                <span
-                  className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-300 px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-[#0A1F18]"
-                  aria-label={`${bomPending} request${bomPending === 1 ? '' : 's'} awaiting a decision`}
-                >
-                  {bomPending}
-                </span>
-              )}
-            </Link>
-          )}
-          {showDispatchEmails && (
-            <Link
-              href="/admin/dispatch-notifications"
-              className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
-            >
-              <Truck className="h-4 w-4 shrink-0" aria-hidden="true" />
-              Dispatch Emails
-              {dispatchPending > 0 && (
-                <span
-                  className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-300 px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-[#0A1F18]"
-                  aria-label={`${dispatchPending} part${dispatchPending === 1 ? 'y' : 'ies'} with an unsent dispatch email`}
-                >
-                  {dispatchPending}
-                </span>
-              )}
-            </Link>
-          )}
-          {canDeptManageRegister(dept) && (
-            <Link
-              href="/admin/register"
-              className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
-            >
-              <Contact className="h-4 w-4 shrink-0" aria-hidden="true" />
-              Follow-ups
-            </Link>
-          )}
-          {canDeptManageTeam(dept) && (
-            <Link
-              href="/admin/team"
-              className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
-            >
-              <Users className="h-4 w-4 shrink-0" aria-hidden="true" />
-              Team
-            </Link>
-          )}
-          {dept.isSuperAdmin && (
-            <Link
-              href="/admin/departments"
-              className="flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
-            >
-              <Building2 className="h-4 w-4 shrink-0" aria-hidden="true" />
-              Departments
-            </Link>
-          )}
+          {navItems.map((item) => (
+            <NavLink key={item.href} item={item} pathname={pathname} variant="mobile" />
+          ))}
 
           <div className="mt-1 pt-2 border-t border-white/10 flex items-center justify-between">
             <span className="text-white/75 text-xs font-mono px-2">{displayName}</span>

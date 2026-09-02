@@ -587,7 +587,7 @@ export default function AddJobForm({ dept, prefillData, onSuccess, sourceJobSepa
 // ── Helpers ──────────────────────────────────────────────────
 
 const inputCls = cn(
-  'w-full px-3.5 py-2.5 rounded-xl text-sm bg-[var(--glass-bg)] border border-[var(--glass-border)]',
+  'w-full px-3.5 py-2.5 rounded-xl text-sm bg-[var(--field-bg)] border border-[var(--field-border)]',
   'text-[var(--glass-ink)] placeholder:text-[var(--glass-muted)] backdrop-blur-md',
   'focus:outline-none focus:border-emerald-300/70 focus:bg-white/[0.14]',
   'focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)] transition-all',

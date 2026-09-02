@@ -16,7 +16,7 @@ import { ModalShell } from './modals';
 import type { Party } from '@/lib/types';
 
 const inputCls = cn(
-  'w-full min-h-11 px-3 py-2 rounded-lg text-sm bg-[var(--glass-bg)] border border-[var(--glass-border)]',
+  'w-full min-h-11 px-3 py-2 rounded-lg text-sm bg-[var(--field-bg)] border border-[var(--field-border)]',
   'text-[var(--glass-ink)] placeholder:text-[var(--glass-muted)]',
   'focus:outline-none focus:border-emerald-300/70 focus:bg-white/[0.14]',
   'focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)] transition-all',

@@ -45,8 +45,12 @@ const metaChip =
   'inline-flex items-center text-[11px] font-medium px-1.5 py-0.5 rounded ' +
   'bg-black/[0.04] border border-black/[0.06] text-[var(--glass-muted)]';
 
-/** Tertiary label ("PO DT", "PM", "PO") — quieter than muted body text. */
-const microLabel = 'text-[10px] tracking-[0.06em] uppercase text-[var(--glass-muted)] opacity-70';
+/** Tertiary label ("PO DT", "PM", "PO") — quieter than muted body text.
+    No opacity multiplier: --glass-muted (#5A6B62) is the AA floor per
+    DESIGN.md §6, and opacity-70 composited it to ~#8B9791 / 3.1:1 — under the
+    4.5:1 these 10px labels need. Size, tracking and caps carry the hierarchy
+    on their own. */
+const microLabel = 'text-[10px] tracking-[0.06em] uppercase text-[var(--glass-muted)]';
 
 export default function JobRow({
   job, dept, index, isExpanded, onToggleExpand, onJobUpdated, onJobDeleted, onDuplicate,
@@ -55,8 +59,14 @@ export default function JobRow({
   const [editing, setEditing] = useState(false);
 
   // Urgency tint (on-hold, QC, urgent) always wins; otherwise zebra-stripe by row position.
+  // The hover band is an inset box-shadow rather than a background so it layers
+  // *over* the urgency tint instead of replacing it — an on-hold row must still
+  // read as on-hold while the cursor is on it. Nine columns across 1400px is
+  // more than the eye tracks unaided; this is what carries it from Job Card to
+  // Actions without losing the row.
   const rowClass = cn(
     'group border-b border-white/8 transition-colors',
+    'hover:shadow-[inset_0_0_0_9999px_rgba(12,42,32,0.065)]',
     actions.urgencyTint || (index % 2 === 1 ? 'bg-[var(--glass-bg)]' : ''),
   );
 
@@ -73,7 +83,11 @@ export default function JobRow({
              — the rest of the row is full of its own controls (status
              select, inline delivery edit, action buttons) and a row-level
              click would fight every one of them. ──────────────────────── */}
-        <td className="align-top w-[168px] p-0">
+        {/* Pinned left so the row keeps its identity while the other eight
+             columns scroll past. Needs an opaque background of its own —
+             a transparent sticky cell lets the scrolling columns show
+             through underneath it. */}
+        <td className="align-top w-[168px] p-0 sticky left-0 z-[1] bg-[#FDFEFD] group-hover:bg-[#F3F7F4] border-r border-white/12">
           <Link
             href={`/admin/jobs/${job.id}`}
             aria-label={`Open job ${cardNo ?? job.po_number} in detail`}

@@ -32,7 +32,7 @@ const CYLINDER_PITCH_MM = 3.175;
 
 const fieldCls = cn(
   'w-full h-11 px-2 rounded-xl text-center text-sm font-mono tabular-nums',
-  'bg-[var(--glass-bg)] border border-[var(--glass-border)] text-[var(--glass-ink)]',
+  'bg-[var(--field-bg)] border border-[var(--field-border)] text-[var(--glass-ink)]',
   'placeholder:text-[var(--glass-muted)] placeholder:font-sans',
   'focus:outline-none focus:border-emerald-300/70 focus:bg-white/[0.14]',
   'focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)]',

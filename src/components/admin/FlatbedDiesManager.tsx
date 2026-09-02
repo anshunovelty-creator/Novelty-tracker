@@ -240,7 +240,7 @@ export default function FlatbedDiesManager({ canManage }: { canManage: boolean }
           title="Narrow the search to one field"
           className={cn(
             'min-h-11 px-3 rounded-xl text-sm shrink-0',
-            'bg-[var(--glass-bg)] border border-[var(--glass-border)] text-[var(--glass-ink)]',
+            'bg-[var(--field-bg)] border border-[var(--field-border)] text-[var(--glass-ink)]',
             'focus:outline-none focus:border-emerald-300/70 focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)] transition-all',
           )}
         >
@@ -263,7 +263,7 @@ export default function FlatbedDiesManager({ canManage }: { canManage: boolean }
             data-global-search
             className={cn(
               'w-full min-h-11 pl-9 pr-3 rounded-xl text-sm',
-              'bg-[var(--glass-bg)] border border-[var(--glass-border)] text-[var(--glass-ink)]',
+              'bg-[var(--field-bg)] border border-[var(--field-border)] text-[var(--glass-ink)]',
               'placeholder:text-[var(--glass-muted)] focus:outline-none',
               'focus:border-emerald-300/70 focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)] transition-all',
             )}

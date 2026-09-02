@@ -9,8 +9,6 @@
 // reaching the page at all needs just one of them.
 
 import { redirect } from 'next/navigation';
-import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import {
   getDeptPermissions,
@@ -85,15 +83,7 @@ export default async function DispatchNotificationsPage({
 
   return (
     <div className="space-y-4">
-      <Link
-        href="/admin"
-        className="inline-flex min-h-11 items-center gap-1.5 text-sm text-[var(--glass-muted)] hover:text-[var(--glass-ink)]"
-      >
-        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-        Back to dashboard
-      </Link>
-
-      <h1 className="text-lg font-semibold text-[var(--glass-ink)]">Dispatch Emails</h1>
+      <h1 className="text-xl font-semibold text-[var(--glass-ink)]">Dispatch Emails</h1>
 
       <DispatchEmailTabs tabs={tabs} active={active}>
         {active === 'queue'   && <PendingDispatchNotifications />}

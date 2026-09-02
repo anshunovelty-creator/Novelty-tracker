@@ -21,7 +21,7 @@ export default async function RegisterPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-[var(--glass-ink)]">Follow-ups</h1>
+        <h1 className="text-xl font-semibold text-[var(--glass-ink)]">Follow-ups</h1>
         <p className="text-sm text-[var(--glass-muted)] mt-1">
           Customer accounts, enquiries, and follow-up history — Admin only.
         </p>

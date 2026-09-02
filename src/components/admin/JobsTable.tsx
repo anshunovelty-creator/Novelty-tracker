@@ -218,18 +218,30 @@ export default function JobsTable({ initialJobs, dept }: Props) {
           )}
         </div>
 
-        {/* Desk: table */}
-        <div className="hidden sm:block table-scroll-wrapper rounded-xl glass overflow-hidden">
+        {/* Desk: table.
+            The scroll region is bounded (max-h) so `position: sticky` has a
+            scrollport to stick to — without a height limit the wrapper is as
+            tall as its content and a sticky thead never actually pins. Same
+            arrangement DiesManager and JobSeparationManager already use.
+            Nine columns across 1400px: the header row and the Job Card cell
+            both stay put, so scrolling right to reach Actions never costs you
+            sight of which job you are acting on. */}
+        <div className="hidden sm:block rounded-xl glass overflow-hidden">
+          <div className="table-scroll-wrapper max-h-[72vh] overflow-y-auto">
           <table className="w-full min-w-[1400px] border-collapse text-sm">
             <thead>
-              <tr className="border-b border-white/12">
+              <tr>
                 {JOB_COLUMNS.map((col) => (
                   <th
                     key={col}
                     scope="col"
                     className={cn(
-                      'px-4 py-3 text-left text-[11px] font-semibold text-[var(--glass-muted)]',
+                      'sticky top-0 z-10 px-4 py-3 text-left text-[11px] font-semibold text-[var(--glass-muted)]',
                       'uppercase tracking-[0.06em] whitespace-nowrap',
+                      'bg-[var(--glass-bg-strong)] backdrop-blur-[14px] border-b border-white/12',
+                      // Job Card is the row's identity — it pins left as well,
+                      // above its peers so the two sticky axes don't fight.
+                      col === 'Job Card' && 'left-0 z-20 border-r border-white/12',
                       col === 'Actions' && 'text-right',
                     )}
                   >
@@ -266,6 +278,7 @@ export default function JobsTable({ initialJobs, dept }: Props) {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </div>

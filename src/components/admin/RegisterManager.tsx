@@ -71,7 +71,7 @@ function fmtMoney(v: number | null): string {
 
 const chip = 'inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium whitespace-nowrap';
 const inputCls = cn(
-  'w-full min-h-11 px-3.5 py-2 rounded-xl text-sm bg-[var(--glass-bg)] border border-[var(--glass-border)]',
+  'w-full min-h-11 px-3.5 py-2 rounded-xl text-sm bg-[var(--field-bg)] border border-[var(--field-border)]',
   'text-[var(--glass-ink)] placeholder:text-[var(--glass-muted)]',
   'focus:outline-none focus:border-emerald-300/70 focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)] transition-all',
 );

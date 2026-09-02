@@ -5,9 +5,10 @@ import { Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const INPUT_BASE =
-  'peer w-full rounded-xl bg-[var(--glass-bg)] border border-[var(--glass-border)] ' +
+  'peer w-full rounded-xl bg-[var(--field-bg)] border border-[var(--field-border)] ' +
   'px-3.5 pt-5 pb-2 text-sm text-[var(--glass-ink)] backdrop-blur-md outline-none ' +
   'placeholder:text-transparent transition-all duration-200 ' +
+  'hover:border-[var(--field-border-hover)] ' +
   'focus:-translate-y-0.5 motion-reduce:focus:translate-y-0 ' +
   'focus:border-emerald-300/70 focus:bg-white/[0.14] ' +
   'focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22),0_10px_26px_rgba(0,0,0,0.25)]';
@@ -78,8 +79,9 @@ export function SelectField({ label, className, id, children, ...rest }: SelectP
       <select
         id={fieldId}
         className={cn(
-          'w-full rounded-xl bg-[var(--glass-bg)] border border-[var(--glass-border)] px-3.5 pt-5 pb-2 text-sm',
+          'w-full rounded-xl bg-[var(--field-bg)] border border-[var(--field-border)] px-3.5 pt-5 pb-2 text-sm',
           'text-[var(--glass-ink)] backdrop-blur-md outline-none transition-all duration-200',
+          'hover:border-[var(--field-border-hover)]',
           'focus:border-emerald-300/70 focus:bg-white/[0.14] focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)]',
           '[&>option]:bg-[var(--select-option-bg)] [&>option]:text-[var(--glass-ink)]',
           className,

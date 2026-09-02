@@ -65,7 +65,7 @@ export default function StageComments({ jobId, stage, dept, existingComments, on
         rows={2}
         autoFocus
         className={cn(
-          'w-full px-2 py-1.5 rounded-lg text-xs resize-none bg-[var(--glass-bg)] border border-[var(--glass-border)]',
+          'w-full px-2 py-1.5 rounded-lg text-xs resize-none bg-[var(--field-bg)] border border-[var(--field-border)]',
           'text-[var(--glass-ink)] placeholder:text-[var(--glass-muted)] backdrop-blur-md',
           'focus:outline-none focus:border-emerald-300/70 focus:bg-white/[0.14]',
           'focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)] transition-all'

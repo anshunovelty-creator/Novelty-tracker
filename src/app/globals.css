@@ -60,6 +60,29 @@ button,
   min-width: 44px;
 }
 
+/* Pointer cursor on controls.
+   Tailwind v3's preflight does not set this (it landed in v4), so every
+   <button> in the panel fell back to the UA default arrow — the strongest
+   "this is a control" cue on a desk-driven tool, missing app-wide. Declared
+   here rather than as a utility so it covers every button without ~300
+   per-component edits; element-level specificity keeps any local
+   cursor-* utility winning. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+label[for],
+summary,
+select:not(:disabled) {
+  cursor: pointer;
+}
+
+/* ...and let an unavailable control say so, rather than silently swallowing
+   the click. */
+button:disabled,
+[role="button"][aria-disabled="true"],
+select:disabled {
+  cursor: not-allowed;
+}
+
 /* ── Scrollable table wrapper (admin panel mobile) ──────────── */
 .table-scroll-wrapper {
   overflow-x: auto;
@@ -154,6 +177,12 @@ button,
   --glass-border:     rgba(255, 255, 255, 0.14);
   --glass-ink:        #EAFFF5;
   --glass-muted:      #9FBCB0;
+  /* Field edge/fill — see the .admin-light block for why controls carry
+     their own tokens. On the dark mesh the glass values already clear 3:1,
+     so these only need to be a touch brighter to read as a control. */
+  --field-border:       rgba(255, 255, 255, 0.22);
+  --field-border-hover: rgba(255, 255, 255, 0.34);
+  --field-bg:           rgba(255, 255, 255, 0.07);
   /* Focus bloom (DESIGN.md §4) — bright mint reads on the dark mesh. */
   --focus-ring:       #7CF0BE;
   --focus-bloom:      0 0 0 4px rgba(124, 240, 190, 0.22);
@@ -242,6 +271,16 @@ button,
   --glass-bg-strong:  #EDF3EF;
   --glass-border:     #E4EAE6;
   --select-option-bg: #FFFFFF;
+  /* Form controls need their own edge, darker than the card divider above.
+     A field carrying --glass-border (#E4EAE6) on a .glass card — which is
+     solid #FFFFFF in this theme — measures 1.25:1 and visually dissolves
+     into the card; WCAG 2.2 §1.4.11 wants 3:1 on a control's boundary.
+     A divider and an input are doing different jobs, so they no longer
+     share a value. */
+  --field-border:       #BFCCC5;  /* 3.0:1 on white */
+  --field-border-hover: #9FB0A7;
+  --field-bg:           #FFFFFF;  /* white field on the mint card inverts
+                                     figure/ground so the input sits forward */
   /* Press Green ring on white — the mint bloom is invisible on light. */
   --focus-ring:       #10553F;
   --focus-bloom:      0 0 0 4px rgba(16, 85, 63, 0.16);
