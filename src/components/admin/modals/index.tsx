@@ -81,7 +81,18 @@ export function ModalShell({
   // on this shell. Focusing on open must happen once and never again.
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;
-    (focusables()[0] ?? panelRef.current)?.focus();
+
+    // Prefer the first real field over the first focusable. Focus has to land
+    // inside the dialog — otherwise keyboard and screen-reader users are left
+    // on the page underneath and the Tab trap has nothing to hold — but the
+    // first focusable is the header's close button, which is the one control
+    // that discards the work. On a form, start in the form. Dialogs with no
+    // fields (ConfirmModal) fall through to their first button as before.
+    const items = focusables();
+    const firstField = items.find((el) =>
+      /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) && !(el as HTMLInputElement).readOnly,
+    );
+    (firstField ?? items[0] ?? panelRef.current)?.focus();
 
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
