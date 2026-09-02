@@ -5,7 +5,7 @@
 // ModalShell provides the a11y shell (role=dialog, focus trap, Escape, focus
 // return, scroll lock) so every modal in the admin panel behaves consistently.
 
-import React, { useState, useEffect, useRef, useId } from 'react';
+import React, { useState, useEffect, useRef, useId, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle } from 'lucide-react';
 import { cn, formatQty } from '@/lib/utils';
@@ -54,30 +54,57 @@ export function ModalShell({
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
 
+  // `onClose` is an inline arrow at nearly every call site, so it carries a
+  // fresh identity on every parent render. Holding it in a ref lets the
+  // effects below depend on nothing that changes — see the focus note.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; });
+
+  const focusables = useCallback(() => {
+    const panel = panelRef.current;
+    return panel
+      ? Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+          (el) => el.offsetParent !== null,
+        )
+      : [];
+  }, []);
+
+  // Focus on open, and restore it on close. Mount-only, deliberately.
+  //
+  // This effect used to depend on [onClose]. Since that prop is an inline
+  // arrow, ANY parent re-render tore the effect down and re-ran it — including
+  // the initial focus call — which pulled the caret out of whatever field was
+  // being typed into and dropped it on the first focusable element, the
+  // header's close button. JobSeparationManager polls every 30s (POLL_MS), so
+  // a half-filled form lost focus every thirty seconds; React Query's
+  // refetchOnWindowFocus did the same on tab-switch, for all 15 dialogs built
+  // on this shell. Focusing on open must happen once and never again.
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;
-    const panel = panelRef.current;
+    (focusables()[0] ?? panelRef.current)?.focus();
 
-    const focusables = () =>
-      panel
-        ? Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-            (el) => el.offsetParent !== null,
-          )
-        : [];
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
 
-    (focusables()[0] ?? panel)?.focus();
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      previouslyFocused?.focus?.();
+    };
+  }, [focusables]);
 
+  // Escape closes; Tab cycles within the panel.
+  useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose?.();
+        onCloseRef.current?.();
         return;
       }
       if (e.key !== 'Tab') return;
       const items = focusables();
       if (items.length === 0) {
         e.preventDefault();
-        panel?.focus();
+        panelRef.current?.focus();
         return;
       }
       const first = items[0];
@@ -92,15 +119,8 @@ export function ModalShell({
     }
 
     document.addEventListener('keydown', onKeyDown);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = prevOverflow;
-      previouslyFocused?.focus?.();
-    };
-  }, [onClose]);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [focusables]);
 
   // Rendered via a portal to <body> so the dialog never sits inside a
   // <table>/<tbody> (a modal opened from a JobRow <tr> would otherwise put a
