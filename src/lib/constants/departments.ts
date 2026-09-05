@@ -116,6 +116,11 @@ export function canDeptManageStock(perms: DeptPermissions | null): boolean {
   return hasFeature(perms, 'stock_edit');
 }
 
+/** Who may print box slips for a carton. Seeded to Dispatch — migration 052. */
+export function canDeptPrintBoxSlips(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'box_slip_print');
+}
+
 /** Who may view/send the queued, party-consolidated dispatch email. */
 export function canDeptManageDispatchNotifications(perms: DeptPermissions | null): boolean {
   return hasFeature(perms, 'dispatch_notifications');

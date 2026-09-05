@@ -62,3 +62,11 @@ supabase/.temp/
 # They are real order data and must never be committed.
 *.xlsx
 *.xls
+
+# Reference photos for the slip-printing work: sample box/roll slips carry real
+# party names, PO numbers and quantities. Same rule as the spreadsheets above —
+# the folder structure and its README stay tracked, the images never do.
+docs/printing-reference/**
+!docs/printing-reference/README.md
+!docs/printing-reference/*/
+!docs/printing-reference/*/.gitkeep
