@@ -121,6 +121,11 @@ export function canDeptPrintBoxSlips(perms: DeptPermissions | null): boolean {
   return hasFeature(perms, 'box_slip_print');
 }
 
+/** Who may print roll slips. Seeded to Dispatch — migration 053. */
+export function canDeptPrintRollSlips(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'roll_slip_print');
+}
+
 /** Who may view/send the queued, party-consolidated dispatch email. */
 export function canDeptManageDispatchNotifications(perms: DeptPermissions | null): boolean {
   return hasFeature(perms, 'dispatch_notifications');

@@ -188,7 +188,7 @@ export default function AdminHeader({ dept, displayName }: Props) {
   const navItems: NavItem[] = [
     { href: '/admin',                label: 'Dashboard',      icon: LayoutDashboard },
     { href: '/admin/stock',          label: 'Label Stock',    icon: Package },
-    { href: '/admin/box-slips',      label: 'Box Slips',      icon: Printer },
+    { href: '/admin/slips',          label: 'Slips',          icon: Printer },
     { href: '/admin/dies',           label: 'Dies',           icon: Scissors },
     { href: '/admin/plates',         label: 'Plates',         icon: Disc },
     { href: '/admin/job-separation', label: 'Job Separation', icon: SplitSquareHorizontal },

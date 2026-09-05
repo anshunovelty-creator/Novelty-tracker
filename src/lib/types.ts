@@ -120,6 +120,41 @@ export interface BoxSlipInput {
   material_name: string;            // defaults to jobs.job_name, editable
 }
 
+/**
+ * One roll-slip print batch — see migration 053 and docs/printing-reference/.
+ * Replaces BarTender's "ROLL SLIP 4X6 INCH.btw" (the artwork is really
+ * 76.2 x 32.2 mm), whose PM CODE and QUANTITY print as "<Empty>" because
+ * nothing fills them today.
+ */
+export interface RollSlip {
+  id: string;
+  job_id: string | null;
+  party:           string;
+  product:         string;
+  pm_code:         string | null;
+  po_number:       string | null;   // not printed; carried for the QR tracking link
+  job_card_number: string | null;
+  qty_per_roll: number;
+  roll_count:   number;
+  total_qty:    number;             // generated column: qty_per_roll * roll_count
+  direction:    string | null;      // winding direction, prints as "Direction:#4"
+  operator:     string | null;
+  slip_date:    string;             // ISO date 'YYYY-MM-DD'; prints as DD-MM-YYYY
+  printed_by:   string | null;
+  created_at:   string;
+}
+
+/** What Dispatch fills in; the rest of the slip comes off the job. */
+export interface RollSlipInput {
+  job_id:       string;
+  qty_per_roll: number;
+  roll_count:   number;
+  slip_date:    string;             // ISO date 'YYYY-MM-DD'
+  product:      string;             // defaults to jobs.job_name, editable
+  direction?:   string;
+  operator?:    string;
+}
+
 export interface LabelStock {
   id: string;
   // Null once the originating job is deleted — the physical stock outlives it.
