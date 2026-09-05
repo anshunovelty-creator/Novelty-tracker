@@ -3,9 +3,13 @@
 // Entering a job separation row off the PO, or correcting one already
 // entered.
 //
-// The field order is the sheet's column order deliberately: whoever is
-// typing is reading across a printed row, and reordering the form would
-// make every entry a lookup instead of a straight copy. Sr. No. and Order
+// The field order follows the sheet's column order: whoever is typing is
+// reading across a printed row, and reordering the form wholesale would
+// make every entry a lookup instead of a straight copy. The one departure
+// is the money block — Quantity sits beside Rate (the table's own "Qty /
+// Rate" column already pairs them) so the two numbers that multiply are
+// read together, and Order Value sits directly beneath Rate where the
+// typist can check the product without hunting for it. Sr. No. and Order
 // Value are not inputs — Sr. No. is auto-assigned on add, Order Value is
 // derived server-side from quantity × rate.
 
@@ -27,8 +31,9 @@ const inputCls = cn(
 type Props = {
   editing?: JobSeparation;
   // Seeds the form from an existing row without editing it — "Duplicate"
-  // opens a fresh Add form (POST) pre-filled with these values instead of
-  // a PATCH to the source row. Ignored when `editing` is set.
+  // opens a fresh Add form (POST) instead of a PATCH to the source row.
+  // Only the PO header is taken from it (party, PO no, PO date); every
+  // other field starts empty. Ignored when `editing` is set.
   prefill?: JobSeparation;
   onClose: () => void;
   onSaved: () => void;
@@ -36,26 +41,33 @@ type Props = {
 
 export default function AddJobSeparationModal({ editing, prefill, onClose, onSaved }: Props) {
   const titleId = useId();
-  const seed = editing ?? prefill;
+  // Editing seeds every field from the row being corrected. Duplicate is
+  // deliberately narrower: it carries only the PO header — party, PO no,
+  // PO date — because a second line off the same PO shares that header and
+  // nothing else. Material, quantity and rate change line to line, and a
+  // copied value left sitting in the field is the one most likely to be
+  // saved unchanged by mistake.
+  const seed     = editing;
+  const headSeed = editing ?? prefill;
 
-  const [party,        setParty]        = useState(seed?.party ?? '');
+  const [party,        setParty]        = useState(headSeed?.party ?? '');
   // A row being edited (or duplicated from) already has a real, saved
   // party — that counts as confirmed. New entries start unconfirmed until
   // a suggestion is picked, so a stray typo can never reach the database
   // as if it were a deliberate new party. Adding a party that isn't on the
   // list yet happens only through the separate Parties manager
   // (JobSeparationManager's "Parties" button) — not inline here.
-  const [partyConfirmed,     setPartyConfirmed]     = useState(Boolean(seed?.party));
+  const [partyConfirmed,     setPartyConfirmed]     = useState(Boolean(headSeed?.party));
   const [partySuggestions,   setPartySuggestions]   = useState<Party[]>([]);
   const [showPartySuggestions, setShowPartySuggestions] = useState(false);
   // Set right after picking a suggestion so the lookup effect doesn't
   // immediately re-open the dropdown for the value it just wrote —
   // mirrors suppressPmLookup in AddJobForm.tsx.
   const suppressPartyLookup = useRef(false);
-  const [poNo,         setPoNo]         = useState(seed?.po_no ?? '');
+  const [poNo,         setPoNo]         = useState(headSeed?.po_no ?? '');
   // <input type="date"> only speaks yyyy-MM-dd; the column is a DATE, so the
   // stored value already is one.
-  const [poDate,       setPoDate]       = useState(seed?.po_date ?? '');
+  const [poDate,       setPoDate]       = useState(headSeed?.po_date ?? '');
   const [pmCode,       setPmCode]       = useState(seed?.pm_code ?? '');
   const [materialName, setMaterialName] = useState(seed?.material_name ?? '');
   const [quantity,     setQuantity]     = useState(seed?.quantity?.toString() ?? '');
@@ -169,7 +181,7 @@ export default function AddJobSeparationModal({ editing, prefill, onClose, onSav
               {editing && editing.sr_no
                 ? `${editing.sr_no} · fields follow the PO sheet, left to right`
                 : prefill
-                  ? `Duplicated from ${prefill.sr_no ?? 'previous row'} · Sr. No. is assigned from the PO date`
+                  ? `Duplicated from ${prefill.sr_no ?? 'previous row'} · party and PO carried over, the rest is blank`
                   : 'Sr. No. is assigned from the PO date · fields follow the PO sheet, left to right'}
             </p>
           </div>
@@ -280,6 +292,21 @@ export default function AddJobSeparationModal({ editing, prefill, onClose, onSav
               />
             </div>
             <div>
+              <JsLabel required>Rate</JsLabel>
+              <input
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                value={rate}
+                onChange={(e) => setRate(e.target.value)}
+                placeholder="e.g. 22.50"
+                className={cn(inputCls, 'font-mono')}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
               <JsLabel>Unit</JsLabel>
               <select
                 value={unit}
@@ -292,6 +319,14 @@ export default function AddJobSeparationModal({ editing, prefill, onClose, onSav
                 <option value="1&2">Unit 1&2</option>
               </select>
             </div>
+            <div>
+              <JsLabel>Order Value</JsLabel>
+              <p className={cn(inputCls, 'font-mono flex items-center bg-black/[0.03]')}>
+                {previewOrderValue !== null
+                  ? previewOrderValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })
+                  : '—'}
+              </p>
+            </div>
           </div>
 
           <div>
@@ -302,29 +337,6 @@ export default function AddJobSeparationModal({ editing, prefill, onClose, onSav
               placeholder="Optional"
               className={inputCls}
             />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <JsLabel required>Rate</JsLabel>
-              <input
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                value={rate}
-                onChange={(e) => setRate(e.target.value)}
-                placeholder="e.g. 22.50"
-                className={cn(inputCls, 'font-mono')}
-              />
-            </div>
-            <div>
-              <JsLabel>Order Value</JsLabel>
-              <p className={cn(inputCls, 'font-mono flex items-center bg-black/[0.03]')}>
-                {previewOrderValue !== null
-                  ? previewOrderValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })
-                  : '—'}
-              </p>
-            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -202,7 +202,8 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
   const [adding,      setAdding]      = useState(false);
   const [editing,     setEditing]     = useState<JobSeparation | null>(null);
   // Set when "Duplicate" is used instead of "Add row" — seeds the add form
-  // with this row's fields (a fresh POST, not a PATCH to this row).
+  // with this row's PO header only, party / PO no / PO date (a fresh POST,
+  // not a PATCH to this row). The modal decides what carries over.
   const [duplicateSource, setDuplicateSource] = useState<JobSeparation | null>(null);
   // Set when "Add Job" is used on a row — opens AddJobForm prefilled,
   // submitting to that row's create-job endpoint instead of a fresh POST.
