@@ -33,16 +33,35 @@ import BoxSlipLabel, {
 import RollSlipLabel, {
   ROLL_SLIP_WIDTH_MM,
   ROLL_SLIP_HEIGHT_MM,
+  ROLL_SLIPS_PER_SHEET,
+  ROLL_SLIP_COLUMNS,
   type RollSlipLabelData,
 } from './RollSlipLabel';
 import type { BoxSlip, RollSlip, Job } from '@/lib/types';
 
 type SlipKind = 'box' | 'roll';
 
-const PAGE_SIZE: Record<SlipKind, { w: number; h: number }> = {
+/**
+ * The one media loaded in the P210: 6" x 4". Both slips print on it, so the
+ * printed page is always this size — a box slip fills a sheet, roll slips
+ * gang four to a sheet in a 2x2 grid.
+ */
+const SHEET = { w: BOX_SLIP_WIDTH_MM, h: BOX_SLIP_HEIGHT_MM };
+
+/** How much of a sheet one slip occupies — used for the on-screen preview. */
+const SLIP_SIZE: Record<SlipKind, { w: number; h: number }> = {
   box:  { w: BOX_SLIP_WIDTH_MM,  h: BOX_SLIP_HEIGHT_MM },
   roll: { w: ROLL_SLIP_WIDTH_MM, h: ROLL_SLIP_HEIGHT_MM },
 };
+
+const PER_SHEET: Record<SlipKind, number> = { box: 1, roll: ROLL_SLIPS_PER_SHEET };
+
+/** Splits a flat run of slips into sheet-sized chunks. */
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
 
 const FIELD = cn(
   'w-full min-h-11 px-3 rounded-xl text-sm',
@@ -340,14 +359,16 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
     });
   }
 
-  // The printed page must be sized for whatever is actually in the print
-  // root, which on a reprint may not be the tab currently open.
-  const pageKind: SlipKind = printReq?.kind ?? kind;
-  const page = PAGE_SIZE[pageKind];
-
   const copies = kind === 'box' ? boxes : rolls;
   const unit = kind === 'box' ? 'box' : 'roll';
   const history = kind === 'box' ? boxHistory : rollHistory;
+
+  // Stock consumed, which is what the operator at the printer actually cares
+  // about: 5 roll slips is two sheets, not five.
+  const sheets =
+    Number.isInteger(copies) && copies > 0
+      ? Math.ceil(copies / PER_SHEET[kind])
+      : 0;
 
   return (
     <div className="space-y-4">
@@ -524,8 +545,10 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
             )}
 
             <p className="text-xs text-[var(--glass-muted)]">
-              {Number.isInteger(copies) && copies > 0
-                ? `${copies} identical slip${copies > 1 ? 's' : ''} will print — one per ${unit}.`
+              {sheets > 0
+                ? kind === 'roll'
+                  ? `${copies} slip${copies > 1 ? 's' : ''} — one per roll, ${ROLL_SLIPS_PER_SHEET} to a 6″ × 4″ sheet, so ${sheets} sheet${sheets > 1 ? 's' : ''} of stock.`
+                  : `${copies} identical slip${copies > 1 ? 's' : ''} will print — one per box.`
                 : `Enter how many ${unit}s to print a slip for each.`}
             </p>
           </div>
@@ -535,22 +558,40 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
             <div className="flex items-baseline justify-between gap-3 mb-2">
               <h2 className="text-sm font-medium text-[var(--glass-ink)]">Preview</h2>
               <p className="text-xs text-[var(--glass-muted)]">
-                Actual size — {PAGE_SIZE[kind].w} × {PAGE_SIZE[kind].h} mm
+                One 6″ × 4″ sheet, actual size — slip is {SLIP_SIZE[kind].w} × {SLIP_SIZE[kind].h} mm
               </p>
             </div>
+            {/* The preview is a whole sheet, not a lone slip: what matters at
+                the printer is what comes out of it. For rolls that means
+                seeing the 2x2 tiling, and seeing the blanks on a short sheet. */}
             <div className="overflow-x-auto rounded-2xl border border-[var(--field-border)] bg-[#EEF1F5] p-4">
               <div
-                className="shadow-sm rounded-[3mm] overflow-hidden mx-auto"
-                style={{ width: `${PAGE_SIZE[kind].w}mm`, height: `${PAGE_SIZE[kind].h}mm` }}
+                className="shadow-sm rounded-[3mm] overflow-hidden mx-auto bg-white"
+                style={{
+                  width: `${SHEET.w}mm`,
+                  height: `${SHEET.h}mm`,
+                  display: 'grid',
+                  gridTemplateColumns:
+                    kind === 'roll'
+                      ? `repeat(${ROLL_SLIP_COLUMNS}, ${ROLL_SLIP_WIDTH_MM}mm)`
+                      : '1fr',
+                  gridAutoRows: kind === 'roll' ? `${ROLL_SLIP_HEIGHT_MM}mm` : 'auto',
+                }}
               >
-                {kind === 'box'
-                  ? <BoxSlipLabel data={boxPreview} />
-                  : <RollSlipLabel data={rollPreview} />}
+                {kind === 'box' ? (
+                  <BoxSlipLabel data={boxPreview} />
+                ) : (
+                  Array.from(
+                    { length: Math.min(copies > 0 ? copies : 1, ROLL_SLIPS_PER_SHEET) },
+                    (_, i) => <RollSlipLabel key={i} data={rollPreview} />,
+                  )
+                )}
               </div>
             </div>
             {kind === 'roll' && (
               <p className="mt-2 text-xs text-[var(--glass-muted)]">
-                The QR opens this job&rsquo;s live tracking page for the client.
+                Four to a sheet, cut apart along the borders. The QR opens this
+                job&rsquo;s live tracking page for the client.
               </p>
             )}
           </div>
@@ -620,12 +661,43 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
       )}
 
       {/* ── The surface that actually prints ─────────────────── */}
+      {/* One .slip-sheet per physical 6"x4" label. A box slip fills its
+          sheet; roll slips gang four to a sheet, so the last sheet of an
+          odd run is simply short — 5 rolls is a full sheet plus a sheet
+          holding one, with the other three quarters left blank. */}
       <div id="slip-print-root" aria-hidden="true">
-        {printReq && Array.from({ length: printReq.copies }, (_, i) =>
-          printReq.kind === 'box'
-            ? <BoxSlipLabel key={`${printReq.token}-${i}`} data={printReq.data} />
-            : <RollSlipLabel key={`${printReq.token}-${i}`} data={printReq.data} />,
-        )}
+        {printReq &&
+          chunk(
+            Array.from({ length: printReq.copies }, (_, i) => i),
+            PER_SHEET[printReq.kind],
+          ).map((sheet, sheetIndex) => (
+            <div
+              key={`${printReq.token}-sheet-${sheetIndex}`}
+              className="slip-sheet"
+              style={{
+                width: `${SHEET.w}mm`,
+                height: `${SHEET.h}mm`,
+                boxSizing: 'border-box',
+                background: '#fff',
+                display: 'grid',
+                // Roll slips tile 2-up; a box slip is a single full-bleed cell.
+                gridTemplateColumns:
+                  printReq.kind === 'roll'
+                    ? `repeat(${ROLL_SLIP_COLUMNS}, ${ROLL_SLIP_WIDTH_MM}mm)`
+                    : '1fr',
+                gridAutoRows:
+                  printReq.kind === 'roll' ? `${ROLL_SLIP_HEIGHT_MM}mm` : 'auto',
+              }}
+            >
+              {sheet.map((slipIndex) =>
+                printReq.kind === 'box' ? (
+                  <BoxSlipLabel key={slipIndex} data={printReq.data} />
+                ) : (
+                  <RollSlipLabel key={slipIndex} data={printReq.data} />
+                ),
+              )}
+            </div>
+          ))}
       </div>
 
       <style>{`
@@ -636,11 +708,11 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
         }
 
         @media print {
-          /* The page IS the label. No margin, or the driver centres the slip
-             on an A4 sheet and scales it down. The size follows whatever is
-             in the print root, which on a reprint may not be the open tab. */
+          /* The page IS the label, and there is only ever one stock loaded:
+             6" x 4". No margin, or the driver centres the sheet on an A4 page
+             and scales it down. */
           @page {
-            size: ${page.w}mm ${page.h}mm;
+            size: ${SHEET.w}mm ${SHEET.h}mm;
             margin: 0;
           }
 
@@ -664,17 +736,23 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
             padding: 0 !important;
           }
 
-          /* One slip per label. The last must not emit a trailing blank
-             label, which is a wasted piece of stock every single print. */
-          #slip-print-root > .box-slip,
-          #slip-print-root > .roll-slip {
+          /* One sheet per physical label — the break is between sheets, not
+             between slips, so four roll slips share one piece of stock. The
+             last sheet must not emit a trailing blank label, which would
+             waste a piece of stock on every single print. */
+          #slip-print-root > .slip-sheet {
             break-after: page;
             page-break-after: always;
           }
-          #slip-print-root > .box-slip:last-child,
-          #slip-print-root > .roll-slip:last-child {
+          #slip-print-root > .slip-sheet:last-child {
             break-after: auto;
             page-break-after: auto;
+          }
+          /* A slip must never be split across two labels. */
+          #slip-print-root .box-slip,
+          #slip-print-root .roll-slip {
+            break-inside: avoid;
+            page-break-inside: avoid;
           }
 
           /* Solid fills and reversed text are the whole design here; without

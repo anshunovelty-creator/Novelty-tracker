@@ -1,26 +1,50 @@
 // src/components/admin/RollSlipLabel.tsx
 // ============================================================
-// The roll slip — a replica of BarTender's "ROLL SLIP 4X6 INCH.btw".
-// The filename lies: the artwork is 76.2 x 32.2 mm, not 4x6 inches.
+// The roll slip — based on BarTender's "ROLL SLIP 4X6 INCH.btw"
+// (whose filename lies: that artwork is 76.2 x 32.2 mm).
 // See docs/printing-reference/04-roll-slips/ for the original.
 // ============================================================
 //
-// Same rules as BoxSlipLabel: millimetres rather than Tailwind's rem scale
-// so the print cannot drift, and system fonts because a webfont that fails
-// to load on an offline packing PC would silently reflow the label.
+// WHY THIS IS 76.2 x 50.8 mm AND NOT THE ORIGINAL 32.2 mm TALL
+// There is one stock loaded in the P210: 6" x 4" (152.4 x 101.6 mm), the
+// same media the box slip prints on. The BarTender original put one small
+// slip on that sheet and threw the rest away. Four now gang up on one sheet
+// as a 2x2 grid, and 152.4/2 x 101.6/2 is exactly 76.2 x 50.8 — so each slip
+// keeps the original width and gains 58% more height.
 //
-// This slip is small — 76.2 x 32.2 mm — so type runs down to 2.8mm. At the
-// P210's 203 dpi that is still ~22 dots tall, which thermal renders cleanly.
+// That height is not decoration. Two across already consumes the full sheet
+// width (76.2 x 2 = 152.4 exactly), so the slip physically cannot get wider;
+// every bit of headroom is vertical. It goes into the QR — 15mm instead of
+// 12mm, which is 3.6 dots per module at 203 dpi instead of 2.9 — and into
+// type sizes that someone can read across a packing bench.
+//
+// Sizes are in millimetres rather than Tailwind's rem scale so the print
+// cannot drift, and the fonts are system faces because a webfont that fails
+// to load on an offline packing PC would silently reflow the label.
 
 import type { CSSProperties } from 'react';
 import qrcode from 'qrcode-generator';
 
-/** Physical label dimensions. */
+/**
+ * Physical slip dimensions — exactly one quarter of the 6" x 4" sheet.
+ * SlipsManager lays four of these out per printed page.
+ */
 export const ROLL_SLIP_WIDTH_MM = 76.2;
-export const ROLL_SLIP_HEIGHT_MM = 32.2;
+export const ROLL_SLIP_HEIGHT_MM = 50.8;
 
-/** Where the QR points when no app URL is configured — today's behaviour. */
-const FALLBACK_SITE = 'https://noveltylabels.in';
+/** How many fit on one 6" x 4" sheet, and how they are arranged. */
+export const ROLL_SLIPS_PER_SHEET = 4;
+export const ROLL_SLIP_COLUMNS = 2;
+
+/**
+ * The deployed app, and so the host of /track — where a scanned QR has to
+ * land. Used when NEXT_PUBLIC_APP_URL is not configured for the build.
+ *
+ * Deliberately the app host and not the marketing domain: /track has to
+ * actually resolve, and a QR is printed onto a physical roll that will
+ * outlive any redirect set up later. Point this at whatever serves /track.
+ */
+const FALLBACK_SITE = 'https://novelty-tracker.vercel.app';
 
 export type RollSlipLabelData = {
   product: string;
@@ -49,24 +73,33 @@ export type RollSlipLabelData = {
  * plain website, which is what every slip carried before this.
  *
  * WHY ONLY THE FIRST TWO WORDS OF THE PARTY
- * Every character costs QR modules, and this code has to survive being
- * printed 12mm wide at 203 dpi. Measured on a representative URL:
+ * Every character costs QR modules, and QR versions step in cliffs, not
+ * gradually. Measured at error-correction M, printed 15mm wide at 203 dpi:
  *
- *   full party,     EC L  → 33 modules, 2.91 dots/module,  7% recovery
- *   full party,     EC M  → 37 modules, 2.59 dots/module, 15% recovery
- *   first 2 words,  EC M  → 33 modules, 2.91 dots/module, 15% recovery  ← this
+ *   43-62 chars → 33 modules, 3.64 dots per module
+ *   63-84 chars → 37 modules, 3.24 dots per module   ← we live here
+ *   85+   chars → 41 modules, 2.93 dots per module   ← too thin to trust
  *
- * The truncation buys back exactly the density that error-correction level M
- * costs, so the code is no denser than the EC L version yet tolerates more
- * scuffing. It is safe because /track matches the party with a substring
- * ilike (`%term%`), not an equality test — "ACME BEVERAGES" still resolves
- * "ACME BEVERAGES PVT LTD" — and the PO number has to match as well.
+ * "https://novelty-tracker.vercel.app/track/" is already 41 of those
+ * characters, and "?party=" another 7, which leaves roughly 36 for the PO
+ * number and party combined before the code drops a density band. A typical
+ * slip lands at 68. The full party name would still fit today, but a job
+ * with a long PO ("PO/2026/000847-REV-A" encodes to 24 characters) plus a
+ * full party name tips over 85 — so the truncation is headroom, bought
+ * before it is needed rather than after a batch prints unscannable.
+ *
+ * It is safe because /track matches the party with a substring ilike
+ * (`%term%`), not equality: "ACME BEVERAGES" still resolves "ACME BEVERAGES
+ * PVT LTD", and the PO number has to match as well.
  *
  * If /track ever switches to an exact party match, this must send the full
- * name again and the QR will need more physical room.
+ * name again.
  */
 export function buildRollSlipQrUrl(poNumber: string | null, party: string): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL || FALLBACK_SITE;
+  // A configured URL is commonly written with a trailing slash; left alone it
+  // would produce "…app//track/4521", which still resolves but bloats the QR
+  // by a character and looks broken to anyone reading the link.
+  const base = (process.env.NEXT_PUBLIC_APP_URL || FALLBACK_SITE).replace(/\/+$/, '');
   if (!poNumber) return base;
   const partyTerm = party.trim().split(/\s+/).slice(0, 2).join(' ');
   return `${base}/track/${encodeURIComponent(poNumber)}?party=${encodeURIComponent(partyTerm)}`;
@@ -82,21 +115,15 @@ function formatSlipDate(iso: string): string {
 /**
  * QR rendered as SVG rather than a canvas or an image.
  *
- * SVG is resolution-independent, so the modules land on exact dot boundaries
- * at whatever dpi the driver rasterises to — a canvas would be resampled and
+ * SVG is resolution-independent, so modules land on exact dot boundaries at
+ * whatever dpi the driver rasterises to — a canvas would be resampled and
  * blur the module edges, which is what makes a small QR fail to scan. It is
  * also foreground content, so it prints even if the operator forgets Chrome's
  * "Background graphics" checkbox.
- *
- * Error correction M (~15%) is the usual choice for a printed label: enough
- * redundancy to survive a scuff, without inflating the module count on a code
- * this physically small.
  */
 function QrCode({ value, sizeMm }: { value: string; sizeMm: number }) {
-  // typeNumber 0 = pick the smallest version that fits the data. Fewer
-  // modules means physically larger modules, which is the difference
-  // between a QR that scans off a 12mm square and one that does not —
-  // see buildRollSlipQrUrl for the density budget this is working within.
+  // typeNumber 0 = smallest version that fits the data; error correction M
+  // (~15% recovery) is the usual choice for a label that gets handled.
   const qr = qrcode(0, 'M');
   qr.addData(value);
   qr.make();
@@ -116,21 +143,32 @@ function QrCode({ value, sizeMm }: { value: string; sizeMm: number }) {
       shapeRendering="crispEdges"
       aria-hidden="true"
     >
-      {/* Quiet zone is supplied by the surrounding cell padding, not here. */}
+      {/* Quiet zone comes from the surrounding cell padding, not from here. */}
       <path d={parts.join('')} fill="#000" />
     </svg>
   );
 }
 
-// ── Table geometry, measured off the BarTender original ──────
-const PAD_MM = 1.5;            // inset from the die-cut edge to the table
-const BORDER_MM = 0.35;        // 0.35mm ≈ 3 dots at 203 dpi
-const COL1_MM = 20;            // the SUPPLIER / PRODUCT / PM CODE / QUANTITY column
-const COL2_MM = 20;            // the value column on the PM CODE and QUANTITY rows
-const QR_CELL_MM = 14;         // right-hand cell of the top row
-const ROW1_MM = 12.8;
-const ROW2_MM = 6.2;
-const ROW34_MM = 5.1;
+// ── Table geometry ───────────────────────────────────────────
+// Widths are unchanged from the original artwork (the slip cannot get wider);
+// heights and type are scaled up into the room the quarter-sheet gives us.
+const PAD_MM = 1.5;            // inset from the sheet gridline to the table
+const BORDER_MM = 0.4;         // 0.4mm ≈ 3 dots at 203 dpi
+const COL1_MM = 21;            // SUPPLIER / PRODUCT / PM CODE / QUANTITY column
+const COL2_MM = 23;            // value column on the PM CODE and QUANTITY rows
+const QR_CELL_MM = 17;         // right-hand cell of the top row
+const QR_MM = 15;              // 3.6 dots per module at 203 dpi
+const ROW1_MM = 21;
+const ROW2_MM = 9.6;
+const ROW34_MM = 8.6;
+
+// Type scales less than the height does: the columns never got wider, so an
+// over-eager font size would just clip. These are the sizes that fit.
+const FS_LABEL = 3.4;          // SUPPLIER / PRODUCT / PM CODE / QUANTITY
+const FS_VALUE = 3.4;          // PM code, quantity
+const FS_PRODUCT = 3.6;
+const FS_META = 3.1;           // Direction / Operator — the longest strings
+const FS_HOUSE = 5.2;          // NOVELTY CREATIONS
 
 const RULE = `${BORDER_MM}mm solid #000`;
 
@@ -144,6 +182,8 @@ const cell = (extra: CSSProperties = {}): CSSProperties => ({
   overflow: 'hidden',
   ...extra,
 });
+
+const nowrap: CSSProperties = { whiteSpace: 'nowrap' };
 
 export default function RollSlipLabel({ data }: { data: RollSlipLabelData }) {
   const { product, pmCode, qtyPerRoll, direction, operator, slipDate, poNumber, party } = data;
@@ -181,19 +221,21 @@ export default function RollSlipLabel({ data }: { data: RollSlipLabelData }) {
               flex: '0 0 auto',
               borderRight: RULE,
               flexDirection: 'column',
-              gap: '1mm',
+              gap: '1.6mm',
             })}
           >
-            <span style={{ fontSize: '2.8mm', fontWeight: 700 }}>SUPPLIER</span>
-            <span style={{ fontSize: '2.8mm', fontWeight: 700 }}>{formatSlipDate(slipDate)}</span>
+            <span style={{ fontSize: `${FS_LABEL}mm`, fontWeight: 700 }}>SUPPLIER</span>
+            <span style={{ fontSize: `${FS_LABEL}mm`, fontWeight: 700, ...nowrap }}>
+              {formatSlipDate(slipDate)}
+            </span>
           </div>
 
           <div style={cell({ flex: '1 1 auto', minWidth: 0 })}>
             <span
               style={{
-                fontSize: '4.4mm',
+                fontSize: `${FS_HOUSE}mm`,
                 fontWeight: 700,
-                lineHeight: 1.05,
+                lineHeight: 1.08,
                 textAlign: 'center',
                 letterSpacing: '-0.05mm',
               }}
@@ -205,23 +247,21 @@ export default function RollSlipLabel({ data }: { data: RollSlipLabelData }) {
           </div>
 
           <div style={cell({ width: `${QR_CELL_MM}mm`, flex: '0 0 auto' })}>
-            {/* 12mm, as large as row 1 allows: at 203 dpi that is 2.9 dots
-                per module, and every tenth of a millimetre matters here. */}
-            <QrCode value={qrUrl} sizeMm={12} />
+            <QrCode value={qrUrl} sizeMm={QR_MM} />
           </div>
         </div>
 
         {/* ── Row 2: product, spanning everything right of the label column ── */}
         <div style={{ display: 'flex', height: `${ROW2_MM}mm`, borderBottom: RULE }}>
           <div style={cell({ width: `${COL1_MM}mm`, flex: '0 0 auto', borderRight: RULE })}>
-            <span style={{ fontSize: '2.9mm', fontWeight: 700 }}>PRODUCT</span>
+            <span style={{ fontSize: `${FS_LABEL}mm`, fontWeight: 700 }}>PRODUCT</span>
           </div>
           <div style={cell({ flex: '1 1 auto', minWidth: 0, justifyContent: 'flex-start' })}>
             <span
               style={{
-                fontSize: '3mm',
+                fontSize: `${FS_PRODUCT}mm`,
                 fontWeight: 700,
-                whiteSpace: 'nowrap',
+                ...nowrap,
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
               }}
@@ -234,7 +274,7 @@ export default function RollSlipLabel({ data }: { data: RollSlipLabelData }) {
         {/* ── Row 3: PM code + winding direction ── */}
         <div style={{ display: 'flex', height: `${ROW34_MM}mm`, borderBottom: RULE }}>
           <div style={cell({ width: `${COL1_MM}mm`, flex: '0 0 auto', borderRight: RULE })}>
-            <span style={{ fontSize: '2.9mm', fontWeight: 700 }}>PM CODE</span>
+            <span style={{ fontSize: `${FS_LABEL}mm`, fontWeight: 700 }}>PM CODE</span>
           </div>
           <div
             style={cell({
@@ -246,12 +286,12 @@ export default function RollSlipLabel({ data }: { data: RollSlipLabelData }) {
           >
             {/* A missing PM code prints an empty cell — never the word "null",
                 and never BarTender's literal "<Empty>". */}
-            <span style={{ fontSize: '2.9mm', fontWeight: 700, whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: `${FS_VALUE}mm`, fontWeight: 700, ...nowrap }}>
               {pmCode ?? ''}
             </span>
           </div>
           <div style={cell({ flex: '1 1 auto', minWidth: 0, justifyContent: 'flex-start' })}>
-            <span style={{ fontSize: '2.9mm', fontWeight: 700, whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: `${FS_META}mm`, fontWeight: 700, ...nowrap }}>
               Direction:{direction ?? ''}
             </span>
           </div>
@@ -260,7 +300,7 @@ export default function RollSlipLabel({ data }: { data: RollSlipLabelData }) {
         {/* ── Row 4: quantity + operator ── */}
         <div style={{ display: 'flex', flex: '1 1 auto' }}>
           <div style={cell({ width: `${COL1_MM}mm`, flex: '0 0 auto', borderRight: RULE })}>
-            <span style={{ fontSize: '2.9mm', fontWeight: 700 }}>QUANTITY</span>
+            <span style={{ fontSize: `${FS_LABEL}mm`, fontWeight: 700 }}>QUANTITY</span>
           </div>
           <div
             style={cell({
@@ -270,12 +310,12 @@ export default function RollSlipLabel({ data }: { data: RollSlipLabelData }) {
               justifyContent: 'flex-start',
             })}
           >
-            <span style={{ fontSize: '2.9mm', fontWeight: 700, whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: `${FS_VALUE}mm`, fontWeight: 700, ...nowrap }}>
               {qtyPerRoll > 0 ? `${qtyPerRoll} NOS` : ''}
             </span>
           </div>
           <div style={cell({ flex: '1 1 auto', minWidth: 0, justifyContent: 'flex-start' })}>
-            <span style={{ fontSize: '2.9mm', fontWeight: 700, whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: `${FS_META}mm`, fontWeight: 700, ...nowrap }}>
               Operator:{operator ?? ''}
             </span>
           </div>
