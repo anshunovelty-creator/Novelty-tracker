@@ -12,15 +12,27 @@
 // the fields that genuinely differ.
 //
 // HOW PRINTING WORKS HERE
-// No print server, no local agent. Slips render into a hidden
-// #slip-print-root, and the @media print block at the bottom hides the admin
-// shell and promotes that root to the page. window.print() then hands it to
-// the TSC P210's ordinary Windows driver.
+// No print server, no local agent. Slips render into #slip-print-root, the
+// @media print block hides everything else, and window.print() hands the
+// result to the TSC P210's ordinary Windows driver.
 //
-// The root is parked off-screen rather than display:none, because a
-// display:none element is not printed at all in any browser.
+// WHY THE PRINT SURFACE IS PORTALLED TO <body>
+// It has to be a direct child of body so the print stylesheet can
+// `display: none` its siblings. That matters more than it sounds:
+//
+//   - `visibility: hidden` (the obvious alternative) hides the admin shell
+//     but leaves it occupying layout, so a page of UI still paginates into
+//     several blank sheets of label stock.
+//   - Escaping that with `position: absolute` puts the sheets inside an
+//     absolutely positioned box, and Chrome does not reliably honour forced
+//     page breaks inside one. That is what broke sheet ganging: four roll
+//     slips meant to share a sheet came out on four separate labels.
+//
+// As a body-level child in normal flow, each .slip-sheet is an ordinary
+// block that `break-after: page` can act on, which is all this needs.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import { Printer, Search, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -119,6 +131,11 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
   const [rollHistory, setRollHistory] = useState<RollSlip[]>([]);
   const [printReq, setPrintReq] = useState<PrintRequest | null>(null);
   const printToken = useRef(0);
+
+  // Resolved after mount: document.body does not exist during SSR, and the
+  // print surface must hang off it rather than off this component's subtree.
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => setPortalTarget(document.body), []);
 
   const canPrint = kind === 'box' ? canPrintBox : canPrintRoll;
 
@@ -393,7 +410,10 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
           >
             {k === 'box' ? 'Box slip' : 'Roll slip'}
             <span className="ml-1.5 text-xs opacity-70">
-              {k === 'box' ? '6″ × 4″' : '76 × 32 mm'}
+              {/* What the operator loads and cuts, not the artwork size: both
+                  print on the same 6x4 stock, and the roll slip's number is
+                  how many come off one piece of it. */}
+              {k === 'box' ? '6″ × 4″' : `${ROLL_SLIPS_PER_SHEET} per 6″ × 4″`}
             </span>
           </button>
         ))}
@@ -665,42 +685,58 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
           sheet; roll slips gang four to a sheet, so the last sheet of an
           odd run is simply short — 5 rolls is a full sheet plus a sheet
           holding one, with the other three quarters left blank. */}
-      <div id="slip-print-root" aria-hidden="true">
-        {printReq &&
-          chunk(
-            Array.from({ length: printReq.copies }, (_, i) => i),
-            PER_SHEET[printReq.kind],
-          ).map((sheet, sheetIndex) => (
-            <div
-              key={`${printReq.token}-sheet-${sheetIndex}`}
-              className="slip-sheet"
-              style={{
-                width: `${SHEET.w}mm`,
-                height: `${SHEET.h}mm`,
-                boxSizing: 'border-box',
-                background: '#fff',
-                display: 'grid',
-                // Roll slips tile 2-up; a box slip is a single full-bleed cell.
-                gridTemplateColumns:
-                  printReq.kind === 'roll'
-                    ? `repeat(${ROLL_SLIP_COLUMNS}, ${ROLL_SLIP_WIDTH_MM}mm)`
-                    : '1fr',
-                gridAutoRows:
-                  printReq.kind === 'roll' ? `${ROLL_SLIP_HEIGHT_MM}mm` : 'auto',
-              }}
-            >
-              {sheet.map((slipIndex) =>
-                printReq.kind === 'box' ? (
-                  <BoxSlipLabel key={slipIndex} data={printReq.data} />
-                ) : (
-                  <RollSlipLabel key={slipIndex} data={printReq.data} />
-                ),
-              )}
-            </div>
-          ))}
-      </div>
+      {portalTarget &&
+        createPortal(
+          <div id="slip-print-root" aria-hidden="true">
+            {printReq &&
+              chunk(
+                Array.from({ length: printReq.copies }, (_, i) => i),
+                PER_SHEET[printReq.kind],
+              ).map((sheet, sheetIndex) => (
+                <div
+                  key={`${printReq.token}-sheet-${sheetIndex}`}
+                  className="slip-sheet"
+                  style={{
+                    width: `${SHEET.w}mm`,
+                    height: `${SHEET.h}mm`,
+                    boxSizing: 'border-box',
+                    background: '#fff',
+                    // Nothing may spill past the sheet edge: an overflow of
+                    // even a fraction of a millimetre is enough for the
+                    // browser to push the second row onto its own label.
+                    overflow: 'hidden',
+                    display: 'grid',
+                    // Roll slips tile 2-up; a box slip is a single full cell.
+                    gridTemplateColumns:
+                      printReq.kind === 'roll'
+                        ? `repeat(${ROLL_SLIP_COLUMNS}, ${ROLL_SLIP_WIDTH_MM}mm)`
+                        : '1fr',
+                    gridAutoRows:
+                      printReq.kind === 'roll' ? `${ROLL_SLIP_HEIGHT_MM}mm` : 'auto',
+                  }}
+                >
+                  {sheet.map((slipIndex) =>
+                    printReq.kind === 'box' ? (
+                      <BoxSlipLabel key={slipIndex} data={printReq.data} />
+                    ) : (
+                      <RollSlipLabel key={slipIndex} data={printReq.data} />
+                    ),
+                  )}
+                </div>
+              ))}
+          </div>,
+          portalTarget,
+        )}
 
-      <style>{`
+      {/* dangerouslySetInnerHTML, not a text child. React escapes text when
+          server-rendering, so a `"` in here arrives as `&quot;` — and <style>
+          is a raw-text element, so the parser never decodes it back. The
+          server and client text then differ, hydration fails, and React
+          throws away the server HTML to re-render the whole root. Nothing
+          here is user input; it is a constant built from the label sizes. */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
         #slip-print-root {
           position: fixed;
           left: -10000px;
@@ -720,35 +756,47 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
             margin: 0 !important;
             padding: 0 !important;
             background: #fff !important;
+            width: auto !important;
+            height: auto !important;
           }
 
-          /* Hide the admin shell by visibility, not display: display:none
-             would collapse the layout and take the slip with it. */
-          body * { visibility: hidden !important; }
-          #slip-print-root,
-          #slip-print-root * { visibility: visible !important; }
+          /* Remove the admin shell from layout entirely rather than merely
+             hiding it. visibility:hidden would leave a page of UI still
+             occupying flow, which paginates into blank labels; display:none
+             is what actually reclaims the pages. This works only because the
+             print surface is portalled to be a sibling of that shell rather
+             than a descendant of it. */
+          body > *:not(#slip-print-root) { display: none !important; }
 
+          /* Back into normal flow: a forced page break inside an absolutely
+             positioned box is not reliably honoured, which is exactly what
+             stopped four roll slips sharing one sheet. */
           #slip-print-root {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
+            display: block !important;
+            position: static !important;
+            left: auto !important;
+            top: auto !important;
             margin: 0 !important;
             padding: 0 !important;
           }
 
-          /* One sheet per physical label — the break is between sheets, not
-             between slips, so four roll slips share one piece of stock. The
-             last sheet must not emit a trailing blank label, which would
-             waste a piece of stock on every single print. */
+          /* One sheet per physical label. The break is between sheets, never
+             between the slips on one, so four roll slips share a piece of
+             stock — and break-inside on the sheet is what holds that 2x2
+             block together as a single unbreakable box. */
           #slip-print-root > .slip-sheet {
+            break-inside: avoid;
+            page-break-inside: avoid;
             break-after: page;
             page-break-after: always;
           }
+          /* The last sheet must not emit a trailing blank label, which would
+             waste a piece of stock on every single print. */
           #slip-print-root > .slip-sheet:last-child {
             break-after: auto;
             page-break-after: auto;
           }
-          /* A slip must never be split across two labels. */
+          /* A slip must never be split across two labels either. */
           #slip-print-root .box-slip,
           #slip-print-root .roll-slip {
             break-inside: avoid;
@@ -762,7 +810,9 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
             print-color-adjust: exact !important;
           }
         }
-      `}</style>
+      `,
+        }}
+      />
     </div>
   );
 }
