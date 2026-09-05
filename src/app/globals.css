@@ -107,6 +107,15 @@ select:disabled {
   animation: pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+/* ── 404 "no signal" glyph (not-found page) ─────────────────── */
+@keyframes signal-ping {
+  0%   { transform: scale(0.6); opacity: 0.6; }
+  80%, 100% { transform: scale(1.7); opacity: 0; }
+}
+.signal-ping {
+  animation: signal-ping 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
 /* ── Indeterminate loading bar (admin table refetch) ────────── */
 @keyframes loading-slide {
   0%   { transform: translateX(-100%); }
@@ -249,6 +258,7 @@ select:disabled {
   .mesh-blob    { animation: none; }
   .cyc-fade     { animation: none; }
   .dot-pulse    { animation: none; }
+  .signal-ping  { animation: none; opacity: 0.35; }
   .loading-bar  { animation: none; width: 100%; }
   .animate-pulse { animation: none; }
 }
