@@ -1,0 +1,37 @@
+-- ============================================================
+-- NOVELTY LABELS JOB TRACKING SYSTEM
+-- Migration 054: drop box_slips and roll_slips
+-- ============================================================
+-- Reverses 052_box_slips and 053_roll_slips.
+--
+-- WHY
+-- Those tables recorded one row per print batch so the Slips page could
+-- offer a list of recent prints with a Reprint button beside each. In use
+-- the list was never how anyone reprinted: a slip describes a carton or a
+-- roll that is about to be packed, the operator is standing at the printer
+-- with the job already open, and re-running the print is faster than finding
+-- a row. So the tables grew a row per print and nobody read them back. The
+-- panel has been removed from the page and the app no longer writes here —
+-- see src/components/admin/SlipsManager.tsx, which now renders and prints
+-- entirely in the browser with no server round-trip.
+--
+-- WHAT THIS DELETES
+-- Every recorded print batch. There is no application feature left that can
+-- read these rows, and no migration that recreates them — export them first
+-- if the printing history has any value as a record. This is not reversible.
+--
+-- WHAT THIS DELIBERATELY KEEPS
+-- The 'box_slip_print' and 'roll_slip_print' rows in
+-- department_feature_permissions, seeded by 052 and 053. Those are still
+-- live: they gate the Print buttons on the Slips page through
+-- canDeptPrintBoxSlips / canDeptPrintRollSlips in
+-- src/lib/constants/departments.ts. Dropping them would silently take the
+-- print buttons away from Dispatch. They are permissions to print, and
+-- printing is exactly what remains.
+-- ============================================================
+
+-- CASCADE takes the RLS policies and the job_id foreign keys with the table.
+-- Nothing else in the schema references either table — no view, no function,
+-- no trigger — so the cascade cannot reach further than these two tables.
+DROP TABLE IF EXISTS box_slips CASCADE;
+DROP TABLE IF EXISTS roll_slips CASCADE;
