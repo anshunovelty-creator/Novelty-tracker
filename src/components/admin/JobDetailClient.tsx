@@ -16,6 +16,7 @@ import type { Job } from '@/lib/types';
 import type { DeptPermissions } from '@/lib/constants/departments';
 import type { Stage } from '@/lib/constants/stages';
 import HistoryPanel from './HistoryPanel';
+import JobShadeCardPanel from './JobShadeCardPanel';
 import DeliveryDateEdit from './DeliveryDateEdit';
 import PrintingUnitEdit from './PrintingUnitEdit';
 import { JOBS_CHANGED_EVENT } from '@/lib/constants/events';
@@ -440,6 +441,13 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
           </div>
         )}
       </div>
+
+      {/* Shade card cross-reference — read-only; see JobShadeCardPanel. */}
+      <JobShadeCardPanel
+        pmCode={job.pm_code}
+        party={job.party}
+        product={job.job_name}
+      />
 
       {/* Stage history + comments + dispatch schedules */}
       <div className="glass rounded-xl px-6 pb-2">
