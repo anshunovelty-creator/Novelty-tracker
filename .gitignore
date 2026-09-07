@@ -79,3 +79,11 @@ docs/printing-reference/**
 
 # macOS Finder metadata — never belongs in the repo.
 .DS_Store
+
+# Working reference shots kept at the repo root. Both carry third-party data —
+# a consignment address slip with a customer's postal address, and a Job
+# Separation screenshot showing a live PO number, quantity and unit rate — and
+# one of this repo's remotes is public. Same rule as docs/printing-reference/:
+# useful on disk, never in a commit.
+/Address slip.jpeg
+/Job Sep.jpeg
