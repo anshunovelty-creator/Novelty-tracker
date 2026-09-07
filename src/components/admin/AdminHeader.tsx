@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Package, Scissors, Disc, Users, SplitSquareHorizontal, Contact, ClipboardList, Truck, Menu, X, Building2, LayoutDashboard, Printer, type LucideIcon } from 'lucide-react';
+import { Package, Scissors, Disc, Users, SplitSquareHorizontal, Contact, ClipboardList, Truck, Menu, X, Building2, LayoutDashboard, Printer, Palette, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -191,6 +191,7 @@ export default function AdminHeader({ dept, displayName }: Props) {
     { href: '/admin/slips',          label: 'Slips',          icon: Printer },
     { href: '/admin/dies',           label: 'Dies',           icon: Scissors },
     { href: '/admin/plates',         label: 'Plates',         icon: Disc },
+    { href: '/admin/shade-cards',    label: 'Shade Cards',    icon: Palette },
     { href: '/admin/job-separation', label: 'Job Separation', icon: SplitSquareHorizontal },
     // Bill of Material — Production raises material requests here and Admin
     // answers them. Production + Admin only, mirrored by canDeptUseBOM in

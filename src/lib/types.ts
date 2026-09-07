@@ -8,6 +8,7 @@
 import type { Stage } from './constants/stages';
 import type { Department } from './constants/departments';
 import type { RunStage } from './constants/runStages';
+import type { ShadeCardStatus, MakingStatus } from './constants/shadeCards';
 
 // ── team ─────────────────────────────────────────────────────
 // A login account, not a database row — Supabase Auth is the source of
@@ -811,4 +812,58 @@ export interface BomRequestInput {
     unit?:              string | null;
     note?:              string | null;
   }[];
+}
+
+// ── shade cards ─────────────────────────────────────────────
+// Colour-approval cards sent to a party. Migrated from the standalone Shade
+// Card Tracker — see migration 055 for the schema and the two departures
+// from the source app (no profiles table; imported rows carry no created_by).
+
+export interface ShadeCard {
+  id:                 string;
+  party:              string;
+  product_name:       string;
+  pm_code:            string | null;  // PM CODE — the job cross-reference key
+  shade_card_number:  string | null;
+  docket_number:      string | null;
+  status:             ShadeCardStatus;
+  making_status:      MakingStatus;
+  prepared_date:      string | null;  // ISO date string
+  approval_date:      string | null;
+  sent_to_party_date: string | null;
+  received_back_date: string | null;
+  qnap_path:          string | null;  // reference only — never resolved
+  notes:              string | null;
+  version:            number;
+  is_current:         boolean;
+  supersedes_id:      string | null;
+  // NULL on every imported row: those auth.users ids belonged to the old
+  // project. Read the *_name columns for imported attribution.
+  created_by:         string | null;
+  created_by_name:    string | null;
+  updated_by:         string | null;
+  updated_by_name:    string | null;
+  created_at:         string;
+  updated_at:         string;
+}
+
+/** The fields a user actually fills in. `status` is excluded on purpose — it
+ *  moves only through the dedicated status control, so nobody self-approves
+ *  by way of a field edit. */
+export type ShadeCardInput = Pick<
+  ShadeCard,
+  | 'party' | 'product_name' | 'pm_code' | 'shade_card_number' | 'docket_number'
+  | 'making_status' | 'prepared_date' | 'approval_date'
+  | 'sent_to_party_date' | 'received_back_date' | 'qnap_path' | 'notes'
+>;
+
+/** One row of the append-only status trail, written by a DB trigger. */
+export interface ShadeCardStatusHistoryEntry {
+  id:              number;
+  shade_card_id:   string;
+  old_status:      ShadeCardStatus | null;  // NULL on the creation row
+  new_status:      ShadeCardStatus;
+  changed_by:      string | null;
+  changed_by_name: string | null;
+  changed_at:      string;
 }

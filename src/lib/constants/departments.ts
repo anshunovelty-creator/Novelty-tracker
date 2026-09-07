@@ -237,3 +237,11 @@ export function canDeptSetRunStage(perms: DeptPermissions | null, runStage: RunS
 export function canDeptUseMeterCalculator(perms: DeptPermissions | null): boolean {
   return hasFeature(perms, 'meter_calculator_use');
 }
+
+/** Who may add, edit, revise and change the status of shade cards.
+ *  Prepress and QC (seeded in migration 055), plus the super-admin
+ *  department. Deleting a card is separate and stricter — super admin only,
+ *  matching the source app where delete was admin-only. */
+export function canDeptManageShadeCards(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'shade_card_manage');
+}
