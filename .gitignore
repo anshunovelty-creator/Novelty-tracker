@@ -87,3 +87,9 @@ docs/printing-reference/**
 # useful on disk, never in a commit.
 /Address slip.jpeg
 /Job Sep.jpeg
+
+# Hollow copy of the shade card tracker, kept on disk only. It carries no
+# source code — the real project lives at mrpal5a/novelty-shade-card-tracker —
+# but it does hold a .env.local with live Supabase credentials, and one of
+# this repo's remotes is public. Never commit it.
+/SHADECARD/
