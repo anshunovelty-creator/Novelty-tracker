@@ -70,3 +70,12 @@ docs/printing-reference/**
 !docs/printing-reference/README.md
 !docs/printing-reference/*/
 !docs/printing-reference/*/.gitkeep
+# Narrow exception: the two BarTender canvas shots the compact roll slips were
+# built from. They are blank templates — <Empty> in every data field, no party,
+# no PO, no quantity — so the reason this folder is ignored does not reach them,
+# and RollSlipCompactLabel.tsx is meaningless without the layout it copies.
+!docs/printing-reference/02-bartender/template-roll-slip-small-new-4x6.jpeg
+!docs/printing-reference/02-bartender/template-roll-small-slip-2x3.jpeg
+
+# macOS Finder metadata — never belongs in the repo.
+.DS_Store

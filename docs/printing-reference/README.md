@@ -8,6 +8,12 @@ part of the app.
 names, PO numbers and quantities — same rule as the `*.xlsx` intake sheets. Put the
 files in, they stay local; the folder structure and these notes travel with the repo.
 
+One narrow exception, listed by name in `.gitignore`: the two
+`02-bartender/template-*.jpeg` canvas shots. They are blank templates — `<Empty>`
+in every data field, no party, no PO, no quantity — so the reason for the rule
+does not reach them, and `RollSlipCompactLabel.tsx` is hard to read without the
+layout it reproduces. Anything with real data on it stays local, no exceptions.
+
 Any image format is fine (`.jpg`, `.png`, `.heic`, `.pdf`). Don't bother renaming —
 just drop them in the right folder and tell me they're there.
 
