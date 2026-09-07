@@ -10,7 +10,7 @@ import { useRouter } from 'next/navigation';
 import { cn, formatAdminDate, formatJobCardNumber, formatShortDate, formatQty } from '@/lib/utils';
 import { CheckCircle2 } from 'lucide-react';
 import { STATUS_COLORS, JOB_TYPE_BADGE, urgentBadgeClass } from '@/lib/constants/statusColors';
-import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES, isPerReleaseStage } from '@/lib/constants/stages';
+import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES, isPerReleaseStage, isBackwardMove } from '@/lib/constants/stages';
 import { canDeptSetStage, canDeptOverridePOClosed, canDeptConfirmSlitting } from '@/lib/constants/departments';
 import type { Job } from '@/lib/types';
 import type { DeptPermissions } from '@/lib/constants/departments';
@@ -21,6 +21,7 @@ import PrintingUnitEdit from './PrintingUnitEdit';
 import { JOBS_CHANGED_EVENT } from '@/lib/constants/events';
 import {
   SequentialWarningModal,
+  RevertStageModal,
   OnHoldModal,
   QCModal,
   PartialDispatchModal,
@@ -41,7 +42,8 @@ type ModalState =
   | { type: 'qc' }
   | { type: 'partial_dispatch' }
   | { type: 'full_dispatch' }
-  | { type: 'close_po' };
+  | { type: 'close_po' }
+  | { type: 'revert'; targetStage: Stage };
 
 export default function JobDetailClient({ initialJob, dept }: Props) {
   const router = useRouter();
@@ -90,10 +92,32 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
     (job.job_stage_timestamps ?? []).map((t) => t.stage)
   );
 
+  // Forward-only guard — mirrors useJobActions for the table/card views, and
+  // the server's own check in POST /api/jobs/[id]/status.
+  const completedStages = (job.job_stage_timestamps ?? []).map((t) => t.stage as Stage);
+
+  function isBackwardStage(stage: Stage): boolean {
+    return isBackwardMove(job.status as Stage, stage, completedStages);
+  }
+
   // ── Status change handlers (exact same logic as JobRow) ──────
 
   async function handleStageSelect(newStage: Stage) {
     if (newStage === job.status) return;
+
+    // Reverting rewrites what the client portal has already been shown, so it
+    // is Admin-only and needs a written reason — same bar as skipping a
+    // prerequisite. Everyone else is simply told the pipeline runs one way.
+    if (isBackwardStage(newStage)) {
+      if (!dept.isSuperAdmin) {
+        toast.error(`Stages only move forward — "${newStage}" is behind "${job.status}". Ask Admin to revert it.`);
+        return;
+      }
+      setPendingStage(newStage);
+      setModal({ type: 'revert', targetStage: newStage });
+      return;
+    }
+
     setPendingStage(newStage);
 
     // Modal-required stages always use their OWN modal — even when leaving Quality Check.
@@ -115,6 +139,7 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
     remark?:                string;
     qty_dispatched?:        number;
     override_prerequisite?: boolean;
+    override_backward?:     boolean;
     override_remark?:       string;
   }) {
     setSubmitting(true);
@@ -139,6 +164,15 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
           targetStage:  payload.new_status,
           missingStage: data.missing_stage,
         });
+        return;
+      }
+
+      if (res.status === 409 && data.error === 'BACKWARD_MOVE_BLOCKED') {
+        toast.error(
+          `Stages only move forward — "${data.target_stage}" is behind "${data.current_stage}".`
+        );
+        setPendingStage(null);
+        setPendingPayload(null);
         return;
       }
 
@@ -331,7 +365,11 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
               )}
             >
               {filteredStages.map((stage) => {
-                const allowed   = canDeptSetStage(dept, stage, job.printing_method);
+                // Backward picks are Admin-only, and shown greyed for everyone
+                // else so the pipeline reads as the one-way ratchet it is.
+                const backward  = isBackwardStage(stage);
+                const allowed   = canDeptSetStage(dept, stage, job.printing_method)
+                                  && (!backward || dept.isSuperAdmin);
                 const completed = completedSet.has(stage);
                 return (
                   <option key={stage} value={stage} disabled={!allowed}>
@@ -431,6 +469,23 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
               ...stored,
               override_prerequisite: true,
               override_remark:       overrideRemark,
+            });
+          }}
+        />
+      )}
+
+      {modal.type === 'revert' && (
+        <RevertStageModal
+          currentStage={job.status}
+          targetStage={modal.targetStage}
+          onCancel={() => { setModal({ type: 'none' }); setPendingStage(null); }}
+          onConfirm={(revertRemark) => {
+            const target = modal.targetStage;
+            setPendingStage(null);
+            submitStatusChange({
+              new_status:        target,
+              override_backward: true,
+              override_remark:   revertRemark,
             });
           }}
         />

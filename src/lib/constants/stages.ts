@@ -196,3 +196,52 @@ export const MODAL_REQUIRED_STAGES: Stage[] = [
   'Dispatched',
   'PO Closed',
 ];
+
+/**
+ * Where a job effectively sits in the pipeline, for forward/backward
+ * comparisons.
+ *
+ * On Hold is not a pipeline stage (index -1), so a held job is measured by the
+ * furthest stage it actually reached — that is what resuming returns it to.
+ * Without this, every resume would read as a leap forward from -1 and a job
+ * held at Packing could be "resumed" straight back to Plate Status.
+ *
+ * PO Closed sits past the end; the status route rejects updates to a closed PO
+ * anyway, this just keeps the comparison honest if it ever gets here.
+ */
+export function effectiveStageIndex(
+  status: Stage,
+  completedStages: Stage[] = []
+): number {
+  if (status === 'PO Closed') return PIPELINE_STAGES.length;
+  if (status !== 'On Hold') return stageIndex(status);
+
+  return completedStages.reduce(
+    (furthest, stage) => Math.max(furthest, stageIndex(stage)),
+    -1
+  );
+}
+
+/**
+ * True when moving to targetStage would take the job BACKWARD.
+ *
+ * Stages outside the pipeline are never backward: On Hold must stay reachable
+ * from anywhere (that is the whole point of a halt), and PO Closed is the
+ * terminal admin action.
+ *
+ * `completedStages` only matters when the job is currently On Hold — see
+ * effectiveStageIndex. Pass the job's stamped stages when you have them.
+ */
+export function isBackwardMove(
+  currentStatus: Stage,
+  targetStage: Stage,
+  completedStages: Stage[] = []
+): boolean {
+  const targetIdx = stageIndex(targetStage);
+  if (targetIdx === -1) return false;
+
+  const currentIdx = effectiveStageIndex(currentStatus, completedStages);
+  if (currentIdx === -1) return false;
+
+  return targetIdx < currentIdx;
+}

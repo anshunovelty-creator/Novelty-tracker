@@ -389,6 +389,76 @@ export function SequentialWarningModal({
   );
 }
 
+// ── 1b. Revert Stage Modal ────────────────────────────────────
+// Admin-only, and never reached by anyone else — the picker refuses a backward
+// pick outright for other departments. The reason is mandatory: it becomes the
+// only record of why a job that had reached a later stage no longer has.
+
+export function RevertStageModal({
+  currentStage,
+  targetStage,
+  onCancel,
+  onConfirm,
+}: {
+  currentStage: Stage;
+  targetStage:  Stage;
+  onCancel:     () => void;
+  onConfirm:    (revertRemark: string) => void;
+}) {
+  const [remark, setRemark] = useState('');
+  const titleId  = useId();
+  const reasonId = useId();
+
+  return (
+    <ModalShell titleId={titleId} onClose={onCancel}>
+      <div className="p-6">
+        <div className="flex items-start gap-3 mb-4">
+          <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-amber-200" aria-hidden="true" />
+          <div>
+            <h3 id={titleId} className="font-semibold text-[var(--glass-ink)] text-base">
+              Move this job backwards?
+            </h3>
+            <p className="text-sm text-[var(--glass-muted)] mt-1">
+              This takes the job from <strong className="text-[var(--glass-ink)]">{currentStage}</strong> back
+              to <strong className="text-[var(--glass-ink)]">{targetStage}</strong>.
+            </p>
+          </div>
+        </div>
+
+        <ul className="text-xs text-amber-200 bg-amber-400/10 border border-amber-300/25 rounded-lg px-3 py-2 mb-4 space-y-1 list-disc list-inside">
+          <li>Every stage after {targetStage} will be marked incomplete again.</li>
+          <li>The client tracking portal will show the job back at this stage.</li>
+        </ul>
+
+        <label htmlFor={reasonId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
+          Reason for reverting *
+        </label>
+        <textarea
+          id={reasonId}
+          value={remark}
+          onChange={(e) => setRemark(e.target.value)}
+          rows={2}
+          placeholder="e.g. Stage was marked by mistake — job is still at artwork…"
+          className={cn(inputCls, 'resize-none')}
+        />
+
+        <div className="flex gap-3 justify-end mt-4">
+          <button onClick={onCancel} className={btnCancel}>
+            Cancel
+          </button>
+          <button
+            onClick={() => remark.trim() && onConfirm(remark.trim())}
+            disabled={!remark.trim()}
+            className={btnCaution}
+          >
+            Revert to {targetStage}
+          </button>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
+
 // ── 2. On Hold Modal ──────────────────────────────────────────
 
 export function OnHoldModal({

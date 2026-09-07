@@ -5,15 +5,18 @@
 // The core business logic route. Every status change goes through here.
 // Responsibilities:
 //   1. Authenticate + validate department permission for this stage
-//   2. Check sequential prerequisite (unless override = true)
-//   3. Handle Repeat job stage-skip rules
-//   4. Update jobs.status (and halt_remark / qc_remark if applicable)
-//   5. Write job_stage_timestamps (mark stage as completed)
-//   6. Write job_status_logs (permanent audit entry)
-//   7. Handle dispatch qty (Partial Dispatch / Dispatched)
-//   8. Write on_time_dispatch_log if status = Dispatched
-//   9. Close PO if status = PO Closed
-//  10. Trigger notifications (email + WhatsApp) for qualifying stages
+//   2. Refuse backward moves — the pipeline is a one-way ratchet. Admin may
+//      revert with a written reason (override_backward), which also clears the
+//      stage timestamps it walked back past.
+//   3. Check sequential prerequisite (unless override = true)
+//   4. Handle Repeat job stage-skip rules
+//   5. Update jobs.status (and halt_remark / qc_remark if applicable)
+//   6. Write job_stage_timestamps (mark stage as completed)
+//   7. Write job_status_logs (permanent audit entry)
+//   8. Handle dispatch qty (Partial Dispatch / Dispatched)
+//   9. Write on_time_dispatch_log if status = Dispatched
+//  10. Close PO if status = PO Closed
+//  11. Trigger notifications (email + WhatsApp) for qualifying stages — not on a revert
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -21,7 +24,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { upsertRemainingStock, clearRemainingStock, addExtraStock } from '@/lib/api/labelStock';
 import { getDeptPermissions, canDeptSetStage, canDeptOverridePOClosed } from '@/lib/constants/departments';
-import { getPrerequisite, getVisibleStages, isStageSkipped, isPerReleaseStage, NOTIFICATION_TRIGGER_STAGES } from '@/lib/constants/stages';
+import { getPrerequisite, getVisibleStages, isStageSkipped, isPerReleaseStage, isBackwardMove, NOTIFICATION_TRIGGER_STAGES, DISPATCH_STAGES } from '@/lib/constants/stages';
 import { toMonthKey } from '@/lib/utils';
 import type { Stage } from '@/lib/constants/stages';
 import type { StatusChangePayload, Job } from '@/lib/types';
@@ -45,7 +48,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const body: StatusChangePayload = await request.json();
   const {
-    new_status, remark, qty_dispatched, override_prerequisite, override_remark,
+    new_status, remark, qty_dispatched, override_prerequisite, override_backward, override_remark,
     // Label stock (optional): Dispatch confirms what is left on the shelf at a
     // partial dispatch, and reports any surplus printed at a full dispatch.
     stock_remaining_qty, extra_label_qty, extra_label_location, extra_label_remark,
@@ -67,6 +70,24 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (!override_remark?.trim()) {
       return NextResponse.json(
         { error: 'A remark is required when skipping a prerequisite stage' },
+        { status: 400 }
+      );
+    }
+  }
+
+  // Reverting a job to an earlier stage rewrites history the client portal has
+  // already been shown, so it carries the same two conditions as a prerequisite
+  // skip: super-admin only, and a written reason for the audit trail.
+  if (override_backward) {
+    if (!perms.isSuperAdmin) {
+      return NextResponse.json(
+        { error: 'Only Admin can move a job back to an earlier stage' },
+        { status: 403 }
+      );
+    }
+    if (!override_remark?.trim()) {
+      return NextResponse.json(
+        { error: 'A remark is required when moving a job back to an earlier stage' },
         { status: 400 }
       );
     }
@@ -123,6 +144,53 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (isStageSkipped(new_status, jobType)) {
     return NextResponse.json(
       { error: `Stage "${new_status}" is not applicable for ${jobType} jobs` },
+      { status: 400 }
+    );
+  }
+
+  // ── 4b. Forward-only check ────────────────────────────────
+  // The pipeline is a ratchet: work that has physically happened cannot
+  // un-happen, and the prerequisite check below can never catch a reversal —
+  // every earlier stage is stamped by definition, so "Packing → Plate Status"
+  // sails straight through it. This is the guard that stops it.
+  //
+  // Same rule the machine board (advanceJobStageFromMachine) and the run
+  // pipeline (print-runs/[runId]/stage) already enforce; the job-level route
+  // was the one path still open.
+  //
+  // A held job is measured by the furthest stage it reached, so resuming it
+  // returns to that stage without counting as a leap forward — see
+  // effectiveStageIndex.
+  let heldCompletedStages: Stage[] = [];
+  if (job.status === 'On Hold') {
+    const { data: stamps } = await admin
+      .from('job_stage_timestamps')
+      .select('stage')
+      .eq('job_id', id);
+    heldCompletedStages = (stamps ?? []).map((s) => s.stage as Stage);
+  }
+
+  const movingBackward = isBackwardMove(job.status as Stage, new_status, heldCompletedStages);
+
+  if (movingBackward && !override_backward) {
+    return NextResponse.json(
+      {
+        error:         'BACKWARD_MOVE_BLOCKED',
+        current_stage: job.status,
+        target_stage:  new_status,
+      },
+      { status: 409 }
+    );
+  }
+
+  // Not even Admin may revert INTO a dispatch stage: setting Partial Dispatch
+  // adds to dispatched_qty (see section 7), so landing on it a second time
+  // would double-count goods that only left the building once. Reverting away
+  // from a dispatch stage is fine — the shipment happened, and dispatched_qty
+  // is left alone.
+  if (movingBackward && DISPATCH_STAGES.includes(new_status)) {
+    return NextResponse.json(
+      { error: `Cannot move a job back to "${new_status}" — dispatched quantities cannot be re-recorded. Correct the quantity on the job instead.` },
       { status: 400 }
     );
   }
@@ -275,6 +343,23 @@ export async function POST(request: NextRequest, { params }: Params) {
       { onConflict: 'job_id,stage', ignoreDuplicates: true }
     );
 
+  // An approved revert un-completes the stages it walked back past. Without
+  // this the job would read "Plate Status" while Packing and QC stayed stamped
+  // — the ✓ marks, the progress bar and the client portal would all keep
+  // showing it as nearly done. Only pipeline stages are cleared; an On Hold or
+  // PO Closed stamp is history, not progress, and stays.
+  if (movingBackward && stageIdx >= 0) {
+    const stagesAhead = visibleStages.slice(stageIdx + 1);
+    if (stagesAhead.length > 0) {
+      const { error: clearError } = await admin
+        .from('job_stage_timestamps')
+        .delete()
+        .eq('job_id', id)
+        .in('stage', stagesAhead);
+      if (clearError) console.error('[POST status] clear stages ahead:', clearError);
+    }
+  }
+
   // Update job
   const { data: updatedJob, error: updateError } = await admin
     .from('jobs')
@@ -353,6 +438,20 @@ export async function POST(request: NextRequest, { params }: Params) {
       });
   }
 
+  // Same audit trail for a revert, and it records where the job came from —
+  // job_status_logs alone would show the new stage with no sign that the job
+  // had ever been further along.
+  if (movingBackward && override_remark?.trim()) {
+    await admin
+      .from('stage_comments')
+      .insert({
+        job_id:     id,
+        stage:      new_status,
+        comment:    `[Reverted from "${job.status}"] ${override_remark.trim()}`,
+        created_by: perms.key,
+      });
+  }
+
   // Write on-time dispatch log if fully dispatched
   if (new_status === 'Dispatched') {
     const dispatchedAt = new Date();
@@ -382,7 +481,10 @@ export async function POST(request: NextRequest, { params }: Params) {
   // trigger stage.
   const isDispatchEvent = new_status === 'Partial Dispatch' || new_status === 'Dispatched';
 
-  if (NOTIFICATION_TRIGGER_STAGES.includes(new_status)) {
+  // A revert is a correction, not an event the party should hear about —
+  // "Shade Card Sent" is a trigger stage, and reverting to it would email and
+  // WhatsApp the customer a second time about something that already happened.
+  if (NOTIFICATION_TRIGGER_STAGES.includes(new_status) && !movingBackward) {
     const notifyPayload = {
       job_id:     id,
       job_name:   job.job_name,

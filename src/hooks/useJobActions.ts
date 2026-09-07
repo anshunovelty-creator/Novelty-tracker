@@ -11,7 +11,7 @@
 
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES, isPerReleaseStage } from '@/lib/constants/stages';
+import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES, isPerReleaseStage, isBackwardMove } from '@/lib/constants/stages';
 import { ROW_URGENCY_STYLES } from '@/lib/constants/statusColors';
 import { canDeptOverridePOClosed, canDeptConfirmSlitting } from '@/lib/constants/departments';
 import type { Job } from '@/lib/types';
@@ -26,6 +26,7 @@ export type JobModalState =
   | { type: 'partial_dispatch' }
   | { type: 'full_dispatch' }
   | { type: 'close_po' }
+  | { type: 'revert'; targetStage: Stage }
   | { type: 'delete' };
 
 export type StatusPayload = {
@@ -33,6 +34,7 @@ export type StatusPayload = {
   remark?:                string;
   qty_dispatched?:        number;
   override_prerequisite?: boolean;
+  override_backward?:     boolean;
   override_remark?:       string;
   // Label stock — see StatusChangePayload. Dispatch confirms what stays on
   // the shelf at a partial dispatch, and reports surplus at a full dispatch.
@@ -85,6 +87,15 @@ export function useJobActions({ job, dept, onJobUpdated, onJobDeleted }: Params)
         return;
       }
 
+      if (res.status === 409 && data.error === 'BACKWARD_MOVE_BLOCKED') {
+        toast.error(
+          `Stages only move forward — "${data.target_stage}" is behind "${data.current_stage}".`
+        );
+        setPendingStage(null);
+        setPendingPayload(null);
+        return;
+      }
+
       if (!res.ok) {
         toast.error(data.error ?? 'Failed to update status');
         return;
@@ -129,9 +140,33 @@ export function useJobActions({ job, dept, onJobUpdated, onJobDeleted }: Params)
     job.status === 'Slitting' &&
     !job.slitting_confirmed_at;
 
+  // ── Forward-only guard ──────────────────────────────────────
+  // The dropdown lists the whole pipeline, so an earlier stage is always one
+  // click away. The server refuses the move (409 BACKWARD_MOVE_BLOCKED); this
+  // catches it first so nobody watches a stage change and then snap back.
+  const completedStages = (job.job_stage_timestamps ?? []).map((t) => t.stage as Stage);
+
+  function isBackwardStage(stage: Stage): boolean {
+    return isBackwardMove(job.status as Stage, stage, completedStages);
+  }
+
   // ── Stage picker change handler ─────────────────────────────
   async function handleStageSelect(newStage: Stage) {
     if (newStage === job.status) return;
+
+    // Reverting rewrites what the client portal has already been shown, so it
+    // is Admin-only and needs a written reason — same bar as skipping a
+    // prerequisite. Everyone else is simply told the pipeline runs one way.
+    if (isBackwardStage(newStage)) {
+      if (!dept.isSuperAdmin) {
+        toast.error(`Stages only move forward — "${newStage}" is behind "${job.status}". Ask Admin to revert it.`);
+        return;
+      }
+      setPendingStage(newStage);
+      setModal({ type: 'revert', targetStage: newStage });
+      return;
+    }
+
     setPendingStage(newStage);
 
     // Modal-required stages always use their OWN modal — even when leaving Quality Check.
@@ -165,6 +200,20 @@ export function useJobActions({ job, dept, onJobUpdated, onJobDeleted }: Params)
     setModal({ type: 'none' });
     setPendingPayload(null);
     setPendingStage(null);
+  }
+
+  // ── Admin revert to an earlier stage ────────────────────────
+  // Goes straight to the server with the flag and the reason. Stages with
+  // their own modal (QC, dispatch, On Hold) are never reached this way —
+  // On Hold and PO Closed are not backward moves, and reverting INTO a
+  // dispatch stage is refused server-side because the qty cannot be re-recorded.
+  function confirmRevert(revertRemark: string, targetStage: Stage) {
+    setPendingStage(null);
+    submitStatusChange({
+      new_status:        targetStage,
+      override_backward: true,
+      override_remark:   revertRemark,
+    });
   }
 
   // ── Confirm from the QC remark box ──────────────────────────
@@ -262,6 +311,8 @@ export function useJobActions({ job, dept, onJobUpdated, onJobDeleted }: Params)
     closeQCModal,
     handleStageSelect,
     submitStatusChange,
+    isBackwardStage,
+    confirmRevert,
     confirmOverride,
     cancelOverride,
     confirmQC,

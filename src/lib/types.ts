@@ -85,76 +85,6 @@ export type StockKind = 'Remaining' | 'Extra' | 'Manual';
 
 export const STOCK_KINDS: StockKind[] = ['Remaining', 'Extra', 'Manual'];
 
-/**
- * One box-slip print batch — see migration 052 and docs/printing-reference/.
- * Replaces the BarTender "BOX SLIP 4X6 INCH.btw" template: the job supplies
- * party/material/PM code, Dispatch supplies the box maths and the MFG date.
- *
- * A row is a batch, not a box: `box_count` identical slips print from it.
- */
-export interface BoxSlip {
-  id: string;
-  // Null once the originating job is deleted — the shipped boxes outlive it.
-  job_id: string | null;
-  // Snapshot of the job at print time, so a reprint reproduces the slip that
-  // was physically stuck on the box even if the job was later corrected.
-  party:           string;
-  material_name:   string;
-  pm_code:         string | null;
-  po_number:       string | null;
-  job_card_number: string | null;
-  qty_per_box: number;
-  box_count:   number;
-  total_qty:   number;              // generated column: qty_per_box * box_count
-  mfg_date:    string;              // ISO date 'YYYY-MM-DD'; prints as DD-MM-YYYY
-  printed_by:  string | null;       // department key
-  created_at:  string;              // ISO timestamp
-}
-
-/** What Dispatch fills in; everything else on the slip comes off the job. */
-export interface BoxSlipInput {
-  job_id:        string;
-  qty_per_box:   number;
-  box_count:     number;
-  mfg_date:      string;            // ISO date 'YYYY-MM-DD'
-  material_name: string;            // defaults to jobs.job_name, editable
-}
-
-/**
- * One roll-slip print batch — see migration 053 and docs/printing-reference/.
- * Replaces BarTender's "ROLL SLIP 4X6 INCH.btw" (the artwork is really
- * 76.2 x 32.2 mm), whose PM CODE and QUANTITY print as "<Empty>" because
- * nothing fills them today.
- */
-export interface RollSlip {
-  id: string;
-  job_id: string | null;
-  party:           string;
-  product:         string;
-  pm_code:         string | null;
-  po_number:       string | null;   // not printed; carried for the QR tracking link
-  job_card_number: string | null;
-  qty_per_roll: number;
-  roll_count:   number;
-  total_qty:    number;             // generated column: qty_per_roll * roll_count
-  direction:    string | null;      // winding direction, prints as "Direction:#4"
-  operator:     string | null;
-  slip_date:    string;             // ISO date 'YYYY-MM-DD'; prints as DD-MM-YYYY
-  printed_by:   string | null;
-  created_at:   string;
-}
-
-/** What Dispatch fills in; the rest of the slip comes off the job. */
-export interface RollSlipInput {
-  job_id:       string;
-  qty_per_roll: number;
-  roll_count:   number;
-  slip_date:    string;             // ISO date 'YYYY-MM-DD'
-  product:      string;             // defaults to jobs.job_name, editable
-  direction?:   string;
-  operator?:    string;
-}
-
 export interface LabelStock {
   id: string;
   // Null once the originating job is deleted — the physical stock outlives it.
@@ -762,7 +692,8 @@ export interface StatusChangePayload {
   remark?: string;              // halt_remark or qc_remark
   qty_dispatched?: number;      // Partial Dispatch only
   override_prerequisite?: boolean;  // true = Admin clicked "Skip & Continue"
-  override_remark?: string;     // required when override_prerequisite — Admin's justification
+  override_backward?: boolean;  // true = Admin confirmed a move back to an earlier stage
+  override_remark?: string;     // required when override_prerequisite / override_backward — Admin's justification
   // ── Label stock (optional) ──
   // Partial Dispatch: what Dispatch confirms is physically left on the shelf.
   // Omitted → the route falls back to (label_qty − dispatched_qty).

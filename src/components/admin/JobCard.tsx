@@ -204,7 +204,11 @@ export default function JobCard({
           )}
         >
           {actions.availableStages.map((stage) => {
-            const allowed   = canDeptSetStage(dept, stage, job.printing_method);
+            // Backward picks are Admin-only, and shown greyed for everyone
+            // else so the pipeline reads as the one-way ratchet it is.
+            const backward  = actions.isBackwardStage(stage);
+            const allowed   = canDeptSetStage(dept, stage, job.printing_method)
+                              && (!backward || dept.isSuperAdmin);
             const completed = actions.completedSet.has(stage);
             return (
               <option key={stage} value={stage} disabled={!allowed}>

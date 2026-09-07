@@ -10,6 +10,7 @@ import type { DeptPermissions } from '@/lib/constants/departments';
 import type { JobActions } from '@/hooks/useJobActions';
 import {
   SequentialWarningModal,
+  RevertStageModal,
   OnHoldModal,
   QCModal,
   PartialDispatchModal,
@@ -37,6 +38,17 @@ export default function JobActionModals({ job, dept, actions }: Props) {
           onCancel={actions.cancelOverride}
           onOverride={(overrideRemark) =>
             actions.confirmOverride(overrideRemark, modal.targetStage)
+          }
+        />
+      )}
+
+      {modal.type === 'revert' && (
+        <RevertStageModal
+          currentStage={job.status}
+          targetStage={modal.targetStage}
+          onCancel={actions.cancelOverride}
+          onConfirm={(revertRemark) =>
+            actions.confirmRevert(revertRemark, modal.targetStage)
           }
         />
       )}
