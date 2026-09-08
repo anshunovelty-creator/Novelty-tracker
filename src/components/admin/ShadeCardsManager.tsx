@@ -14,7 +14,8 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { Search, Plus, Pencil, Trash2, GitBranch, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Plus, Pencil, Trash2, GitBranch, ChevronLeft, ChevronRight,
+         ListFilter } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatAdminDate, formatNumericDate } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
@@ -29,6 +30,7 @@ import {
   type MakingStatus,
 } from '@/lib/constants/shadeCards';
 import type { ShadeCard } from '@/lib/types';
+import type { ShadeCardSummary } from '@/app/api/shade-cards/summary/route';
 import AddShadeCardModal, { type ShadeCardModalMode } from './AddShadeCardModal';
 import CsvExportButton from './CsvExportButton';
 import { SkeletonRows } from '@/components/ui/Skeleton';
@@ -72,12 +74,85 @@ function Chip({ label, cfg }: { label: string; cfg: { bg: string; text: string; 
   );
 }
 
+/**
+ * One KPI tile. Same vocabulary as DashboardSummaryCard — glass panel, muted
+ * micro-label, big mono number, filter glyph and hover lift — with one
+ * addition: these tiles drive the filter directly rather than firing a
+ * one-shot event, so the applied one has to say it is applied. Without that
+ * ring, clicking "Approved" changes the table with nothing left on screen
+ * explaining why.
+ */
+function KpiTile({
+  label, value, tone = 'text-[var(--glass-ink)]', sub, active = false, onClick, action,
+}: {
+  label:   string;
+  /** Undefined while the summary loads — renders as an em dash, not a zero,
+   *  because "0 approved" is a claim and a loading tile is not. */
+  value:   number | undefined;
+  tone?:   string;
+  sub?:    string;
+  active?: boolean;
+  /** Absent when the number maps onto no filter this table can apply. Such a
+   *  tile renders as a plain panel — the dashboard's summary card draws the
+   *  same line, because a tile that looks clickable promises a drill-down. */
+  onClick?: () => void;
+  action?:  string;
+}) {
+  // Flex column with the caption pushed to the bottom, so a tile that carries
+  // one still lines its number up with the tiles that don't — four numbers
+  // meant to be compared have to share a baseline.
+  const base = 'glass rounded-xl px-4 py-3 text-left relative flex flex-col';
+
+  const body = (
+    <>
+      <p className="text-xs text-[var(--glass-muted)] font-medium mb-0.5">{label}</p>
+      <p className={cn('text-2xl font-semibold font-mono tabular-nums', tone)}>
+        {value?.toLocaleString('en-IN') ?? '—'}
+      </p>
+      {sub && <p className="text-[11px] text-[var(--glass-muted)] mt-auto pt-1">{sub}</p>}
+    </>
+  );
+
+  if (!onClick) {
+    return <div className={base}>{body}</div>;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      aria-label={`${label}: ${value ?? 'loading'}. ${action}`}
+      className={cn(
+        'group', base,
+        'transition-[background-color,box-shadow,transform] duration-150',
+        'hover:bg-white/10 hover:-translate-y-px',
+        'hover:shadow-[0_4px_14px_rgba(12,42,32,0.10)]',
+        'active:translate-y-0 motion-reduce:hover:translate-y-0',
+        active && 'ring-2 ring-emerald-400/70 bg-white/10',
+      )}
+    >
+      <ListFilter
+        className={cn(
+          'absolute right-3 top-3 h-3.5 w-3.5 text-[var(--glass-muted)] transition-opacity',
+          active ? 'opacity-100' : 'opacity-60 group-hover:opacity-100',
+        )}
+        aria-hidden="true"
+      />
+      {body}
+    </button>
+  );
+}
+
 type Props = {
   canManage: boolean;
   canDelete: boolean;
+  /** Lets the page hand down the height constraint that makes the table, and
+   *  not the document, the thing that scrolls. */
+  className?: string;
 };
 
-export default function ShadeCardsManager({ canManage, canDelete }: Props) {
+export default function ShadeCardsManager({ canManage, canDelete, className }: Props) {
   const queryClient = useQueryClient();
 
   const [search,  setSearch]  = useState('');
@@ -85,6 +160,10 @@ export default function ShadeCardsManager({ canManage, canDelete }: Props) {
   const [status,  setStatus]  = useState('');
   const [making,  setMaking]  = useState('');
   const [page,    setPage]    = useState(1);
+  // Set only by the "Added last 7 days" tile — there is no dropdown for it,
+  // because the window it filters on is the one that tile counted rather than
+  // anything a user would pick by hand.
+  const [createdFrom, setCreatedFrom] = useState('');
 
   const [modal,      setModal]      = useState<{ mode: ShadeCardModalMode; card?: ShadeCard } | null>(null);
   const [confirmId,  setConfirmId]  = useState<string | null>(null);
@@ -95,10 +174,11 @@ export default function ShadeCardsManager({ canManage, canDelete }: Props) {
   if (search && field !== 'all') params.set('field', field);
   if (status) params.set('status', status);
   if (making) params.set('making', making);
+  if (createdFrom) params.set('created_from', createdFrom);
   params.set('page', String(page));
 
   const { data, isLoading } = useQuery<ListResponse>({
-    queryKey: ['shade-cards', search, field, status, making, page],
+    queryKey: ['shade-cards', search, field, status, making, createdFrom, page],
     queryFn: async () => {
       const res = await fetch(`/api/shade-cards?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to load shade cards');
@@ -107,6 +187,19 @@ export default function ShadeCardsManager({ canManage, canDelete }: Props) {
     // Keeps the previous page on screen while the next one loads, so paging
     // doesn't blank the table on every click.
     placeholderData: keepPreviousData,
+  });
+
+  // Register-wide counts for the KPI tiles. Keyed under 'shade-cards' so the
+  // three existing invalidateQueries({ queryKey: ['shade-cards'] }) calls
+  // refresh the tiles too — a status change has to move two numbers at once,
+  // and a separate key would have been a fourth place to remember that.
+  const { data: summary } = useQuery<ShadeCardSummary>({
+    queryKey: ['shade-cards', 'summary'],
+    queryFn: async () => {
+      const res = await fetch('/api/shade-cards/summary');
+      if (!res.ok) throw new Error('Failed to load shade card summary');
+      return res.json();
+    },
   });
 
   const cards = data?.cards ?? [];
@@ -167,12 +260,79 @@ export default function ShadeCardsManager({ canManage, canDelete }: Props) {
     }
   }
 
-  const hasFilters = Boolean(search || status || making);
+  const hasFilters = Boolean(search || status || making || createdFrom);
+
+  /** Clears every filter at once. The recency filter has no dropdown of its
+   *  own, so "Total cards" is the only control that can lift it — it must not
+   *  be missed here or the list would stay narrowed with nothing saying why. */
+  function clearFilters() {
+    setSearch('');
+    setStatus('');
+    setMaking('');
+    setCreatedFrom('');
+  }
 
   return (
-    <div className="space-y-3">
+    // Flex column rather than space-y so the table can be told to absorb
+    // whatever height is left over once the controls and paging have taken
+    // theirs — see the page for where that height comes from.
+    <div className={cn('flex flex-col gap-3', className)}>
+      {/* ── KPIs ─────────────────────────────────────────────── */}
+      {/* Every tile is a filter shortcut. Each one applies its own filter and
+          clears the others, so the tiles and the table never disagree about
+          what is on screen; clicking the applied tile lifts it again, which is
+          the only way back for the recency filter since it has no dropdown. */}
+      <div className="shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiTile
+          label="Total cards"
+          value={summary?.total}
+          active={!hasFilters}
+          onClick={() => changeFilter(clearFilters)}
+          action="Clear all filters"
+        />
+        <KpiTile
+          label="Approved"
+          value={summary?.approved}
+          tone="text-emerald-600"
+          active={status === 'Approved'}
+          onClick={() => changeFilter(() => {
+            const on = status === 'Approved';
+            clearFilters();
+            if (!on) setStatus('Approved');
+          })}
+          action="Show approved cards"
+        />
+        <KpiTile
+          label="Pending approval"
+          value={summary?.pending_approval}
+          tone="text-amber-600"
+          active={status === 'Pending Approval'}
+          onClick={() => changeFilter(() => {
+            const on = status === 'Pending Approval';
+            clearFilters();
+            if (!on) setStatus('Pending Approval');
+          })}
+          action="Show cards waiting on the party"
+        />
+        {/* Filters on the very cutoff the summary counted from, so the list it
+            opens holds exactly the cards this number counted. */}
+        <KpiTile
+          label="Added last 7 days"
+          value={summary?.added_last_7_days}
+          tone="text-sky-600"
+          sub="new entries"
+          active={Boolean(createdFrom)}
+          onClick={() => changeFilter(() => {
+            const on = Boolean(createdFrom);
+            clearFilters();
+            if (!on && summary) setCreatedFrom(summary.added_since);
+          })}
+          action="Show the cards added in the last 7 days"
+        />
+      </div>
+
       {/* ── controls ─────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+      <div className="shrink-0 flex flex-col sm:flex-row sm:items-center gap-2">
         <label htmlFor="sc-search-field" className="sr-only">Search field</label>
         <select
           id="sc-search-field"
@@ -242,23 +402,47 @@ export default function ShadeCardsManager({ canManage, canDelete }: Props) {
         )}
       </div>
 
-      {/* Count reads off the server total, not the loaded page — otherwise it
-          would always say 25. */}
-      <p className="text-sm text-[var(--glass-muted)]">
-        <strong className="text-[var(--glass-ink)]">{total.toLocaleString('en-IN')}</strong>
-        {total === 1 ? ' shade card' : ' shade cards'}
-        {hasFilters && ' matching your filters'}
-      </p>
+      {/* Only while filtered. Unfiltered, this said the same number as the
+          Total tile directly above it — and the tiles now carry the headline
+          count, so repeating it cost a line of the table's height for nothing.
+          Reads off the server total, not the loaded page, which would always
+          say 25. */}
+      {hasFilters && (
+        <p className="shrink-0 text-sm text-[var(--glass-muted)]">
+          <strong className="text-[var(--glass-ink)]">{total.toLocaleString('en-IN')}</strong>
+          {total === 1 ? ' shade card' : ' shade cards'} matching your filters
+        </p>
+      )}
 
       {/* ── desk table ───────────────────────────────────────── */}
-      <div className="hidden sm:block rounded-xl glass overflow-hidden">
-        <div className="table-scroll-wrapper max-h-[70vh] overflow-y-auto">
-          <table className="w-full min-w-[1100px] border-collapse text-sm">
+      {/* At lg the page caps its own height, so the table takes the remainder
+          (flex-1) and scrolls inside it. Below that the page scrolls normally
+          and the old 70vh cap is what stops the table running off-screen. */}
+      <div className="hidden sm:flex sm:flex-col min-h-0 lg:flex-1 rounded-xl glass overflow-hidden">
+        {/* contain:paint is what actually stops the page scrolling. Chrome
+            counts this table's overflow toward the ROOT scrollable area even
+            though the wrapper scrolls it and the page box clips it — which
+            left ~1,000px of empty scrollable space below the fold. Paint
+            containment tells the browser nothing inside affects layout
+            outside, and the phantom scroll goes away. Safe here because the
+            wrapper already clips: no popover inside the table escapes it. */}
+        <div className="table-scroll-wrapper [contain:paint] overflow-y-auto max-h-[70vh] lg:max-h-none lg:flex-1 lg:min-h-0">
+          {/* Column rules are declared once here rather than on all ten cells.
+              Same vocabulary as the Job Separation table: a thin vertical rule
+              between columns, and none after the last one. */}
+          <table className={cn(
+            'w-full min-w-[1100px] border-collapse text-sm',
+            '[&_td:not(:last-child)]:border-r [&_td:not(:last-child)]:border-white/8',
+            '[&_th:not(:last-child)]:border-r [&_th:not(:last-child)]:border-white/12',
+          )}>
             <thead className="sticky top-0 z-10 bg-[var(--glass-bg-strong)] backdrop-blur">
               <tr>
                 {COLUMNS.map((c) => (
                   <th key={c} scope="col"
-                      className="px-4 py-2.5 text-left text-xs font-semibold text-[var(--glass-muted)] whitespace-nowrap">
+                      className={cn(
+                        'px-4 py-1.5 text-left text-[11px] font-semibold text-[var(--glass-muted)]',
+                        'uppercase tracking-[0.06em] whitespace-nowrap border-b border-white/12',
+                      )}>
                     {c === 'Actions' && !canManage ? '' : c}
                   </th>
                 ))}
@@ -273,8 +457,18 @@ export default function ShadeCardsManager({ canManage, canDelete }: Props) {
                     {hasFilters ? 'No shade cards match your filters.' : 'No shade cards yet.'}
                   </td>
                 </tr>
-              ) : cards.map((c) => (
-                <tr key={c.id} className="border-t border-black/[0.06] hover:bg-black/[0.02]">
+              ) : cards.map((c, i) => (
+                // Alternating row tint, same as the Job Separation register:
+                // ten columns is a long way for the eye to travel, and the
+                // banding is what keeps it on one card's row.
+                <tr
+                  key={c.id}
+                  className={cn(
+                    'border-b border-white/8 transition-colors',
+                    i % 2 === 1 && 'bg-[var(--glass-bg)]',
+                    'hover:bg-black/[0.03]',
+                  )}
+                >
                   <td className="px-4 py-3">
                     <Link
                       href={`/admin/shade-cards/${c.id}`}
@@ -284,10 +478,13 @@ export default function ShadeCardsManager({ canManage, canDelete }: Props) {
                     </Link>
                   </td>
                   <td className="px-4 py-3 text-[var(--glass-ink)]">{c.product_name}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-[var(--glass-muted)]">{c.shade_card_number ?? '—'}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-[var(--glass-muted)]">{c.pm_code ?? '—'}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-[var(--glass-muted)]">{formatNumericDate(c.prepared_date)}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-[var(--glass-muted)]">{formatNumericDate(c.approval_date)}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-[var(--glass-muted)] whitespace-nowrap">{c.shade_card_number ?? '—'}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-[var(--glass-muted)] whitespace-nowrap">{c.pm_code ?? '—'}</td>
+                  {/* A date reads as one token or not at all — the uppercase
+                      column headings are wide enough to squeeze these cells
+                      into wrapping without it. */}
+                  <td className="px-4 py-3 font-mono text-xs text-[var(--glass-muted)] whitespace-nowrap">{formatNumericDate(c.prepared_date)}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-[var(--glass-muted)] whitespace-nowrap">{formatNumericDate(c.approval_date)}</td>
                   <td className="px-4 py-3">
                     {canManage ? (
                       <>
@@ -455,7 +652,7 @@ export default function ShadeCardsManager({ canManage, canDelete }: Props) {
 
       {/* ── paging ───────────────────────────────────────────── */}
       {total > pageSize && (
-        <div className="flex items-center justify-between gap-3 pt-1">
+        <div className="shrink-0 flex items-center justify-between gap-3 pt-1">
           <p className="text-xs text-[var(--glass-muted)]">
             Page {page} of {lastPage}
           </p>

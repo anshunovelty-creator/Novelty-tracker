@@ -23,8 +23,17 @@ export default async function ShadeCardsPage() {
   const perms = await getDeptPermissions(user?.user_metadata?.department);
 
   return (
-    <div className="space-y-4">
-      <div>
+    // The register is a working list, not a document: on a desktop viewport the
+    // page fills the screen exactly and only the table scrolls, so the search
+    // controls and paging stay put while 3,000 cards are scanned.
+    //
+    // The subtracted height is the admin chrome above and below this element —
+    // AdminHeader (h-14 plus its 1px border) and the layout <main>'s py-6.
+    // Applied at lg and up only: below that the header can expand into its
+    // mobile nav, which would push content out of a fixed-height box, and the
+    // small-screen card list is meant to scroll with the page anyway.
+    <div className="flex flex-col gap-4 lg:h-[calc(100dvh-105px)] lg:overflow-hidden">
+      <div className="shrink-0">
         <h1 className="text-xl font-semibold text-[var(--glass-ink)]">Shade Cards</h1>
         <p className="text-sm text-[var(--glass-muted)] mt-0.5">
           Colour-approval cards sent to each party, with the approval status and
@@ -36,6 +45,7 @@ export default async function ShadeCardsPage() {
       <ShadeCardsManager
         canManage={canDeptManageShadeCards(perms)}
         canDelete={perms?.isSuperAdmin ?? false}
+        className="lg:flex-1 lg:min-h-0"
       />
     </div>
   );

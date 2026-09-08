@@ -67,6 +67,16 @@ export async function GET(request: NextRequest) {
   const from   = searchParams.get('from')?.trim() ?? '';
   const to     = searchParams.get('to')?.trim() ?? '';
 
+  // Entry date, not prepared date — `from`/`to` above filter prepared_date,
+  // which is the business date on the card and is NULL on many imported rows.
+  // This one backs the "Added last 7 days" KPI, so it has to count the same
+  // column that KPI counts. Unparseable values are dropped rather than passed
+  // to Postgres, which would fail the whole list with a 500.
+  const createdFromRaw = searchParams.get('created_from')?.trim() ?? '';
+  const createdFrom = createdFromRaw && !Number.isNaN(Date.parse(createdFromRaw))
+    ? createdFromRaw
+    : '';
+
   const sortParam = searchParams.get('sort')?.trim() ?? '';
   const sort = SORTABLE.has(sortParam) ? sortParam : 'updated_at';
   const ascending = searchParams.get('dir') === 'asc';
@@ -99,6 +109,7 @@ export async function GET(request: NextRequest) {
   if (making && isMakingStatus(making))     query = query.eq('making_status', making);
   if (from) query = query.gte('prepared_date', from);
   if (to)   query = query.lte('prepared_date', to);
+  if (createdFrom) query = query.gte('created_at', createdFrom);
 
   const { data, error, count } = await query
     .order(sort, { ascending, nullsFirst: false })
