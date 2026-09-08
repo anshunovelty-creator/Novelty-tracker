@@ -16,7 +16,8 @@ import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-quer
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { Check, X, Play, Pencil, ArrowUp, ArrowDown, MoreHorizontal, Monitor, Gauge } from 'lucide-react';
+import { Check, X, Play, Pencil, ArrowUp, ArrowDown, MoreHorizontal, Monitor, Gauge,
+         ChevronDown, ChevronUp } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatQty } from '@/lib/utils';
 import { runDurationMs, formatDuration, estimateFinishIso } from '@/lib/machineSpeed';
@@ -48,8 +49,38 @@ const fmtDT = (iso: string | null) =>
 const toIsoOrNull = (local: string) =>
   local ? new Date(local).toISOString() : null;
 
+// Whether the board is collapsed, remembered per browser — same convention as
+// the floating panels' stored size (see hooks/useResizablePanel.ts). A view
+// preference belongs to the machine someone works at, not to their account:
+// the office screen and the shop-floor terminal want different answers.
+const COLLAPSED_KEY = 'meterlabels.dashboard.machinesCollapsed';
+
+function readCollapsed(): boolean {
+  try { return window.localStorage.getItem(COLLAPSED_KEY) === '1'; }
+  catch { return false; }
+}
+
+function writeCollapsed(collapsed: boolean): void {
+  try { window.localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0'); }
+  catch { /* ignored — the board still collapses for this visit */ }
+}
+
 export default function MachineBoard({ dept }: { dept: DeptPermissions }) {
   const canManage = canDeptManageMachineBoard(dept);
+
+  // null = the stored preference has not been read yet. localStorage cannot be
+  // read during render (this component is server-rendered too, and branching on
+  // it before hydration is a mismatch), so the third state is what keeps the
+  // board from fetching on behalf of someone who has it collapsed: the query
+  // stays disabled until the answer is known, and the skeleton covers the gap
+  // that everyone would see anyway.
+  const [collapsed, setCollapsed] = useState<boolean | null>(null);
+  useEffect(() => { setCollapsed(readCollapsed()); }, []);
+
+  function applyCollapsed(next: boolean) {
+    setCollapsed(next);
+    writeCollapsed(next);
+  }
 
   const [historyDate, setHistoryDate] = useState('');
   const [busy, setBusy]               = useState(false);
@@ -73,6 +104,11 @@ export default function MachineBoard({ dept }: { dept: DeptPermissions }) {
     // only ever overwrote `data` on a successful fetch, never reset it.
     placeholderData: keepPreviousData,
     refetchInterval: 60_000,
+    // No point polling a board nobody is looking at — and nothing is fetched
+    // until the stored preference has been read (collapsed === null), so a
+    // collapsed board costs no request at all. Cached data is kept, so
+    // expanding again shows the last board immediately and refetches behind it.
+    enabled: collapsed === false,
   });
   const data = boardQuery.data ?? null;
 
@@ -155,6 +191,33 @@ export default function MachineBoard({ dept }: { dept: DeptPermissions }) {
         body:    JSON.stringify({ is_active: !m.is_active }),
       }),
       m.is_active ? `${m.name} marked as not working` : `${m.name} back in service`
+    );
+  }
+
+  // Collapsed wins over loading: someone who put the board away should not get
+  // a skeleton of it on every dashboard visit. The title bar stays as the way
+  // back — hiding the whole component would leave nothing to click.
+  if (collapsed === true) {
+    return (
+      <div className="glass rounded-xl px-5 py-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <Monitor className="w-4 h-4 shrink-0 text-[var(--glass-muted)]" aria-hidden="true" />
+          {/* Truncates rather than wraps: this bar exists to be one line tall
+              on a phone, and a second line would eat the space it just saved. */}
+          <h2 className="truncate text-sm font-semibold text-[var(--glass-ink)]">
+            Machines — Live Queues
+          </h2>
+        </div>
+        <button
+          type="button"
+          onClick={() => applyCollapsed(false)}
+          aria-expanded={false}
+          className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-2.5 text-xs font-medium text-[var(--glass-muted)] hover:bg-white/10 hover:text-[var(--glass-ink)] transition-colors"
+        >
+          <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
+          Show board
+        </button>
+      </div>
     );
   }
 
@@ -243,6 +306,17 @@ export default function MachineBoard({ dept }: { dept: DeptPermissions }) {
               + Add Machine
             </button>
           )}
+          {/* Last in the row: this puts the board away rather than acting on
+              it, so it sits after the controls that do. */}
+          <button
+            type="button"
+            onClick={() => applyCollapsed(true)}
+            aria-expanded={true}
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-white/10 px-2.5 text-xs font-medium text-[var(--glass-muted)] hover:bg-white/10 hover:text-[var(--glass-ink)] transition-colors"
+          >
+            <ChevronUp className="w-3.5 h-3.5" aria-hidden="true" />
+            Hide board
+          </button>
         </div>
       </div>
 
