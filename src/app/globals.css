@@ -253,6 +253,35 @@ select:disabled {
 }
 .cyc-fade { animation: cyc-fade .3s ease; }
 
+/* ── Header nav ────────────────────────────────────────────────────
+   The admin header's section strip steps down a ladder as the viewport
+   narrows — full names, short names, icons, then the hamburger — and
+   redraws the whole strip at each step rather than reflowing entry by
+   entry. In normal use there is exactly one moving part: the underline
+   sliding between entries. transform + width only — no layout, no
+   repaint storm. */
+.nav-indicator {
+  transition: transform .28s cubic-bezier(.2,.8,.3,1),
+              width     .28s cubic-bezier(.2,.8,.3,1);
+  will-change: transform, width;
+}
+
+/* Crossing a rung redraws the strip. Opacity only: the change happens
+   mid-resize, and animating width or height there would fight the drag
+   the user is still doing. */
+@keyframes nav-swap {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.nav-swap { animation: nav-swap .16s ease-out both; }
+
+/* Mobile section sheet dropping out of the header bar. */
+@keyframes nav-panel-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: none; }
+}
+.nav-panel-in { animation: nav-panel-in .2s cubic-bezier(.2,.8,.3,1) both; }
+
 @media (prefers-reduced-motion: reduce) {
   .skeleton     { animation: none; background: rgba(255,255,255,.12); }
   .mesh-blob    { animation: none; }
@@ -261,6 +290,9 @@ select:disabled {
   .signal-ping  { animation: none; opacity: 0.35; }
   .loading-bar  { animation: none; width: 100%; }
   .animate-pulse { animation: none; }
+  .nav-panel-in  { animation: none; }
+  .nav-swap      { animation: none; }
+  .nav-indicator { transition: none; }
 }
 
 /* ═══════════════════════════════════════════════════════════════
