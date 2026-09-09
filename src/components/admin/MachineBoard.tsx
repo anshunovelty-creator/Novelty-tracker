@@ -16,8 +16,7 @@ import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-quer
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { Check, X, Play, Pencil, ArrowUp, ArrowDown, MoreHorizontal, Monitor, Gauge,
-         ChevronDown, ChevronUp } from 'lucide-react';
+import { Check, X, Play, Pencil, ArrowUp, ArrowDown, MoreHorizontal, Monitor, Gauge } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatQty } from '@/lib/utils';
 import { runDurationMs, formatDuration, estimateFinishIso } from '@/lib/machineSpeed';
@@ -49,38 +48,20 @@ const fmtDT = (iso: string | null) =>
 const toIsoOrNull = (local: string) =>
   local ? new Date(local).toISOString() : null;
 
-// Whether the board is collapsed, remembered per browser — same convention as
-// the floating panels' stored size (see hooks/useResizablePanel.ts). A view
-// preference belongs to the machine someone works at, not to their account:
-// the office screen and the shop-floor terminal want different answers.
-const COLLAPSED_KEY = 'meterlabels.dashboard.machinesCollapsed';
+type Props = {
+  dept: DeptPermissions;
+  // Whether the board is hidden. Owned by the parent dashboard toolbar now —
+  // its Show/Hide Machine Board button is the single place this state lives,
+  // remembered per browser (see readCollapsed/writeCollapsed in
+  // DashboardBoard.tsx). null = the stored preference has not been read yet
+  // (localStorage cannot be read during render, and this component is
+  // server-rendered too), so the query stays disabled until the answer is
+  // known — same three-state dance as before, just driven by a prop.
+  collapsed: boolean | null;
+};
 
-function readCollapsed(): boolean {
-  try { return window.localStorage.getItem(COLLAPSED_KEY) === '1'; }
-  catch { return false; }
-}
-
-function writeCollapsed(collapsed: boolean): void {
-  try { window.localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0'); }
-  catch { /* ignored — the board still collapses for this visit */ }
-}
-
-export default function MachineBoard({ dept }: { dept: DeptPermissions }) {
+export default function MachineBoard({ dept, collapsed }: Props) {
   const canManage = canDeptManageMachineBoard(dept);
-
-  // null = the stored preference has not been read yet. localStorage cannot be
-  // read during render (this component is server-rendered too, and branching on
-  // it before hydration is a mismatch), so the third state is what keeps the
-  // board from fetching on behalf of someone who has it collapsed: the query
-  // stays disabled until the answer is known, and the skeleton covers the gap
-  // that everyone would see anyway.
-  const [collapsed, setCollapsed] = useState<boolean | null>(null);
-  useEffect(() => { setCollapsed(readCollapsed()); }, []);
-
-  function applyCollapsed(next: boolean) {
-    setCollapsed(next);
-    writeCollapsed(next);
-  }
 
   const [historyDate, setHistoryDate] = useState('');
   const [busy, setBusy]               = useState(false);
@@ -195,31 +176,10 @@ export default function MachineBoard({ dept }: { dept: DeptPermissions }) {
   }
 
   // Collapsed wins over loading: someone who put the board away should not get
-  // a skeleton of it on every dashboard visit. The title bar stays as the way
-  // back — hiding the whole component would leave nothing to click.
-  if (collapsed === true) {
-    return (
-      <div className="glass rounded-xl px-5 py-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <Monitor className="w-4 h-4 shrink-0 text-[var(--glass-muted)]" aria-hidden="true" />
-          {/* Truncates rather than wraps: this bar exists to be one line tall
-              on a phone, and a second line would eat the space it just saved. */}
-          <h2 className="truncate text-sm font-semibold text-[var(--glass-ink)]">
-            Machines — Live Queues
-          </h2>
-        </div>
-        <button
-          type="button"
-          onClick={() => applyCollapsed(false)}
-          aria-expanded={false}
-          className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-2.5 text-xs font-medium text-[var(--glass-muted)] hover:bg-white/10 hover:text-[var(--glass-ink)] transition-colors"
-        >
-          <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
-          Show board
-        </button>
-      </div>
-    );
-  }
+  // a skeleton of it on every dashboard visit. The way back is the parent
+  // toolbar's "Show Machine Board" button now, not a title bar in this
+  // component's own place — so hidden means nothing renders here at all.
+  if (collapsed === true) return null;
 
   if (!data) {
     // Skeleton shaped to the board (header + two machine cards), matching the
@@ -306,17 +266,6 @@ export default function MachineBoard({ dept }: { dept: DeptPermissions }) {
               + Add Machine
             </button>
           )}
-          {/* Last in the row: this puts the board away rather than acting on
-              it, so it sits after the controls that do. */}
-          <button
-            type="button"
-            onClick={() => applyCollapsed(true)}
-            aria-expanded={true}
-            className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-white/10 px-2.5 text-xs font-medium text-[var(--glass-muted)] hover:bg-white/10 hover:text-[var(--glass-ink)] transition-colors"
-          >
-            <ChevronUp className="w-3.5 h-3.5" aria-hidden="true" />
-            Hide board
-          </button>
         </div>
       </div>
 

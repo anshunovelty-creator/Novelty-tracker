@@ -59,3 +59,21 @@ export function urgentBadgeClass(priority: number | null): string {
   if (priority === 2) return 'bg-orange-100 text-orange-700 border border-orange-200';
   return 'bg-yellow-100 text-yellow-800 border border-yellow-200';
 }
+
+// Printing unit chip: just the unit's number in a colored circle rather than
+// the full "Unit-1" / "Unit-2" text — pink for Unit 1, green for Unit 2 (the
+// floor's two presses today). Colors are dark enough to hold AA contrast
+// against white digits. Falls back to grey + the name's first letter for any
+// unit that isn't one of those two, since printing_units.name is admin-set
+// free text, not a fixed enum. Shared by JobRow (desk table) and JobCard
+// (phone list) so both breakpoints read the same badge.
+export function unitDigit(name: string): string {
+  return name.match(/\d+/)?.[0] ?? name.charAt(0).toUpperCase();
+}
+export function unitCircleClass(name: string): string {
+  switch (name.match(/\d+/)?.[0]) {
+    case '1':  return 'bg-pink-600';
+    case '2':  return 'bg-emerald-700';
+    default:   return 'bg-slate-400';
+  }
+}

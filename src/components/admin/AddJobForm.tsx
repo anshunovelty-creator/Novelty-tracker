@@ -43,7 +43,14 @@ type Props = {
   // Job Separation "Add Job" button) close that overlay too, instead of
   // leaving it open around the collapsed "+ Add Job" trigger.
   onCancel?: () => void;
+  // When true, renders nothing (instead of the "+ Add Job" trigger button)
+  // while closed — for a caller whose own button opens this form via the
+  // imperative handle below (JobsTable, once the dashboard toolbar owns the
+  // visible "Add Job" button).
+  hideTrigger?: boolean;
 };
+
+export type AddJobFormHandle = { open: () => void };
 
 const JOB_TYPES = ['New', 'Repeat', 'Artwork Changed'] as const;
 const INITIAL_STAGES = [
@@ -74,7 +81,9 @@ const EMPTY_FORM: AddJobFormData = {
   printing_unit_id:     null,
 };
 
-export default function AddJobForm({ dept, prefillData, onSuccess, sourceJobSeparationId, onCancel }: Props) {
+const AddJobForm = React.forwardRef<AddJobFormHandle, Props>(function AddJobForm(
+  { dept, prefillData, onSuccess, sourceJobSeparationId, onCancel, hideTrigger }, ref,
+) {
   const [form,       setForm]       = useState<AddJobFormData>({ ...EMPTY_FORM, ...prefillData });
   // Active units only — a retired unit must never be assignable to a new job.
   const [units,      setUnits]      = useState<PrintingUnit[]>([]);
@@ -83,6 +92,11 @@ export default function AddJobForm({ dept, prefillData, onSuccess, sourceJobSepa
   // key and the prefill, and a collapsed form would hide it (which made the
   // Duplicate button look like it did nothing).
   const [isOpen,     setIsOpen]     = useState(Boolean(prefillData));
+  // Lets an external trigger (the dashboard toolbar's "Add Job" button, once
+  // hideTrigger suppresses this form's own button) open it without owning
+  // isOpen itself — duplicating via a row's button still works exactly as
+  // before through prefillData above.
+  React.useImperativeHandle(ref, () => ({ open: () => setIsOpen(true) }), []);
   const [releases,   setReleases]   = useState<ScheduledReleaseInput[]>([
     { release_number: 1, planned_qty: 0, planned_date: '' },
   ]);
@@ -257,6 +271,7 @@ export default function AddJobForm({ dept, prefillData, onSuccess, sourceJobSepa
   }
 
   if (!isOpen) {
+    if (hideTrigger) return null;
     return (
       <button
         onClick={() => setIsOpen(true)}
@@ -582,7 +597,9 @@ export default function AddJobForm({ dept, prefillData, onSuccess, sourceJobSepa
       </form>
     </div>
   );
-}
+});
+
+export default AddJobForm;
 
 // ── Helpers ──────────────────────────────────────────────────
 

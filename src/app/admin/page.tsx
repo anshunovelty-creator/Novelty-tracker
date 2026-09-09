@@ -1,13 +1,11 @@
 // src/app/admin/page.tsx
 // Server component — fetches initial data, passes to client components.
 
-import Link from 'next/link';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getDeptPermissions } from '@/lib/constants/departments';
 import { redirect } from 'next/navigation';
 import DashboardSummaryCard from '@/components/admin/DashboardSummaryCard';
-import MachineBoard from '@/components/admin/MachineBoard';
-import JobsTable from '@/components/admin/JobsTable';
+import DashboardBoard from '@/components/admin/DashboardBoard';
 
 export default async function AdminPage() {
   const supabase = await createServerSupabaseClient();
@@ -58,26 +56,11 @@ export default async function AdminPage() {
       {/* Dashboard summary */}
       <DashboardSummaryCard summary={summary} />
 
-      {/* Machine board — live per-machine printing queues */}
-      <MachineBoard dept={perms} />
-
-      {/* Admin-only settings entry points */}
-      {perms.isSuperAdmin && (
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href="/admin/printing-units"
-            className="inline-flex min-h-11 items-center rounded-lg border border-black/[0.12] px-3 text-sm text-[var(--glass-muted)] hover:bg-black/[0.04] hover:text-[var(--glass-ink)]"
-          >
-            Manage printing units →
-          </Link>
-        </div>
-      )}
-
-      {/* Add job form + jobs table */}
-      <JobsTable
-        initialJobs={jobs ?? []}
-        dept={perms}
-      />
+      {/* Machine board, toolbar (Manage Printing Units / Show-Hide Machine
+          Board / Add Job), and the jobs table — coordinated together since
+          the toolbar's middle and right buttons control state that lives in
+          the other two. */}
+      <DashboardBoard dept={perms} jobs={jobs ?? []} />
     </div>
   );
 }

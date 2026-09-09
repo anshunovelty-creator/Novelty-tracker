@@ -40,6 +40,9 @@ export default function JobDuplicateButton({ job, onDuplicate, size = 'compact' 
 
   // 'touch' maps to the md size, which already carries the 44px minimum
   // PRODUCT.md asks for on the card surface; 'compact' is the in-row sm.
+  // Compact drops the label — the desk table already leans on hover/title
+  // tooltips for its icon-only actions (Edit, Del), and touch has no hover
+  // to reveal one, so it keeps the visible word.
   return (
     <Button
       size={size === 'touch' ? 'md' : 'sm'}
@@ -47,8 +50,9 @@ export default function JobDuplicateButton({ job, onDuplicate, size = 'compact' 
       onClick={handleClick}
       title="Duplicate this job"
       aria-label="Duplicate this job"
+      className={size === 'compact' ? 'w-8 min-w-8 px-0' : undefined}
     >
-      Duplicate
+      {size === 'touch' && 'Duplicate'}
     </Button>
   );
 }

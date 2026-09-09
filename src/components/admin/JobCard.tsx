@@ -12,7 +12,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { ChevronDown, ChevronUp, PauseCircle, Pencil, Trash2, CheckCircle2 } from 'lucide-react';
 import { cn, formatAdminDate, formatJobCardNumber, formatQty, getDeliveryCountdown } from '@/lib/utils';
-import { STATUS_COLORS, JOB_TYPE_BADGE, urgentBadgeClass } from '@/lib/constants/statusColors';
+import { STATUS_COLORS, JOB_TYPE_BADGE, urgentBadgeClass, unitDigit, unitCircleClass } from '@/lib/constants/statusColors';
 import { canDeptSetStage, canDeptEditJobDetails } from '@/lib/constants/departments';
 import { useJobActions } from '@/hooks/useJobActions';
 import type { Job } from '@/lib/types';
@@ -84,10 +84,6 @@ export default function JobCard({
             <p className="font-mono text-[11px] text-[var(--glass-muted)] tracking-wide">
               {job.po_number}
               {job.pm_code && <span className="ml-1.5">· {job.pm_code}</span>}
-              {/* Printing unit — which press is taking this job. */}
-              {job.printing_units && (
-                <span className="ml-1.5">· {job.printing_units.name}</span>
-              )}
             </p>
             <h3 className="font-semibold text-[15px] leading-snug text-[var(--glass-ink)] mt-0.5 break-words underline decoration-transparent underline-offset-[3px] hover:decoration-current transition-[text-decoration-color]">
               {job.party}
@@ -107,9 +103,25 @@ export default function JobCard({
                 P{job.urgent_priority}
               </span>
             )}
-            <span className={cn('text-[11px] px-2 py-0.5 rounded font-medium', JOB_TYPE_BADGE[job.job_type])}>
-              {job.job_type}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className={cn('text-[11px] px-2 py-0.5 rounded font-medium', JOB_TYPE_BADGE[job.job_type])}>
+                {job.job_type}
+              </span>
+              {/* Printing unit — which press is taking this job. */}
+              {job.printing_units && (
+                <span
+                  className={cn(
+                    'inline-flex items-center justify-center w-5 h-5 shrink-0 rounded-full',
+                    'text-[11px] font-bold text-white',
+                    unitCircleClass(job.printing_units.name),
+                  )}
+                  title={job.printing_units.name}
+                  aria-label={`Printing unit ${job.printing_units.name}`}
+                >
+                  {unitDigit(job.printing_units.name)}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 

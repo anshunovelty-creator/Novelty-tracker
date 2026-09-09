@@ -6,6 +6,11 @@ const config: Config = {
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
     './src/app/**/*.{js,ts,jsx,tsx,mdx}',
+    // Shared style helpers (e.g. src/lib/constants/statusColors.ts) build
+    // Tailwind class strings too — without this, a color used only there
+    // (never as literal text in a scanned component) never gets generated,
+    // and the class silently renders with no background at all.
+    './src/lib/**/*.{js,ts,jsx,tsx,mdx}',
   ],
   theme: {
     extend: {

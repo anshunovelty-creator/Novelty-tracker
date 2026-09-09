@@ -10,19 +10,31 @@ import type { DeptPermissions } from '@/lib/constants/departments';
 import JobRow, { JOB_ROW_COLS } from './JobRow';
 import JobCard from './JobCard';
 import FilterBar from './FilterBar';
-import AddJobForm from './AddJobForm';
+import AddJobForm, { type AddJobFormHandle } from './AddJobForm';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 
 type Props = {
   initialJobs: Job[];
   dept:        DeptPermissions;
+  // Set together by the dashboard toolbar, which owns the visible "Add Job"
+  // button now: hideAddTrigger suppresses this form's own "+ Add Job"
+  // button while closed, and addJobFormRef lets that external button open
+  // it. Neither is passed elsewhere (e.g. if JobsTable ever gained another
+  // caller without a toolbar), so the form's own trigger is the default.
+  addJobFormRef?:  React.Ref<AddJobFormHandle>;
+  hideAddTrigger?: boolean;
+  // Rendered on the right of the "Active Jobs" heading row — the dashboard
+  // toolbar (Manage Printing Units / Show-Hide Machine Board / Add Job)
+  // lives here instead of its own row, since this heading row already has
+  // the vertical space to spare.
+  toolbarExtra?: React.ReactNode;
 };
 
 // Header labels for the desk table. Must stay in the same order — and at the
 // same count (JOB_ROW_COLS) — as the <td>s in JobRow.
 const JOB_COLUMNS = [
-  'Job Card', 'PM / Job', 'Party / PO', 'Type',
-  'Dispatch', 'Delivery', 'Status', 'Updated', 'Actions',
+  'Job Card / PO Dt', 'PM / Job', 'Party / PO',
+  'Dispatch', 'Delivery', 'Status', 'Actions',
 ] as const;
 
 type DuplicatePrefill = Pick<AddJobFormData,
@@ -33,7 +45,7 @@ type DuplicatePrefill = Pick<AddJobFormData,
 // back a fresh array every render, defeating the sortedJobs useMemo below.
 const EMPTY_JOBS: Job[] = [];
 
-export default function JobsTable({ initialJobs, dept }: Props) {
+export default function JobsTable({ initialJobs, dept, addJobFormRef, hideAddTrigger, toolbarExtra }: Props) {
   const [search,       setSearch]       = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [urgentOnly,   setUrgentOnly]   = useState(false);
@@ -141,13 +153,13 @@ export default function JobsTable({ initialJobs, dept }: Props) {
 
   return (
     <div>
-      {/* Toolbar + Add Job Form */}
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-4">
+      {/* Heading + dashboard toolbar, on one row */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         {/* The count used to read "Active Jobs (3)" whether that was every job
             or three survivors of a filter — the same number silently meaning
             two different things, which on a production tracker is a genuinely
             misleading thing to read at a glance. It now says which it is. */}
-        <h2 className="text-base font-semibold text-[var(--glass-ink)] pt-2">
+        <h2 className="text-base font-semibold text-[var(--glass-ink)]">
           Active Jobs
           {jobs.length > 0 && (
             <span className="ml-2 font-normal text-sm text-[var(--glass-muted)]">
@@ -157,16 +169,25 @@ export default function JobsTable({ initialJobs, dept }: Props) {
             </span>
           )}
         </h2>
-        <AddJobForm
-          key={formKey}
-          dept={dept}
-          prefillData={prefill}
-          onSuccess={() => {
-            setPrefill(undefined);
-            queryClient.invalidateQueries({ queryKey: ['jobs'] });
-          }}
-        />
+        {toolbarExtra}
       </div>
+
+      {/* Add Job form — a block of its own below the heading row rather than
+          a flex sibling next to it, since the expanded panel is far wider
+          than anything that row's height was sized for. Contributes nothing
+          when closed (hideAddTrigger callers get null; the default trigger
+          button is small enough to sit here too). */}
+      <AddJobForm
+        key={formKey}
+        ref={addJobFormRef}
+        hideTrigger={hideAddTrigger}
+        dept={dept}
+        prefillData={prefill}
+        onSuccess={() => {
+          setPrefill(undefined);
+          queryClient.invalidateQueries({ queryKey: ['jobs'] });
+        }}
+      />
 
       {/* Filters */}
       <FilterBar
@@ -234,12 +255,16 @@ export default function JobsTable({ initialJobs, dept }: Props) {
             scrollport to stick to — without a height limit the wrapper is as
             tall as its content and a sticky thead never actually pins. Same
             arrangement DiesManager and JobSeparationManager already use.
-            Nine columns across 1400px: the header row and the Job Card cell
-            both stay put, so scrolling right to reach Actions never costs you
-            sight of which job you are acting on. */}
+            Column widths are floors (min-w), not fixed — same convention as
+            the Job Separation table: the browser shrinks columns and wraps
+            their text down to those floors first, and only once the whole
+            row can't get any narrower does min-w-[1000px] below force the
+            horizontal scrollbar. The header row and the Job Card cell both
+            stay pinned through that scroll, so reaching Actions never costs
+            sight of which job you're acting on. */}
         <div className="hidden lg:block rounded-xl glass overflow-hidden">
           <div className="table-scroll-wrapper max-h-[72vh] overflow-y-auto">
-          <table className="w-full min-w-[1400px] border-collapse text-sm">
+          <table className="w-full min-w-[1000px] border-collapse text-sm">
             <thead>
               <tr>
                 {JOB_COLUMNS.map((col) => (
@@ -247,12 +272,16 @@ export default function JobsTable({ initialJobs, dept }: Props) {
                     key={col}
                     scope="col"
                     className={cn(
-                      'sticky top-0 z-10 px-4 py-3 text-left text-[11px] font-semibold text-[var(--glass-muted)]',
+                      'sticky top-0 z-10 px-3 py-1.5 text-left text-[11px] font-semibold text-[var(--glass-muted)]',
                       'uppercase tracking-[0.06em] whitespace-nowrap',
                       'bg-[var(--glass-bg-strong)] backdrop-blur-[14px] border-b border-white/12',
+                      // A thin vertical rule between every column but the last —
+                      // same convention as the Job Separation table, so the eye
+                      // has a fixed lane to track across a wide row.
+                      col !== 'Actions' && col !== 'Job Card / PO Dt' && 'border-r border-white/8',
                       // Job Card is the row's identity — it pins left as well,
                       // above its peers so the two sticky axes don't fight.
-                      col === 'Job Card' && 'left-0 z-20 border-r border-white/12',
+                      col === 'Job Card / PO Dt' && 'left-0 z-20 border-r border-white/12',
                       col === 'Actions' && 'text-right',
                     )}
                   >
