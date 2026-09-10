@@ -14,6 +14,10 @@
 //   only gate — because a few routes (e.g. POST /api/jobs) don't check
 //   department at all today and would otherwise let Viewer write there.
 // - / → redirects authenticated users to /admin, unauthenticated to /track
+// - non-api pages on the .vercel.app host → 308 redirect to the canonical
+//   custom domain, so noveltytracker.com is the one URL users ever see.
+//   /api/* is excluded so Vercel's own cron/internal calls to the
+//   .vercel.app deployment URL aren't redirected and dropped.
 // ============================================================
 
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
@@ -22,8 +26,24 @@ import { getDeptPermissions } from '@/lib/constants/departments';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
+const CANONICAL_HOST = 'noveltytracker.com';
+const VERCEL_HOST = 'novelty-tracker.vercel.app';
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Canonicalize the domain: send anyone on the .vercel.app host to
+  // noveltytracker.com, preserving path/query. Skip /api/* — Vercel cron and
+  // server-to-server notification calls hit the deployment URL directly and
+  // must not be redirected.
+  const host = request.headers.get('host');
+  if (host === VERCEL_HOST && !pathname.startsWith('/api/')) {
+    const canonicalUrl = new URL(
+      `${pathname}${request.nextUrl.search}`,
+      `https://${CANONICAL_HOST}`
+    );
+    return NextResponse.redirect(canonicalUrl, 308);
+  }
 
   // Cron jobs: validated by secret header, not Supabase auth
   if (pathname.startsWith('/api/cron/')) {
