@@ -7,13 +7,14 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { toMonthKey } from '@/lib/utils';
 
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const monthKey = new URL(request.url).searchParams.get('month') ?? toMonthKey();

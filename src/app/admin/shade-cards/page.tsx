@@ -7,6 +7,7 @@
 // up to date; only Admin can delete a record.
 
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions, canDeptManageShadeCards } from '@/lib/constants/departments';
 import ShadeCardsManager from '@/components/admin/ShadeCardsManager';
 
@@ -19,7 +20,7 @@ export const metadata = {
 
 export default async function ShadeCardsPage() {
   const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
   const perms = await getDeptPermissions(user?.user_metadata?.department);
 
   return (

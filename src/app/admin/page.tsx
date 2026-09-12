@@ -2,6 +2,7 @@
 // Server component — fetches initial data, passes to client components.
 
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions } from '@/lib/constants/departments';
 import { redirect } from 'next/navigation';
 import DashboardSummaryCard from '@/components/admin/DashboardSummaryCard';
@@ -10,7 +11,7 @@ import DashboardBoard from '@/components/admin/DashboardBoard';
 export default async function AdminPage() {
   const supabase = await createServerSupabaseClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
   if (!user) redirect('/login');
 
   const perms = await getDeptPermissions(user.user_metadata?.department);

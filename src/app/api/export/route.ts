@@ -7,6 +7,7 @@
 
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptExportData } from '@/lib/constants/departments';
 import { buildExportFiles } from '@/lib/export/adminExport';
@@ -20,8 +21,8 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   const supabase = await createServerSupabaseClient();
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) {
+  const user = await getClaimsUser(supabase);
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

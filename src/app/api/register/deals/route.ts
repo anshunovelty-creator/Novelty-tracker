@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptManageRegister } from '@/lib/constants/departments';
 
@@ -26,7 +27,7 @@ function stage(value: unknown): string {
 
 async function requireAdmin() {
   const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
   if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) } as const;
 
   const perms = await getDeptPermissions(user.user_metadata?.department);

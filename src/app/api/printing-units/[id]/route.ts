@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions } from '@/lib/constants/departments';
 import { PRINTING_METHODS, type PrintingMethod } from '@/lib/types';
@@ -17,8 +18,8 @@ interface Params {
 /** Both handlers are Admin-only; returns null when authorised. */
 async function requireAdmin() {
   const supabase = await createServerSupabaseClient();
-  const { data: { user }, error } = await supabase.auth.getUser();
-  if (error || !user) {
+  const user = await getClaimsUser(supabase);
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const perms = await getDeptPermissions(user.user_metadata?.department);

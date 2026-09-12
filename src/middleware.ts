@@ -23,6 +23,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getDeptPermissions } from '@/lib/constants/departments';
+import { getClaimsUser } from '@/lib/supabase/claims';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -93,7 +94,7 @@ export async function middleware(request: NextRequest) {
         },
       }
     );
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getClaimsUser(supabase);
     const perms = await getDeptPermissions(user?.user_metadata?.department);
     if (perms?.isReadOnly) {
       return NextResponse.json(
@@ -129,9 +130,7 @@ export async function middleware(request: NextRequest) {
   );
 
   // Refresh session — critical to call this in middleware
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
 
   // Root redirect
   if (pathname === '/') {

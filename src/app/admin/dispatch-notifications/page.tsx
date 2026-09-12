@@ -10,6 +10,7 @@
 
 import { redirect } from 'next/navigation';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 import {
   getDeptPermissions,
   canDeptManageDispatchNotifications,
@@ -34,7 +35,7 @@ export default async function DispatchNotificationsPage({
   searchParams: Promise<{ tab?: string }>;
 }) {
   const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
   const perms = await getDeptPermissions(user?.user_metadata?.department);
 
   const canQueue = canDeptManageDispatchNotifications(perms);

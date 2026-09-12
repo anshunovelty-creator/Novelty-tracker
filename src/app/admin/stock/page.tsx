@@ -7,6 +7,7 @@
 // stock (add, correct, mark dispatched) — see canDeptManageStock.
 
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions, canDeptManageStock } from '@/lib/constants/departments';
 import LabelStockManager from '@/components/admin/LabelStockManager';
 
@@ -19,7 +20,7 @@ export const metadata = {
 
 export default async function LabelStockPage() {
   const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
   const perms = await getDeptPermissions(user?.user_metadata?.department);
 
   return (

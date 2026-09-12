@@ -16,6 +16,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 import type { LabelStock } from '@/lib/types';
 
 // Enough to show the shelf without turning the callout into a table.
@@ -24,7 +25,7 @@ const MAX_ROWS = 20;
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const pmCode = new URL(request.url).searchParams.get('pm_code')?.trim() ?? '';

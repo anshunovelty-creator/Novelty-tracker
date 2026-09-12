@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions, canDeptManageShadeCards } from '@/lib/constants/departments';
 import { isSelectableStatus, isMakingStatus } from '@/lib/constants/shadeCards';
 
@@ -49,7 +50,7 @@ function readFields(body: Record<string, unknown>) {
 /** Session + department gate shared by every mutating handler here. */
 async function requireManager() {
   const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
   if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
 
   const perms = await getDeptPermissions(user.user_metadata?.department);
@@ -65,7 +66,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
   const { id } = await params;
   const supabase = await createServerSupabaseClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { data: card, error } = await supabase
@@ -247,7 +248,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
   const { id } = await params;
   const supabase = await createServerSupabaseClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const perms = await getDeptPermissions(user.user_metadata?.department);

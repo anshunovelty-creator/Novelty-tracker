@@ -3,6 +3,7 @@
 // the light theme and the layout's auth check.
 
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions } from '@/lib/constants/departments';
 import PrintingUnitsManager from '@/components/admin/PrintingUnitsManager';
 
@@ -17,7 +18,7 @@ export default async function PrintingUnitsPage() {
   // The write endpoints already reject non-Admins, but gating here too
   // means non-Admins never see a screen whose every control 403s.
   const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
   const perms = await getDeptPermissions(user?.user_metadata?.department);
   // TODO(dept-migration): this page gates the printing-UNITS master list
   // (create/rename a unit), a distinct concept from 'printing_edit' (who

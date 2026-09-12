@@ -14,6 +14,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, invalidateDeptCache } from '@/lib/constants/departments';
 
@@ -22,7 +23,7 @@ const KEY_RE = /^[A-Za-z][A-Za-z0-9_-]{1,49}$/;
 export async function GET() {
   const supabase = await createServerSupabaseClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const [depts, features, stages, runStages] = await Promise.all([
@@ -47,7 +48,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const perms = await getDeptPermissions(user.user_metadata?.department);

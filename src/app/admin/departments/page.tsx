@@ -7,6 +7,7 @@
 
 import { redirect } from 'next/navigation';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions } from '@/lib/constants/departments';
 import DepartmentsManager from '@/components/admin/DepartmentsManager';
 
@@ -19,7 +20,7 @@ export const metadata = {
 
 export default async function DepartmentsPage() {
   const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
   const perms = await getDeptPermissions(user?.user_metadata?.department);
 
   if (!perms?.isSuperAdmin) {

@@ -5,6 +5,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions } from '@/lib/constants/departments';
 import JobDetailClient from '@/components/admin/JobDetailClient';
 import type { Job } from '@/lib/types';
@@ -17,7 +18,7 @@ export default async function JobDetailPage({ params }: Props) {
   const { id } = await params;
   const supabase = await createServerSupabaseClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
   if (!user) redirect('/login');
 
   const perms = await getDeptPermissions(user.user_metadata?.department);

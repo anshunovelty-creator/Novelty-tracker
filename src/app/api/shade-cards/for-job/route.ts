@@ -18,6 +18,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 
 /** How the match was made, so the UI can be honest about its confidence. */
 export type ShadeCardMatchBasis = 'pm_code' | 'party_product' | 'none';
@@ -25,7 +26,7 @@ export type ShadeCardMatchBasis = 'pm_code' | 'party_product' | 'none';
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = new URL(request.url);

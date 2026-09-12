@@ -7,12 +7,13 @@
 
 import { redirect } from 'next/navigation';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions, canDeptManageRegister } from '@/lib/constants/departments';
 import RegisterManager from '@/components/admin/RegisterManager';
 
 export default async function RegisterPage() {
   const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
   if (!user) redirect('/login');
 
   const perms = await getDeptPermissions(user.user_metadata?.department);

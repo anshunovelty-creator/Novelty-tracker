@@ -2,6 +2,7 @@
 import React from 'react';
 import { redirect } from 'next/navigation';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions } from '@/lib/constants/departments';
 import AdminHeader from '@/components/admin/AdminHeader';
 import NotesFeed from '@/components/admin/NotesFeed';
@@ -18,7 +19,7 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
 
   if (!user) {
     redirect('/login');

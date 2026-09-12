@@ -21,6 +21,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { upsertRemainingStock, clearRemainingStock, addExtraStock } from '@/lib/api/labelStock';
 import { getDeptPermissions, canDeptSetStage, canDeptOverridePOClosed } from '@/lib/constants/departments';
@@ -36,8 +37,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   const supabase = await createServerSupabaseClient();
 
   // ── 1. Auth ───────────────────────────────────────────────
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) {
+  const user = await getClaimsUser(supabase);
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

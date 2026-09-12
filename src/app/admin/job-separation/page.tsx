@@ -8,6 +8,7 @@
 // — see canDeptManageJobSeparation.
 
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions, canDeptManageJobSeparation, canDeptManagePrepressTodo, canDeptUseMeterCalculator } from '@/lib/constants/departments';
 import JobSeparationManager from '@/components/admin/JobSeparationManager';
 
@@ -20,7 +21,7 @@ export const metadata = {
 
 export default async function JobSeparationPage() {
   const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
   const perms = await getDeptPermissions(user?.user_metadata?.department);
 
   return (

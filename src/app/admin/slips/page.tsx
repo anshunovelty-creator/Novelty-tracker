@@ -9,6 +9,7 @@
 // since they are the ones who know the box and roll counts.
 
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 import {
   getDeptPermissions,
   canDeptPrintBoxSlips,
@@ -25,7 +26,7 @@ export const metadata = {
 
 export default async function SlipsPage() {
   const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
   const perms = await getDeptPermissions(user?.user_metadata?.department);
 
   return (

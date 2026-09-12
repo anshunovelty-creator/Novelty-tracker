@@ -15,6 +15,7 @@
 
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 
 export type ShadeCardSummary = {
   total:             number;
@@ -32,7 +33,7 @@ export type ShadeCardSummary = {
 export async function GET() {
   const supabase = await createServerSupabaseClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   // Superseded rows are history — the register only ever counts live cards,

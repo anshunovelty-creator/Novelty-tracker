@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 const MAX_IDS = 100;
@@ -17,7 +18,7 @@ const MAX_IDS = 100;
 export async function POST(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getClaimsUser(supabase);
   if (!user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await request.json();
