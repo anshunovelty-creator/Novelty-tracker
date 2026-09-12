@@ -9,6 +9,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptManageJobSeparation } from '@/lib/constants/departments';
+import { parseDateRange, rangeOrClause, parseLimit, type DateRange } from '@/lib/jobSeparationQuery';
 
 // Optional free text: blank means "not recorded", not an empty string.
 function text(value: unknown): string | null {
@@ -47,55 +48,6 @@ const JOB_SEPARATION_SEARCH_FIELDS: Record<string, JobSeparationSearchField> = {
   quantity:      { column: 'quantity',      type: 'int' },
 };
 
-// Default scope keeps both the payload and the query small — at 400-700
-// rows added a month, "all time" grows unbounded while "this month" stays
-// flat. Buckets on the same date the Sr. No. trigger uses — po_date when
-// present, created_at otherwise (see trigger_set_job_separation_sr_no() in
-// 051_job_separation_sr_no_by_po_date.sql) — so "Current month" always
-// means "this month's Sr. No. series", not "entered this month". A PO
-// dated 31 Aug added a few days into September must still show up under
-// August, matching its AUG26 number.
-type DateRange = 'month' | '3months' | 'all';
-const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-
-function istMonthStartUTC(monthsAgo: number): Date {
-  const ist = new Date(Date.now() + IST_OFFSET_MS);
-  return new Date(
-    Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth() - monthsAgo, 1) - IST_OFFSET_MS
-  );
-}
-
-// po_date is a plain DATE — no time-of-day/timezone to resolve — so the
-// boundary is a calendar date string, not an IST-adjusted instant.
-function istMonthStartDateStr(monthsAgo: number): string {
-  const ist = new Date(Date.now() + IST_OFFSET_MS);
-  return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth() - monthsAgo, 1))
-    .toISOString()
-    .slice(0, 10);
-}
-
-function rangeBounds(range: DateRange): { poDateStart: string; createdAtStart: string } | null {
-  if (range === 'all') return null;
-  const monthsAgo = range === '3months' ? 2 : 0;
-  return {
-    poDateStart: istMonthStartDateStr(monthsAgo),
-    createdAtStart: istMonthStartUTC(monthsAgo).toISOString(),
-  };
-}
-
-// Caps the payload the same way `range` caps the query — "Current month"
-// stays under this on its own, but "All data" would otherwise return every
-// row in the table (and grow every year). One extra row is requested past
-// the limit purely to tell the client whether "Load more" should show.
-const DEFAULT_LIMIT = 500;
-const MAX_LIMIT = 2000;
-
-function parseLimit(raw: string | null): number {
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n <= 0) return DEFAULT_LIMIT;
-  return Math.min(Math.trunc(n), MAX_LIMIT);
-}
-
 // ── GET ───────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -106,9 +58,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const search = searchParams.get('search')?.trim();
   const field  = searchParams.get('field')?.trim();
-  const rangeParam = searchParams.get('range');
-  const range: DateRange =
-    rangeParam === '3months' || rangeParam === 'all' ? rangeParam : 'month';
+  const range: DateRange = parseDateRange(searchParams.get('range'));
   const limit = parseLimit(searchParams.get('limit'));
 
   let query = supabase
@@ -117,15 +67,10 @@ export async function GET(request: NextRequest) {
     .order('created_at', { ascending: false })
     .limit(limit + 1);
 
-  const bounds = rangeBounds(range);
-  if (bounds) {
-    // A row belongs to the bucket its Sr. No. belongs to: po_date's month
-    // when po_date is set, created_at's month for the legacy rows it
-    // isn't (mirrors the trigger's own COALESCE).
-    query = query.or(
-      `po_date.gte.${bounds.poDateStart},and(po_date.is.null,created_at.gte.${bounds.createdAtStart})`
-    );
-  }
+  // Scoped exactly the way Bill of Material scopes the same rows — see
+  // src/lib/jobSeparationQuery.ts for the po_date/created_at bucketing.
+  const rangeClause = rangeOrClause(range);
+  if (rangeClause) query = query.or(rangeClause);
 
   if (search) {
     const config = field ? JOB_SEPARATION_SEARCH_FIELDS[field] : undefined;

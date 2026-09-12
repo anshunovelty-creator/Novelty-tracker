@@ -706,112 +706,98 @@ export interface StatusChangePayload {
 }
 
 // ── Bill of Material (BOM) ──────────────────────────────────────
-// Production's material requisitions and the owner's answer to them.
-// Mirrors supabase/migrations/031_bom_requests.sql.
+// Order value versus material cost, per Job Separation row, plus the
+// material master and the "Request" the floor sends the owner.
+// Mirrors supabase/migrations/058_bom_costing.sql.
 
-/** The owner's answer on a single material line. */
-export type BomDecision =
-  | 'pending'      // not yet answered
-  | 'ordered'      // ordering it as asked
-  | 'partial'      // ordering less than asked — see approved_quantity
-  | 'alternative'  // not this, use alternative_material instead
-  | 'rejected';    // not ordering, no substitute
-
-/**
- * Request-level status. Never set by hand — rolled up from the items by the
- * recalc_bom_request_status trigger, except 'cancelled', which the raiser or
- * Admin sets and the rollup will not overwrite.
- */
-export type BomRequestStatus =
-  | 'pending'
-  | 'in_review'
-  | 'ordered'
-  | 'partially_fulfilled'
-  | 'rejected'
-  | 'cancelled';
-
-export type BomPriority = 'normal' | 'urgent';
-
-export interface BomRequestItem {
-  id:                   string;
-  request_id:           string;
-  position:             number;
-  material:             string;
-  specification:        string | null;
-  size:                 string | null;
-  quantity:             number | null;
-  // What the metre calculator computed, before any extra was added on top —
-  // null on lines never run through it (or raised before this column
-  // existed). `quantity` is what was actually requested; this is the
-  // formula's own answer, kept alongside it so the two can be compared.
-  required_quantity:    number | null;
-  unit:                 string | null;
-  note:                 string | null;
-  decision:             BomDecision;
-  approved_quantity:    number | null;  // set when decision = 'partial'
-  alternative_material: string | null;  // set when decision = 'alternative'
-  decision_note:        string | null;
-  decided_at:           string | null;
-  decided_by:           string | null;
-  created_at:           string;
-  updated_at:           string;
-}
-
-export interface BomRequest {
-  id:                   string;
-  ref:                  string;         // 'BOM-0042'
-  job_po:               string | null;  // free text, not a jobs FK
-  party:                string | null;
-  needed_by:            string | null;  // ISO date, 'YYYY-MM-DD'
-  priority:             BomPriority;
-  note:                 string | null;
-  status:               BomRequestStatus;
-  raised_by_department: string;
-  raised_by:            string | null;
-  cancelled_at:         string | null;
-  cancelled_by:         string | null;
-  created_at:           string;
-  updated_at:           string;
-}
-
-/**
- * One entry in the material catalogue (bom_materials) — the single spelling
- * of a material, plus whatever spec/size/unit it was last requested with so
- * picking it can fill the rest of the line in.
- */
+/** One entry in the material master (bom_materials). */
 export interface BomMaterial {
   id:            string;
   name:          string;
-  name_key:      string;   // generated: lower(btrim(name)), unique
-  specification: string | null;
-  default_size:  string | null;
-  default_unit:  string | null;
+  name_key:      string;          // generated: lower(btrim(name)), unique
+  specification: string | null;   // gsm / micron / finish — free text
+  // ₹ per square metre. 0 means "not entered yet": the material is listed
+  // but a job can't be priced with it — see materialExpense() in lib/bom.ts.
+  rate_per_sqm:  number;
+  is_active:     boolean;
   created_by:    string | null;
+  updated_by:    string | null;
   created_at:    string;
   updated_at:    string;
 }
 
-/** What GET /api/bom-requests returns — the header with its lines attached. */
-export interface BomRequestWithItems extends BomRequest {
-  items: BomRequestItem[];
+/**
+ * The floor's three inputs for one Job Separation row (bom_costings), with
+ * the material's current name and rate joined on and the expense already
+ * priced by the API. Any input may still be null — a half-filled row is
+ * saved as typed, and priced once all three are in.
+ */
+export interface BomCosting {
+  job_separation_id: string;
+  material_id:       string | null;
+  material_name:     string | null;   // joined from bom_materials
+  rate_per_sqm:      number | null;   // joined — the *current* rate, not a snapshot
+  material_width_mm: number | null;
+  running_meter:     number | null;
+  expense:           number | null;   // running_meter × width/1000 × rate; null until priceable
+  updated_by:        string | null;
+  updated_at:        string;
 }
 
-/** What the raise-request form posts to POST /api/bom-requests. */
-export interface BomRequestInput {
-  job_po?:    string | null;
-  party?:     string | null;
-  needed_by?: string | null;
-  priority?:  BomPriority;
-  note?:      string | null;
-  items: {
-    material:           string;
-    specification?:     string | null;
-    size?:              string | null;
-    quantity?:          number | null;
-    required_quantity?: number | null;
-    unit?:              string | null;
-    note?:              string | null;
-  }[];
+export type BomRequestStatus =
+  | 'pending'     // awaiting the owner
+  | 'ordered'     // owner is ordering it
+  | 'declined'    // owner is not
+  | 'cancelled';  // withdrawn by the floor before an answer
+
+/**
+ * "Request" pressed on a costed row (bom_material_requests). Everything the
+ * owner reads is a snapshot from the moment of asking — the costing and the
+ * master rate can move afterwards; this can't.
+ */
+export interface BomMaterialRequest {
+  id:                      string;
+  ref:                     string;         // 'BOM-0042'
+  job_separation_id:       string;
+  material_id:             string | null;
+  material_name:           string;
+  material_width_mm:       number;
+  running_meter:           number;
+  rate_per_sqm:            number;
+  expense:                 number;
+  order_value:             number | null;
+  message:                 string | null;
+  status:                  BomRequestStatus;
+  decision_note:           string | null;
+  decided_at:              string | null;
+  decided_by:              string | null;
+  requested_by_department: string;
+  requested_by:            string | null;
+  created_at:              string;
+  updated_at:              string;
+}
+
+/** The Job Separation fields the BOM shows beside a request or a costing. */
+export type BomJobSummary = Pick<
+  JobSeparation,
+  'id' | 'sr_no' | 'party' | 'po_no' | 'po_date' | 'pm_code' | 'material_name' | 'quantity' | 'order_value' | 'created_at'
+>;
+
+/** What GET /api/bom-requests returns — the request with its job attached. */
+export interface BomMaterialRequestWithJob extends BomMaterialRequest {
+  job: BomJobSummary | null;   // null only if the job row was deleted underneath it
+}
+
+/**
+ * One line of the costing table (GET /api/bom-costings): the Job Separation
+ * row, its costing if the floor has started one, and the most recent request
+ * raised against it so the row can say "Requested · awaiting" without a
+ * second lookup.
+ */
+export interface BomCostingRow {
+  job:            BomJobSummary;
+  costing:        BomCosting | null;
+  latest_request: BomMaterialRequest | null;
 }
 
 // ── shade cards ─────────────────────────────────────────────

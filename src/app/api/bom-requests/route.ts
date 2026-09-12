@@ -1,17 +1,16 @@
 // src/app/api/bom-requests/route.ts
 // ============================================================
-// GET  /api/bom-requests — the material requisitions, newest first, each
-//      with its line items attached. Production or Admin.
-//      ?status=open|all|<status>  — 'open' (default) hides finished ones
-//      ?count=pending             — returns { pending: n } only, for the
-//                                   nav badge; skips fetching any rows.
-// POST /api/bom-requests — raise a request (header + at least one line).
-//      Production or Admin.
+// GET  /api/bom-requests — material requests, newest first, each with the
+//      Job Separation row it was raised against. bom_use.
+//      ?status=pending|ordered|declined|cancelled|all  — default 'pending'
+//      ?count=pending  — returns { pending: n } only, for the nav badge
+// POST /api/bom-requests — "Request" pressed on a costed row. bom_use.
+//      { job_separation_id, message? }
 //
-// Read is gated as tightly as write here, same as /api/register: what the
-// floor is asking to buy, and what the owner approved, is not shop-wide
-// information. RLS on bom_requests/bom_request_items enforces the same rule
-// a second time, so a missed check here still returns nothing.
+// The request is a snapshot. Everything the owner reads — material, width,
+// metres, the rate and the expense it produced, the order value it was
+// weighed against — is copied here at the moment of asking, so a later
+// edit to the costing or the master rate can't change what was approved.
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -19,29 +18,14 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptUseBOM } from '@/lib/constants/departments';
+import { materialExpense, BOM_JOB_SUMMARY_SELECT } from '@/lib/bom';
 
-// Statuses that still want someone's attention — the default list view.
-const OPEN_STATUSES = ['pending', 'in_review'] as const;
-
-const ALL_STATUSES = [
-  'pending', 'in_review', 'ordered', 'partially_fulfilled', 'rejected', 'cancelled',
-] as const;
+const STATUSES = ['pending', 'ordered', 'declined', 'cancelled'] as const;
 
 function text(value: unknown): string | null {
   return typeof value === 'string' ? value.trim() || null : null;
 }
 
-function decimal(value: unknown): number | null {
-  if (value === null || value === undefined || value === '') return null;
-  const n = Number(value);
-  return Number.isFinite(n) && n >= 0 ? n : null;
-}
-
-/**
- * Resolves the caller and rejects anyone who isn't Production or Admin.
- * Both verbs on this route gate identically — raising a request and reading
- * the list are the same privilege.
- */
 async function requireBomAccess() {
   const supabase = await createServerSupabaseClient();
   const user = await getClaimsUser(supabase);
@@ -52,10 +36,7 @@ async function requireBomAccess() {
   const perms = await getDeptPermissions(user.user_metadata?.department);
   if (!canDeptUseBOM(perms)) {
     return {
-      error: NextResponse.json(
-        { error: 'Bill of Material is Production and Admin only' },
-        { status: 403 }
-      ),
+      error: NextResponse.json({ error: 'Bill of Material access required' }, { status: 403 }),
     } as const;
   }
 
@@ -67,10 +48,10 @@ export async function GET(request: NextRequest) {
   if ('error' in gate) return gate.error;
 
   // Badge path: the header polls this on every admin page, so it must not
-  // drag the whole list (and its items) across the wire just to show "3".
+  // drag the whole list across the wire just to show "3".
   if (request.nextUrl.searchParams.get('count') === 'pending') {
     const { count, error } = await gate.supabase
-      .from('bom_requests')
+      .from('bom_material_requests')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'pending');
 
@@ -78,53 +59,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ pending: count ?? 0 });
   }
 
-  const statusParam = request.nextUrl.searchParams.get('status') ?? 'open';
-  const search = (request.nextUrl.searchParams.get('search') ?? '').trim();
+  const statusParam = request.nextUrl.searchParams.get('status') ?? 'pending';
 
   let query = gate.supabase
-    .from('bom_requests')
-    .select('*, items:bom_request_items(*)')
-    .order('created_at', { ascending: false })
-    // Lines come back in the order they were typed, not insert-race order.
-    .order('position', { referencedTable: 'bom_request_items', ascending: true });
+    .from('bom_material_requests')
+    .select(`*, ${BOM_JOB_SUMMARY_SELECT}`)
+    .order('created_at', { ascending: false });
 
-  if (statusParam === 'open') {
-    query = query.in('status', OPEN_STATUSES as unknown as string[]);
-  } else if ((ALL_STATUSES as readonly string[]).includes(statusParam)) {
+  if ((STATUSES as readonly string[]).includes(statusParam)) {
     query = query.eq('status', statusParam);
   }
-  // Anything else (including 'all') falls through unfiltered.
-
-  if (search) {
-    // "Which requisition had the metallic poly on it?" is the question this
-    // answers, so the material name has to be searchable — but it lives on
-    // the child table, and PostgREST can't OR across a join. Resolve the
-    // matching request ids first, then widen the header search with them.
-    // Characters with meaning inside an or() clause are stripped rather
-    // than escaped: this is a search box, not an expression language.
-    const escaped = search.replace(/[%,()]/g, ' ');
-
-    const { data: itemMatches, error: itemError } = await gate.supabase
-      .from('bom_request_items')
-      .select('request_id')
-      .ilike('material', `%${escaped}%`);
-
-    if (itemError) return NextResponse.json({ error: itemError.message }, { status: 500 });
-
-    // Array.from, not spread: the project's TS target predates
-    // downlevelIteration, so spreading a Set is a compile error here.
-    const ids = Array.from(new Set((itemMatches ?? []).map((row) => row.request_id)));
-
-    const clauses = [
-      `ref.ilike.%${escaped}%`,
-      `job_po.ilike.%${escaped}%`,
-      `party.ilike.%${escaped}%`,
-      `note.ilike.%${escaped}%`,
-    ];
-    if (ids.length > 0) clauses.push(`id.in.(${ids.join(',')})`);
-
-    query = query.or(clauses.join(','));
-  }
+  // 'all' (or anything else) falls through unfiltered.
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -137,140 +82,91 @@ export async function POST(request: NextRequest) {
   if ('error' in gate) return gate.error;
 
   const body = await request.json();
-
-  // A requisition with no materials on it is not a requisition. Validate the
-  // lines before inserting the header so we never leave an empty orphan.
-  const rawItems: unknown[] = Array.isArray(body.items) ? body.items : [];
-  const items = rawItems
-    .map((raw, index) => {
-      const item = (raw ?? {}) as Record<string, unknown>;
-      return {
-        position:          index + 1,
-        material:          text(item.material),
-        specification:     text(item.specification),
-        size:              text(item.size),
-        quantity:          decimal(item.quantity),
-        required_quantity: decimal(item.required_quantity),
-        unit:              text(item.unit),
-        note:              text(item.note),
-      };
-    })
-    // A line with no material name is a blank row on the form, not a request.
-    .filter((item) => item.material !== null);
-
-  if (items.length === 0) {
-    return NextResponse.json(
-      { error: 'Add at least one material to the request' },
-      { status: 400 }
-    );
+  const jobSeparationId = text(body.job_separation_id);
+  if (!jobSeparationId) {
+    return NextResponse.json({ error: 'job_separation_id is required' }, { status: 400 });
   }
 
   const admin = createAdminClient();
 
-  const { data: created, error: headerError } = await admin
-    .from('bom_requests')
+  // The request is built from the SAVED costing, never from what the form
+  // happens to hold — the row on screen and the request in the owner's
+  // inbox must be the same numbers.
+  const { data: costing, error: costingError } = await admin
+    .from('bom_costings')
+    .select('material_id, material_width_mm, running_meter, material:bom_materials(name, rate_per_sqm), job:job_separations(order_value, cancelled_at)')
+    .eq('job_separation_id', jobSeparationId)
+    .maybeSingle();
+
+  if (costingError) return NextResponse.json({ error: costingError.message }, { status: 500 });
+  if (!costing) {
+    return NextResponse.json({ error: 'Save the material, width and metres first' }, { status: 409 });
+  }
+
+  const material = Array.isArray(costing.material) ? costing.material[0] : costing.material;
+  const job      = Array.isArray(costing.job)      ? costing.job[0]      : costing.job;
+
+  if (job?.cancelled_at) {
+    return NextResponse.json({ error: 'That Job Separation row is cancelled' }, { status: 409 });
+  }
+
+  const width  = costing.material_width_mm === null ? null : Number(costing.material_width_mm);
+  const metres = costing.running_meter     === null ? null : Number(costing.running_meter);
+  const rate   = material ? Number(material.rate_per_sqm) : null;
+
+  if (!costing.material_id || !material) {
+    return NextResponse.json({ error: 'Pick a material before requesting it' }, { status: 409 });
+  }
+  if (!width || !metres) {
+    return NextResponse.json({ error: 'Enter the width and running metres before requesting' }, { status: 409 });
+  }
+  if (!rate) {
+    return NextResponse.json(
+      { error: `${material.name} has no rate on the master list yet — ask Admin to set it` },
+      { status: 409 }
+    );
+  }
+
+  const expense = materialExpense(metres, width, rate);
+  if (expense === null) {
+    return NextResponse.json({ error: 'This row cannot be priced yet' }, { status: 409 });
+  }
+
+  // One open request per job. Asking twice for the same material before
+  // the owner has answered once is a second nag, not a second need.
+  const { count: open, error: openError } = await admin
+    .from('bom_material_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('job_separation_id', jobSeparationId)
+    .eq('status', 'pending');
+
+  if (openError) return NextResponse.json({ error: openError.message }, { status: 500 });
+  if ((open ?? 0) > 0) {
+    return NextResponse.json(
+      { error: 'A request for this job is already waiting for Admin' },
+      { status: 409 }
+    );
+  }
+
+  const { data, error } = await admin
+    .from('bom_material_requests')
     .insert({
-      job_po:    text(body.job_po),
-      party:     text(body.party),
-      needed_by: text(body.needed_by),
-      priority:  body.priority === 'urgent' ? 'urgent' : 'normal',
-      note:      text(body.note),
-      raised_by_department: gate.perms.key,
-      raised_by: gate.user.email ?? gate.perms.key,
+      job_separation_id: jobSeparationId,
+      material_id:       costing.material_id,
+      material_name:     material.name,
+      material_width_mm: width,
+      running_meter:     metres,
+      rate_per_sqm:      rate,
+      expense,
+      order_value:       job?.order_value === null || job?.order_value === undefined ? null : Number(job.order_value),
+      message:           text(body.message),
+      requested_by_department: gate.perms.key,
+      requested_by:      gate.user.email ?? gate.perms.key,
     })
-    .select()
+    .select(`*, ${BOM_JOB_SUMMARY_SELECT}`)
     .single();
 
-  if (headerError) {
-    return NextResponse.json({ error: headerError.message }, { status: 500 });
-  }
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const { data: savedItems, error: itemsError } = await admin
-    .from('bom_request_items')
-    .insert(items.map((item) => ({ ...item, request_id: created.id })))
-    .select();
-
-  // PostgREST has no transaction across two calls, so if the lines fail we
-  // roll the header back by hand rather than leaving a materialless request
-  // sitting in the owner's queue.
-  if (itemsError) {
-    const { error: rollbackError } = await admin
-      .from('bom_requests')
-      .delete()
-      .eq('id', created.id);
-    if (rollbackError) {
-      console.error('bom_requests rollback failed:', rollbackError, 'orphan id:', created.id);
-    }
-    return NextResponse.json({ error: itemsError.message }, { status: 500 });
-  }
-
-  // Grow the catalogue from what was actually asked for. Deliberately after
-  // the request is safely saved and never allowed to fail the call: a
-  // requisition must not be rejected because a lookup table misbehaved.
-  await learnMaterials(items, gate.user.email ?? gate.perms.key);
-
-  return NextResponse.json(
-    { request: { ...created, items: savedItems ?? [] } },
-    { status: 201 }
-  );
-}
-
-/**
- * Adds any material name the catalogue has not seen before, so the
- * typeahead fills itself out of real usage instead of needing curation.
- *
- * Existing entries are left alone — the first spelling of a material stays
- * its spelling, which is the entire point of having the table. The unique
- * constraint on name_key is the real guard; the pre-check just avoids
- * writing rows we know are already there.
- */
-async function learnMaterials(
-  items: { material: string | null; specification: string | null; size: string | null; unit: string | null }[],
-  actor: string,
-): Promise<void> {
-  try {
-    const admin = createAdminClient();
-
-    // Deduplicate by name_key within this one request, so a form listing the
-    // same material twice doesn't try to insert it twice.
-    const names = Array.from(new Map(
-      items
-        .filter((item): item is typeof item & { material: string } => item.material !== null)
-        .map((item) => [item.material.trim().toLowerCase(), item] as const)
-    ).values());
-    if (names.length === 0) return;
-
-    const { data: existing, error: lookupError } = await admin
-      .from('bom_materials')
-      .select('name_key')
-      .in('name_key', names.map((item) => item.material.trim().toLowerCase()));
-
-    if (lookupError) {
-      console.error('bom_materials lookup failed:', lookupError);
-      return;
-    }
-
-    const known = new Set((existing ?? []).map((row) => row.name_key));
-    const fresh = names.filter((item) => !known.has(item.material.trim().toLowerCase()));
-    if (fresh.length === 0) return;
-
-    const { error: insertError } = await admin.from('bom_materials').insert(
-      fresh.map((item) => ({
-        name:          item.material.trim(),
-        specification: item.specification,
-        default_size:  item.size,
-        default_unit:  item.unit,
-        created_by:    actor,
-      }))
-    );
-
-    // 23505 = unique violation: another request added the same material
-    // between the lookup and the insert. That is the constraint doing its
-    // job, not a failure.
-    if (insertError && insertError.code !== '23505') {
-      console.error('bom_materials insert failed:', insertError);
-    }
-  } catch (error) {
-    console.error('learnMaterials threw:', error);
-  }
+  return NextResponse.json({ request: data }, { status: 201 });
 }

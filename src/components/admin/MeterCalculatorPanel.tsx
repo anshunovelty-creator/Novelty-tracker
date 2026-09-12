@@ -9,11 +9,10 @@
 // Three inputs, one answer. The operator enters the cylinder (teeth) rather
 // than a repeat length in mm — the shop's cylinders are specced by tooth
 // count, and 3.175mm is the fixed gear pitch that converts teeth to the
-// repeat's circumference (cylinder × 3.175 = repeat). The metres formula
-// itself matches the BOM calculator's previewMetreCalc
-// (src/components/admin/BomManager.tsx); nothing is persisted here — this is
-// a pure client-side scratch tool, mounted only where canUseMeterCalculator
-// is true (Job Separation).
+// repeat's circumference (cylinder × 3.175 = repeat). The metres it yields
+// are what the floor types into Bill of Material's "Running (m)" column;
+// nothing is persisted here — this is a pure client-side scratch tool,
+// mounted only where canUseMeterCalculator is true (Job Separation).
 //
 // The result recomputes on every keystroke instead of behind a Calculate
 // button: with only three fields there's nothing to "submit", and a live

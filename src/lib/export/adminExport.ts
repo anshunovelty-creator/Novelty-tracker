@@ -3,7 +3,8 @@
 // Builds the admin data export: every substantive dataset in the app,
 // each as its own CSV ready to be zipped — jobs/releases/runs plus dies,
 // flatbed dies, plates, label stock, job separations, Register (the
-// customer CRM), Bill of Materials, and the Prepress Todo checklist
+// customer CRM), Bill of Material (costings, requests, material master),
+// and the Prepress Todo checklist
 // (current state + history).
 //
 // Read with the service-role client — the export is a full dump by
@@ -13,10 +14,11 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { toCsv, csvDate, csvTimestamp, type CsvColumn } from './csv';
+import { materialExpense, orderDifference } from '@/lib/bom';
 import type {
   Job, DispatchSchedule, PrintRun, Die, FlatbedDie, Plate, LabelStock,
   JobSeparation, RegisterAccount, RegisterDeal, RegisterActivity,
-  BomRequest, BomRequestItem, BomMaterial, BomRequestStatus, BomPriority,
+  BomMaterial, BomMaterialRequest,
   PrepressTodo, PrepressTodoLog,
 } from '@/lib/types';
 
@@ -64,19 +66,45 @@ type RunRow      = PrintRun & {
 type RegisterDealRow     = RegisterDeal & { account_name: string };
 type RegisterActivityRow = RegisterActivity & { account_name: string; deal_title: string };
 
-// One row per BOM line item, carrying its parent request's header fields
-// alongside — matches the flattened shape BomManager's own export already
-// uses, so the export reads the same way an operator already expects.
-type BomLineRow = BomRequestItem & {
-  ref:                  string;
-  request_status:       BomRequestStatus;
-  priority:             BomPriority;
-  job_po:               string | null;
-  party:                string | null;
-  needed_by:            string | null;
-  raised_by_department: string;
-  raised_by:            string | null;
-  request_note:         string | null;
+// One row per costed Job Separation row, carrying the job's identity and
+// order value alongside the floor's inputs and the priced result — the
+// same shape BomCostingTable's own export uses.
+type BomCostingExportRow = {
+  sr_no:             string | null;
+  party:             string;
+  po_no:             string | null;
+  po_date:           string | null;
+  pm_code:           string | null;
+  product:           string | null;
+  quantity:          number | null;
+  order_value:       number | null;
+  material:          string | null;
+  rate_per_sqm:      number | null;
+  material_width_mm: number | null;
+  running_meter:     number | null;
+  expense:           number | null;
+  difference:        number | null;
+  updated_by:        string | null;
+  updated_at:        string;
+};
+
+// One row per material request, with the job it was raised against.
+type BomRequestExportRow = BomMaterialRequest & {
+  sr_no:   string | null;
+  party:   string;
+  po_no:   string | null;
+  pm_code: string | null;
+  product: string | null;
+};
+
+// Raw bom_costings row — expense is derived on the way out, never stored.
+type BomCostingRaw = {
+  job_separation_id: string;
+  material_id:       string | null;
+  material_width_mm: number | null;
+  running_meter:     number | null;
+  updated_by:        string | null;
+  updated_at:        string;
 };
 
 // ── Column definitions ────────────────────────────────────────
@@ -253,36 +281,55 @@ const REGISTER_ACTIVITY_COLUMNS: CsvColumn<RegisterActivityRow>[] = [
   { header: 'Added',   value: (a) => csvTimestamp(a.created_at) },
 ];
 
-const BOM_COLUMNS: CsvColumn<BomLineRow>[] = [
-  { header: 'Ref',                  value: (i) => i.ref },
-  { header: 'Status',               value: (i) => i.request_status },
-  { header: 'Priority',             value: (i) => i.priority },
-  { header: 'For Job/PO',           value: (i) => i.job_po },
-  { header: 'Party',                value: (i) => i.party },
-  { header: 'Needed By',            value: (i) => csvDate(i.needed_by) },
-  { header: 'Raised',               value: (i) => i.raised_by_department },
-  { header: 'Raised By',            value: (i) => i.raised_by },
-  { header: 'Request Note',         value: (i) => i.request_note },
-  { header: 'Material',             value: (i) => i.material },
-  { header: 'Specification',        value: (i) => i.specification },
-  { header: 'Size',                 value: (i) => i.size },
-  { header: 'Qty Required',         value: (i) => i.required_quantity },
-  { header: 'Qty Requested',        value: (i) => i.quantity },
-  { header: 'Unit',                 value: (i) => i.unit },
-  { header: 'Line Note',            value: (i) => i.note },
-  { header: 'Decision',             value: (i) => i.decision },
-  { header: 'Qty Approved',         value: (i) => i.approved_quantity },
-  { header: 'Alternative',          value: (i) => i.alternative_material },
-  { header: 'Decision Note',        value: (i) => i.decision_note },
-  { header: 'Decided At',           value: (i) => csvTimestamp(i.decided_at) },
+const BOM_COSTING_COLUMNS: CsvColumn<BomCostingExportRow>[] = [
+  { header: 'Sr. No.',        value: (r) => r.sr_no },
+  { header: 'Party',          value: (r) => r.party },
+  { header: 'PO No',          value: (r) => r.po_no },
+  { header: 'PO Date',        value: (r) => csvDate(r.po_date) },
+  { header: 'PM Code',        value: (r) => r.pm_code },
+  { header: 'Product',        value: (r) => r.product },
+  { header: 'Quantity',       value: (r) => r.quantity },
+  { header: 'Order Value',    value: (r) => r.order_value },
+  { header: 'Material',       value: (r) => r.material },
+  { header: 'Rate per sq m',  value: (r) => r.rate_per_sqm },
+  { header: 'Width (mm)',     value: (r) => r.material_width_mm },
+  { header: 'Running (m)',    value: (r) => r.running_meter },
+  { header: 'Expense',        value: (r) => r.expense },
+  { header: 'Difference',     value: (r) => r.difference },
+  { header: 'Updated By',     value: (r) => r.updated_by },
+  { header: 'Updated At',     value: (r) => csvTimestamp(r.updated_at) },
+];
+
+const BOM_REQUEST_COLUMNS: CsvColumn<BomRequestExportRow>[] = [
+  { header: 'Ref',            value: (r) => r.ref },
+  { header: 'Status',         value: (r) => r.status },
+  { header: 'Sr. No.',        value: (r) => r.sr_no },
+  { header: 'Party',          value: (r) => r.party },
+  { header: 'PO No',          value: (r) => r.po_no },
+  { header: 'PM Code',        value: (r) => r.pm_code },
+  { header: 'Product',        value: (r) => r.product },
+  { header: 'Material',       value: (r) => r.material_name },
+  { header: 'Width (mm)',     value: (r) => r.material_width_mm },
+  { header: 'Running (m)',    value: (r) => r.running_meter },
+  { header: 'Rate per sq m',  value: (r) => r.rate_per_sqm },
+  { header: 'Expense',        value: (r) => r.expense },
+  { header: 'Order Value',    value: (r) => r.order_value },
+  { header: 'Message',        value: (r) => r.message },
+  { header: 'Requested',      value: (r) => r.requested_by_department },
+  { header: 'Requested By',   value: (r) => r.requested_by },
+  { header: 'Requested At',   value: (r) => csvTimestamp(r.created_at) },
+  { header: 'Decision Note',  value: (r) => r.decision_note },
+  { header: 'Decided At',     value: (r) => csvTimestamp(r.decided_at) },
+  { header: 'Decided By',     value: (r) => r.decided_by },
 ];
 
 const BOM_MATERIAL_COLUMNS: CsvColumn<BomMaterial>[] = [
   { header: 'Name',          value: (m) => m.name },
   { header: 'Specification', value: (m) => m.specification },
-  { header: 'Default Size',  value: (m) => m.default_size },
-  { header: 'Default Unit',  value: (m) => m.default_unit },
+  { header: 'Rate per sq m', value: (m) => m.rate_per_sqm },
+  { header: 'Active',        value: (m) => (m.is_active ? 'Yes' : 'No') },
   { header: 'Added',         value: (m) => csvTimestamp(m.created_at) },
+  { header: 'Updated',       value: (m) => csvTimestamp(m.updated_at) },
 ];
 
 const PREPRESS_TODO_COLUMNS: CsvColumn<PrepressTodo>[] = [
@@ -316,7 +363,7 @@ export async function buildExportFiles(client: SupabaseClient<any>): Promise<Exp
   const [
     jobs, schedules, runs, dies, flatbedDies, plates, stock, jobSeparations,
     registerAccounts, registerDeals, registerActivities,
-    bomRequests, bomRequestItems, bomMaterials,
+    bomCostings, bomRequests, bomMaterials,
     prepressTodos, prepressTodoLogs,
   ] = await Promise.all([
     fetchAll<Job>(client,               'jobs',                     'created_at'),
@@ -330,9 +377,9 @@ export async function buildExportFiles(client: SupabaseClient<any>): Promise<Exp
     fetchAll<RegisterAccount>(client,   'register_accounts',        'created_at'),
     fetchAll<RegisterDeal>(client,      'register_deals',           'created_at'),
     fetchAll<RegisterActivity>(client,  'register_activities',      'created_at'),
-    fetchAll<BomRequest>(client,        'bom_requests',             'created_at'),
-    fetchAll<BomRequestItem>(client,    'bom_request_items',        'position'),
-    fetchAll<BomMaterial>(client,       'bom_materials',            'name'),
+    fetchAll<BomCostingRaw>(client,       'bom_costings',             'updated_at'),
+    fetchAll<BomMaterialRequest>(client,  'bom_material_requests',    'created_at'),
+    fetchAll<BomMaterial>(client,         'bom_materials',            'name'),
     fetchAll<PrepressTodo>(client,      'prepress_todos',           'created_at'),
     fetchAll<PrepressTodoLog>(client,   'prepress_todo_logs',       'created_at'),
   ]);
@@ -369,25 +416,52 @@ export async function buildExportFiles(client: SupabaseClient<any>): Promise<Exp
     deal_title:   a.deal_id ? dealsById.get(a.deal_id)?.title ?? '' : '',
   }));
 
-  const bomRequestsById = new Map(bomRequests.map((r) => [r.id, r]));
-  const bomLineRows: BomLineRow[] = bomRequestItems
-    .map((item) => {
-      const req = bomRequestsById.get(item.request_id);
-      if (!req) return null;
+  const jobSeparationsById = new Map(jobSeparations.map((j) => [j.id, j]));
+  const bomMaterialsById   = new Map(bomMaterials.map((m) => [m.id, m]));
+
+  // Priced here exactly as the API prices them — from the material's
+  // current rate — so the export never disagrees with the screen.
+  const bomCostingRows: BomCostingExportRow[] = bomCostings
+    .map((c) => {
+      const job = jobSeparationsById.get(c.job_separation_id);
+      if (!job) return null;
+      const material = c.material_id ? bomMaterialsById.get(c.material_id) : undefined;
+      const rate     = material ? Number(material.rate_per_sqm) : null;
+      const width    = c.material_width_mm === null ? null : Number(c.material_width_mm);
+      const metres   = c.running_meter === null ? null : Number(c.running_meter);
+      const expense  = materialExpense(metres, width, rate);
       return {
-        ...item,
-        ref:                  req.ref,
-        request_status:       req.status,
-        priority:             req.priority,
-        job_po:               req.job_po,
-        party:                req.party,
-        needed_by:            req.needed_by,
-        raised_by_department: req.raised_by_department,
-        raised_by:            req.raised_by,
-        request_note:         req.note,
+        sr_no:             job.sr_no,
+        party:             job.party,
+        po_no:             job.po_no,
+        po_date:           job.po_date,
+        pm_code:           job.pm_code,
+        product:           job.material_name,
+        quantity:          job.quantity,
+        order_value:       job.order_value,
+        material:          material?.name ?? null,
+        rate_per_sqm:      rate,
+        material_width_mm: width,
+        running_meter:     metres,
+        expense,
+        difference:        orderDifference(job.order_value, expense),
+        updated_by:        c.updated_by,
+        updated_at:        c.updated_at,
       };
     })
-    .filter((row): row is BomLineRow => row !== null);
+    .filter((row): row is BomCostingExportRow => row !== null);
+
+  const bomRequestRows: BomRequestExportRow[] = bomRequests.map((r) => {
+    const job = jobSeparationsById.get(r.job_separation_id);
+    return {
+      ...r,
+      sr_no:   job?.sr_no ?? null,
+      party:   job?.party ?? '',
+      po_no:   job?.po_no ?? null,
+      pm_code: job?.pm_code ?? null,
+      product: job?.material_name ?? null,
+    };
+  });
 
   return {
     files: [
@@ -402,8 +476,9 @@ export async function buildExportFiles(client: SupabaseClient<any>): Promise<Exp
       { name: 'register-accounts.csv',       content: toCsv(registerAccounts,     REGISTER_ACCOUNT_COLUMNS) },
       { name: 'register-deals.csv',          content: toCsv(registerDealRows,     REGISTER_DEAL_COLUMNS) },
       { name: 'register-activities.csv',     content: toCsv(registerActivityRows, REGISTER_ACTIVITY_COLUMNS) },
-      { name: 'bill-of-materials.csv',       content: toCsv(bomLineRows,          BOM_COLUMNS) },
-      { name: 'bom-materials-catalog.csv',   content: toCsv(bomMaterials,         BOM_MATERIAL_COLUMNS) },
+      { name: 'bom-costings.csv',            content: toCsv(bomCostingRows,       BOM_COSTING_COLUMNS) },
+      { name: 'bom-requests.csv',            content: toCsv(bomRequestRows,       BOM_REQUEST_COLUMNS) },
+      { name: 'bom-materials.csv',           content: toCsv(bomMaterials,         BOM_MATERIAL_COLUMNS) },
       { name: 'prepress-todo.csv',           content: toCsv(prepressTodos,        PREPRESS_TODO_COLUMNS) },
       { name: 'prepress-todo-history.csv',   content: toCsv(prepressTodoLogs,     PREPRESS_TODO_LOG_COLUMNS) },
     ],
@@ -412,8 +487,9 @@ export async function buildExportFiles(client: SupabaseClient<any>): Promise<Exp
       dies: dies.length, flatbedDies: flatbedDies.length, plates: plates.length,
       stock: stock.length, jobSeparations: jobSeparations.length,
       registerAccounts: registerAccounts.length, registerDeals: registerDeals.length,
-      registerActivities: registerActivities.length, bomLines: bomLineRows.length,
-      bomMaterials: bomMaterials.length, prepressTodos: prepressTodos.length,
+      registerActivities: registerActivities.length, bomCostings: bomCostingRows.length,
+      bomRequests: bomRequestRows.length, bomMaterials: bomMaterials.length,
+      prepressTodos: prepressTodos.length,
       prepressTodoLogs: prepressTodoLogs.length,
     },
   };

@@ -1,6 +1,7 @@
 // src/app/admin/bom/page.tsx
-// Server component — Production + Admin gate for Bill of Material, the
-// material requisitions Production used to raise by mailing the owner.
+// Server component — Production + Admin gate for Bill of Material: Job
+// Separation's orders priced against their raw material, and the material
+// requests the floor sends the owner from that sheet.
 //
 // Mirrors /admin/register and /admin/team: a department that may not open
 // this is bounced to the dashboard rather than shown an access-denied page,
@@ -12,7 +13,7 @@ import { redirect } from 'next/navigation';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions, canDeptUseBOM, canDeptDecideBOM } from '@/lib/constants/departments';
-import BomManager from '@/components/admin/BomManager';
+import BomTabs from '@/components/admin/BomTabs';
 
 export default async function BomPage() {
   const supabase = await createServerSupabaseClient();
@@ -30,11 +31,11 @@ export default async function BomPage() {
         <h1 className="text-xl font-semibold text-[var(--glass-ink)]">Bill of Material</h1>
         <p className="text-sm text-[var(--glass-muted)] mt-1">
           {canDecide
-            ? 'Material requests from Production — order, part-order, substitute, or decline each line.'
-            : 'Request paper, rolls and other raw material. Admin answers each line here.'}
+            ? 'Order value against material cost for every job, and the material requests Production sends you.'
+            : 'Pick the material, enter its width and running metres, and send Admin a request when stock is needed.'}
         </p>
       </div>
-      <BomManager canDecide={canDecide} />
+      <BomTabs canDecide={canDecide} />
     </div>
   );
 }

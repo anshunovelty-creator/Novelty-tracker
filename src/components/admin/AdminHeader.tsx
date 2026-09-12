@@ -161,8 +161,8 @@ export default function AdminHeader({ dept, displayName }: Props) {
     setMobileOpen(false);
   }, [pathname]);
 
-  // Bill of Material requests still awaiting the owner. Only Production and
-  // Admin can see the section at all, so nobody else even asks.
+  // Material requests still awaiting the owner. Only Production and Admin
+  // can see the section at all, so nobody else even asks.
   const showBom = canDeptUseBOM(dept);
 
   // React Query owns the poll now: refetchInterval already skips firing
@@ -245,14 +245,14 @@ export default function AdminHeader({ dept, displayName }: Props) {
     { href: '/admin/plates',         label: 'Plates',                          icon: Disc },
     { href: '/admin/shade-cards',    label: 'Shade Cards',  short: 'Shades',   icon: Palette },
     { href: '/admin/job-separation', label: 'Job Separation', short: 'Job Sep', icon: SplitSquareHorizontal },
-    // Bill of Material — Production raises material requests here and Admin
-    // answers them. Production + Admin only, mirrored by canDeptUseBOM in
-    // every /api/bom-requests route and by RLS on the bom_* tables. The badge
-    // counts requests nobody has acted on yet.
+    // Bill of Material — order value against material cost per job, and the
+    // material requests the floor raises from it. Production + Admin only,
+    // mirrored by canDeptUseBOM in every /api/bom-* route and by RLS on the
+    // bom_* tables. The badge counts requests nobody has answered yet.
     ...(showBom ? [{
       href: '/admin/bom', label: 'BOM', icon: ClipboardList,
       badge: bomPending,
-      badgeLabel: (n: number) => `${n} request${n === 1 ? '' : 's'} awaiting a decision`,
+      badgeLabel: (n: number) => `${n} material request${n === 1 ? '' : 's'} awaiting Admin`,
     }] : []),
     // Consolidated dispatch email queue — Dispatch/Admin only, mirrored by
     // canDeptManageDispatchNotifications in every /api/dispatch-notifications

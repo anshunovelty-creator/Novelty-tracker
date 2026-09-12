@@ -136,26 +136,40 @@ left join register_accounts a on a.id = act.account_id
 left join register_deals dl on dl.id = act.deal_id
 order by act.created_at;
 
--- === 12. BILL OF MATERIALS (one row per line item) ===
+-- === 12. BOM COSTINGS (order value vs material cost, per job) ===
 select
-  r.ref as "Ref", r.status as "Status", r.priority as "Priority",
-  r.job_po as "For Job/PO", r.party as "Party", r.needed_by as "Needed By",
-  r.raised_by_department as "Raised", r.raised_by as "Raised By",
-  r.note as "Request Note", i.material as "Material",
-  i.specification as "Specification", i.size as "Size",
-  i.quantity as "Qty Requested", i.unit as "Unit", i.note as "Line Note",
-  i.decision as "Decision", i.approved_quantity as "Qty Approved",
-  i.alternative_material as "Alternative", i.decision_note as "Decision Note",
-  i.decided_at as "Decided At"
-from bom_request_items i
-left join bom_requests r on r.id = i.request_id
-order by r.created_at, i.position;
+  j.sr_no as "Sr. No.", j.party as "Party", j.po_no as "PO No", j.po_date as "PO Date",
+  j.pm_code as "PM Code", j.material_name as "Product", j.quantity as "Quantity",
+  j.order_value as "Order Value",
+  m.name as "Material", m.rate_per_sqm as "Rate per sq m",
+  c.material_width_mm as "Width (mm)", c.running_meter as "Running (m)",
+  round(c.running_meter * (c.material_width_mm / 1000) * m.rate_per_sqm, 2) as "Expense",
+  round(j.order_value - c.running_meter * (c.material_width_mm / 1000) * m.rate_per_sqm, 2) as "Difference",
+  c.updated_by as "Updated By", c.updated_at as "Updated At"
+from bom_costings c
+join job_separations j on j.id = c.job_separation_id
+left join bom_materials m on m.id = c.material_id
+order by j.created_at;
 
--- === 13. BOM MATERIALS CATALOG ===
+-- === 12b. BOM MATERIAL REQUESTS ===
 select
-  name as "Name", specification as "Specification",
-  default_size as "Default Size", default_unit as "Default Unit",
-  created_at as "Added"
+  r.ref as "Ref", r.status as "Status",
+  j.sr_no as "Sr. No.", j.party as "Party", j.po_no as "PO No", j.pm_code as "PM Code",
+  j.material_name as "Product",
+  r.material_name as "Material", r.material_width_mm as "Width (mm)",
+  r.running_meter as "Running (m)", r.rate_per_sqm as "Rate per sq m",
+  r.expense as "Expense", r.order_value as "Order Value", r.message as "Message",
+  r.requested_by_department as "Requested", r.requested_by as "Requested By",
+  r.created_at as "Requested At",
+  r.decision_note as "Decision Note", r.decided_at as "Decided At", r.decided_by as "Decided By"
+from bom_material_requests r
+left join job_separations j on j.id = r.job_separation_id
+order by r.created_at;
+
+-- === 13. BOM MATERIALS (master list) ===
+select
+  name as "Name", specification as "Specification", rate_per_sqm as "Rate per sq m",
+  is_active as "Active", created_at as "Added", updated_at as "Updated"
 from bom_materials
 order by name;
 
