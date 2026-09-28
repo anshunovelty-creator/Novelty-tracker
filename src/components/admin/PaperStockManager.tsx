@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/Button';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { usePaperStock } from '@/hooks/usePaperStock';
 import { ReceiveRollsModal, AdjustRollModal, useRefreshStock } from './PaperStockModals';
+import { SearchClearButton } from '@/components/ui/SearchClearButton';
 
 const EMPTY_ROLLS: PaperRoll[] = [];
 const EMPTY_MATERIALS: BomMaterial[] = [];
@@ -88,8 +89,9 @@ export default function PaperStockManager({ canManage }: { canManage: boolean })
             placeholder="Search material, width, location or roll no."
             aria-label="Search paper stock"
             data-global-search
-            className={cn(inputClass, 'w-full pl-9')}
+            className={cn(inputClass, 'w-full pl-9 pr-11')}
           />
+          <SearchClearButton value={search} onClear={() => setSearch('')} />
         </div>
         {canManage && (
           <Button intent="primary" icon={Plus} onClick={() => setAdding(true)}>Add rolls</Button>

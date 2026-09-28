@@ -37,6 +37,7 @@ import type { ShadeCardModalMode } from './AddShadeCardModal';
 import CsvExportButton from './CsvExportButton';
 import SortableHeaderLabel from './SortableHeaderLabel';
 import { SkeletonRows } from '@/components/ui/Skeleton';
+import { SearchClearButton } from '@/components/ui/SearchClearButton';
 
 // Loaded on first open, not with the page — it only renders when open.
 const AddShadeCardModal = dynamic(() => import('./AddShadeCardModal'), { ssr: false });
@@ -403,12 +404,13 @@ export default function ShadeCardsManager({ canManage, canDelete, className }: P
             placeholder={SHADE_CARD_SEARCH_FIELDS.find((f) => f.value === field)?.placeholder}
             data-global-search
             className={cn(
-              'w-full pl-9 pr-3 py-2 rounded-lg text-sm min-h-11',
+              'w-full pl-9 pr-11 py-2 rounded-lg text-sm min-h-11',
               'bg-[var(--field-bg)] border border-[var(--field-border)]',
               'text-[var(--glass-ink)] placeholder:text-[var(--glass-muted)]',
               'focus:outline-none focus:border-emerald-300/70',
             )}
           />
+          <SearchClearButton value={search} onClear={() => changeFilter(() => setSearch(''))} />
         </div>
 
         <label htmlFor="sc-filter-status" className="sr-only">Filter by status</label>

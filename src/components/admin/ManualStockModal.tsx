@@ -15,6 +15,7 @@ import { cn, formatJobCardNumber } from '@/lib/utils';
 import { ModalShell } from './modals';
 import { Button } from '@/components/ui/Button';
 import type { Job } from '@/lib/types';
+import { SearchClearButton } from '@/components/ui/SearchClearButton';
 
 const inputCls = cn(
   'w-full px-3 py-2 rounded-lg text-sm bg-[var(--field-bg)] border border-[var(--field-border)]',
@@ -183,8 +184,9 @@ export default function ManualStockModal({ onClose, onAdded }: Props) {
                   placeholder="Search card no, PO, party or job name"
                   aria-label="Search for a job"
                   autoComplete="off"
-                  className={cn(inputCls, 'pl-9')}
+                  className={cn(inputCls, 'pl-9 pr-11')}
                 />
+                <SearchClearButton value={jobQuery} onClear={() => setJobQuery('')} />
                 {jobResults.length > 0 && (
                   <div className="absolute z-20 top-full left-0 right-0 mt-1 rounded-lg border border-black/[0.08] bg-white shadow-lg overflow-hidden">
                     {jobResults.map((job) => (

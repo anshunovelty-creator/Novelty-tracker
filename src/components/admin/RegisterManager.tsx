@@ -23,6 +23,7 @@ import type { CsvColumn } from '@/lib/export/csv';
 import type {
   RegisterAccount, RegisterDeal, RegisterActivity, RegisterStage, RegisterDealStatus,
 } from '@/lib/types';
+import { SearchClearButton } from '@/components/ui/SearchClearButton';
 
 // ── constants ────────────────────────────────────────────────
 const STAGES: { id: RegisterStage; name: string; dot: string }[] = [
@@ -231,8 +232,9 @@ export default function RegisterManager() {
             placeholder="Search accounts, jobs, next actions…"
             aria-label="Search Follow-ups"
             data-global-search
-            className={cn(inputCls, 'pl-9 pr-3.5')}
+            className={cn(inputCls, 'pl-9 pr-11')}
           />
+          <SearchClearButton value={search} onClear={() => setSearch('')} />
         </div>
 
         <div className="flex flex-wrap gap-2">

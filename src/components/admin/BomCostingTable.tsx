@@ -44,6 +44,7 @@ import { SkeletonRows } from '@/components/ui/Skeleton';
 import { PromptModal } from './modals';
 import { useRefreshStock } from './PaperStockModals';
 import CsvExportButton from './CsvExportButton';
+import { SearchClearButton } from '@/components/ui/SearchClearButton';
 
 // Loose on purpose — a costing is typed in over minutes, not seconds, and
 // the poll pauses entirely while the tab is hidden. Paused altogether while
@@ -402,8 +403,9 @@ export default function BomCostingTable({ canDecide }: Props) {
             aria-label="Search Bill of Material"
             title="Search (Ctrl+K)"
             data-global-search
-            className={cn(inputClass, 'w-full pl-9')}
+            className={cn(inputClass, 'w-full pl-9 pr-11')}
           />
+          <SearchClearButton value={search} onClear={() => setSearch('')} />
         </div>
 
         <CsvExportButton rows={exportRows} columns={EXPORT_COLUMNS} filename="bill-of-material" />

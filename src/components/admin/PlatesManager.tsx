@@ -20,6 +20,7 @@ import type { Plate } from '@/lib/types';
 import CsvExportButton from './CsvExportButton';
 import SortableHeaderLabel from './SortableHeaderLabel';
 import { SkeletonRows } from '@/components/ui/Skeleton';
+import { SearchClearButton } from '@/components/ui/SearchClearButton';
 
 // Loaded on first open, not with the page — it only renders when open.
 const AddPlateModal = dynamic(() => import('./AddPlateModal'), { ssr: false });
@@ -205,12 +206,13 @@ export default function PlatesManager({ canManage }: { canManage: boolean }) {
             title="Search (Ctrl+K)"
             data-global-search
             className={cn(
-              'w-full min-h-11 pl-9 pr-3 rounded-xl text-sm',
+              'w-full min-h-11 pl-9 pr-11 rounded-xl text-sm',
               'bg-[var(--field-bg)] border border-[var(--field-border)] text-[var(--glass-ink)]',
               'placeholder:text-[var(--glass-muted)] focus:outline-none',
               'focus:border-emerald-300/70 focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)] transition-all',
             )}
           />
+          <SearchClearButton value={search} onClear={() => setSearch('')} />
         </div>
 
         <CsvExportButton rows={plates} columns={PLATE_EXPORT_COLUMNS} filename="plates" />

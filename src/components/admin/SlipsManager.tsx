@@ -70,6 +70,7 @@ import AddressSlipLabel, {
 } from './AddressSlipLabel';
 import type { Job } from '@/lib/types';
 import { useBranding } from '@/components/brand/BrandingProvider';
+import { SearchClearButton } from '@/components/ui/SearchClearButton';
 
 /**
  * The five artworks this page can put on a sheet.
@@ -697,8 +698,9 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search a job by card no, PO, party or job name"
           aria-label="Search for a job to print slips for"
-          className={cn(FIELD, 'pl-9')}
+          className={cn(FIELD, 'pl-9 pr-11')}
         />
+        <SearchClearButton value={search} onClear={() => setSearch('')} />
         {results.length > 0 && (
           <ul
             className="absolute z-20 mt-1 w-full max-h-72 overflow-y-auto rounded-xl border border-[var(--field-border)] bg-white shadow-lg"

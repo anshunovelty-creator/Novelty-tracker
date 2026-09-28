@@ -6,6 +6,7 @@ import { cn, JOB_SORT_OPTIONS, type JobSortOption } from '@/lib/utils';
 import { PIPELINE_STAGES } from '@/lib/constants/stages';
 import { SelectField } from '@/components/ui/Field';
 import { Button } from '@/components/ui/Button';
+import { SearchClearButton } from '@/components/ui/SearchClearButton';
 
 type Props = {
   search:               string;
@@ -68,14 +69,7 @@ export default function FilterBar({
             )}
           />
           {search ? (
-            <button
-              type="button"
-              onClick={() => onSearchChange('')}
-              aria-label="Clear search"
-              className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-[var(--glass-muted)] hover:text-[var(--glass-ink)] transition-colors"
-            >
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
+            <SearchClearButton value={search} onClear={() => onSearchChange('')} />
           ) : (
             // The Ctrl+K shortcut already worked but was announced only in a
             // title tooltip nobody hovers.

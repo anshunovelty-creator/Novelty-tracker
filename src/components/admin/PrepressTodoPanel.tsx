@@ -22,6 +22,7 @@ import { useResizablePanel } from '@/hooks/useResizablePanel';
 import PanelResizeHandles from './PanelResizeHandles';
 import { createClient } from '@/lib/supabase/client';
 import type { PrepressTodo, PrepressTodoLog } from '@/lib/types';
+import { SearchClearButton } from '@/components/ui/SearchClearButton';
 
 // prepress_todo_logs is auto-trimmed to its 1000 most recent rows
 // (029_prepress_todo_logs_trim.sql) — this is where the panel starts
@@ -649,11 +650,12 @@ export default function PrepressTodoPanel() {
                   placeholder="Search history…"
                   aria-label="Search checklist history"
                   className={cn(
-                    'w-full min-h-9 pl-8 pr-3 py-1.5 rounded-lg text-xs bg-brand-bg border border-brand-border',
+                    'w-full min-h-9 pl-8 pr-9 py-1.5 rounded-lg text-xs bg-brand-bg border border-brand-border',
                     'text-brand-ink placeholder:text-brand-muted',
                     'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
                   )}
                 />
+                <SearchClearButton value={logQuery} onClear={() => setLogQuery('')} size="sm" />
               </div>
               <div className="relative shrink-0" ref={exportMenuRef}>
                 <button
