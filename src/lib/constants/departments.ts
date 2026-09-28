@@ -243,6 +243,11 @@ export function canDeptUseMeterCalculator(perms: DeptPermissions | null): boolea
   return hasFeature(perms, 'meter_calculator_use');
 }
 
+/** Who sees the "Total order value" sum on Job Separation. */
+export function canDeptSeeJobSeparationTotal(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'job_separation_total_view');
+}
+
 /** Who may add, edit, revise and change the status of shade cards.
  *  Prepress and QC (seeded in migration 055), plus the super-admin
  *  department. Deleting a card is separate and stricter — super admin only,

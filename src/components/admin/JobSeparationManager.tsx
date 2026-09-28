@@ -183,9 +183,9 @@ const JOB_SEPARATION_EXPORT_COLUMNS: CsvColumn<JobSeparation>[] = [
   { header: 'Added',          value: (j) => csvTimestamp(j.created_at) },
 ];
 
-type Props = { canManage: boolean; canManageTodo: boolean; canUseMeterCalculator: boolean; dept: Department | null };
+type Props = { canManage: boolean; canManageTodo: boolean; canUseMeterCalculator: boolean; canSeeTotal: boolean; dept: Department | null };
 
-export default function JobSeparationManager({ canManage, canManageTodo, canUseMeterCalculator, dept }: Props) {
+export default function JobSeparationManager({ canManage, canManageTodo, canUseMeterCalculator, canSeeTotal, dept }: Props) {
   const [search,      setSearch]      = useState('');
   const [searchField, setSearchField] = useState('all');
   const [range,       setRange]       = useState<DateRangeOption>('month');
@@ -473,7 +473,7 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
             )}
           </p>
 
-          {canManage && (
+          {canSeeTotal && (
             <p
               className="text-sm font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1"
               title={hasMore ? 'Totals only what’s loaded — narrow the search or "Load more" to cover the rest' : 'Total order value of the rows shown above, excluding cancelled rows'}

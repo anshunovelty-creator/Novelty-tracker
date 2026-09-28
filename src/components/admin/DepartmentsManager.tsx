@@ -34,6 +34,7 @@ const FEATURES: { key: string; label: string }[] = [
   { key: 'dies_plates_edit',               label: 'Manage dies & plates' },
   { key: 'shade_card_manage',              label: 'Manage shade cards' },
   { key: 'job_separation_edit',            label: 'Manage job separation' },
+  { key: 'job_separation_total_view',      label: 'See Job Separation total order value' },
   { key: 'prepress_todo_manage',           label: 'Manage Prepress Todo checklist' },
   { key: 'meter_calculator_use',           label: 'Use Meter Calculator' },
   { key: 'register_manage',                label: 'Access Register (Follow-ups)' },

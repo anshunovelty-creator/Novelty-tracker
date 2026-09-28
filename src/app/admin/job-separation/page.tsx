@@ -9,7 +9,7 @@
 
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
-import { getDeptPermissions, canDeptManageJobSeparation, canDeptManagePrepressTodo, canDeptUseMeterCalculator } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageJobSeparation, canDeptManagePrepressTodo, canDeptUseMeterCalculator, canDeptSeeJobSeparationTotal } from '@/lib/constants/departments';
 import JobSeparationManager from '@/components/admin/JobSeparationManager';
 
 export const dynamic = 'force-dynamic';
@@ -38,6 +38,7 @@ export default async function JobSeparationPage() {
         canManage={canDeptManageJobSeparation(perms)}
         canManageTodo={canDeptManagePrepressTodo(perms)}
         canUseMeterCalculator={canDeptUseMeterCalculator(perms)}
+        canSeeTotal={canDeptSeeJobSeparationTotal(perms)}
         dept={perms?.key ?? null}
       />
     </div>
