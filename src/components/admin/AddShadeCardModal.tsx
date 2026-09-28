@@ -11,7 +11,7 @@
 // the card itself, so adding or editing a card can never double as approving
 // one — the rule the source app enforced in its server actions.
 
-import React, { useState, useEffect, useId } from 'react';
+import React, { useState, useEffect, useId, useRef } from 'react';
 import Link from 'next/link';
 import { Check, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { ModalShell } from './modals';
 import { MAKING_STATUSES, SHADE_CARD_STATUS_COLORS } from '@/lib/constants/shadeCards';
-import type { ShadeCard } from '@/lib/types';
+import type { Party, ShadeCard } from '@/lib/types';
 
 // Matches the shared field style used by every other modal and form in the
 // admin panel (see modals/index.tsx and AddJobForm.tsx) — this form used to
@@ -121,6 +121,87 @@ export default function AddShadeCardModal({ mode, card, onClose, onSaved }: Prop
   // ignored — the API rejects the downgrade either way, and a disabled field
   // explains that up front instead of at save time.
   const makingLocked = card?.making_status === 'Already Made';
+
+  // ── Party typeahead ─────────────────────────────────────────
+  // Suggests from the same master list Job Separation uses, so a party is
+  // picked rather than typed. Unlike Job Separation, a name off the list is
+  // still accepted: most imported cards carry party spellings that predate
+  // the master list, QC can't add parties, and editing an old card must not
+  // force its party to change. Picking from the list keeps new cards'
+  // spelling consistent for the party + PM code job match.
+  const [partySuggestions,     setPartySuggestions]     = useState<Party[]>([]);
+  const [showPartySuggestions, setShowPartySuggestions] = useState(false);
+  const [activeSuggestion,     setActiveSuggestion]     = useState(-1);
+  // The name last picked from the list (or the card's saved party), so the
+  // effect below doesn't re-open the list for a name that is already chosen.
+  // A value comparison rather than a one-shot flag: dev StrictMode runs the
+  // effect twice on mount, which would consume a flag and open the list.
+  const chosenParty = useRef(card?.party ?? '');
+  const partyListId = useId();
+
+  useEffect(() => {
+    const q = party.trim();
+    if (q && party === chosenParty.current) {
+      setShowPartySuggestions(false);
+      return;
+    }
+    if (!q) {
+      setPartySuggestions([]);
+      setShowPartySuggestions(false);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res  = await fetch(`/api/parties?search=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        if (!cancelled && res.ok) {
+          setPartySuggestions(data.parties ?? []);
+          setActiveSuggestion(-1);
+          setShowPartySuggestions(true);
+        }
+      } catch {
+        // Best-effort — the field still takes a typed name without it.
+      }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [party]);
+
+  function selectParty(p: Party) {
+    chosenParty.current = p.name;
+    setParty(p.name);
+    setShowPartySuggestions(false);
+    setActiveSuggestion(-1);
+  }
+
+  function handlePartyKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!showPartySuggestions) return;
+    if (e.key === 'Escape') {
+      // Close the list without letting ModalShell close the whole modal —
+      // including when the list is only showing the "not on the list" note.
+      e.stopPropagation();
+      setShowPartySuggestions(false);
+      return;
+    }
+    if (partySuggestions.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveSuggestion((i) => (i + 1) % partySuggestions.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveSuggestion((i) => (i <= 0 ? partySuggestions.length - 1 : i - 1));
+    } else if (e.key === 'Enter' && activeSuggestion >= 0) {
+      // Pick the highlighted party instead of submitting the form.
+      e.preventDefault();
+      selectParty(partySuggestions[activeSuggestion]);
+    }
+  }
+
+  // Exact (case-insensitive) match against what the last lookup returned —
+  // drives the quiet "not on the party list" hint.
+  const partyOnList = partySuggestions.some(
+    (p) => p.name.toLowerCase() === party.trim().toLowerCase(),
+  );
 
   // ── Duplicate check ─────────────────────────────────────────
   // 3,000+ cards came across in the import and the same product gets re-carded
@@ -236,11 +317,57 @@ export default function AddShadeCardModal({ mode, card, onClose, onSaved }: Prop
           <div className="space-y-4">
             <div>
               <label htmlFor="sc-party" className={labelCls}>Party <span aria-hidden="true">*</span></label>
-              <input
-                id="sc-party" className={inputCls} value={party} required autoFocus
-                onChange={(e) => setParty(e.target.value)}
-                placeholder="Who the card goes to"
-              />
+              <div className="relative">
+                <input
+                  id="sc-party" className={inputCls} value={party} required autoFocus
+                  autoComplete="off"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-expanded={showPartySuggestions}
+                  aria-controls={partyListId}
+                  aria-activedescendant={
+                    activeSuggestion >= 0 ? `${partyListId}-${activeSuggestion}` : undefined
+                  }
+                  onChange={(e) => setParty(e.target.value)}
+                  onKeyDown={handlePartyKeyDown}
+                  onFocus={() => partySuggestions.length > 0 && !partyOnList && setShowPartySuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowPartySuggestions(false), 150)}
+                  placeholder="Start typing to search the party list…"
+                />
+                {showPartySuggestions && (
+                  <div
+                    id={partyListId}
+                    role="listbox"
+                    className="absolute z-20 top-full left-0 right-0 mt-1 glass-strong glass rounded-xl shadow-lg overflow-hidden max-h-56 overflow-y-auto"
+                  >
+                    {partySuggestions.length > 0 ? (
+                      partySuggestions.map((p, i) => (
+                        <button
+                          key={p.id}
+                          id={`${partyListId}-${i}`}
+                          type="button"
+                          role="option"
+                          aria-selected={i === activeSuggestion}
+                          tabIndex={-1}
+                          // onMouseDown fires before the input's onBlur closes the list
+                          onMouseDown={(e) => { e.preventDefault(); selectParty(p); }}
+                          className={cn(
+                            'w-full min-h-[44px] text-left px-3.5 py-2.5 text-sm text-[var(--glass-ink)]',
+                            'hover:bg-white/[0.08] transition-colors border-b border-white/10 last:border-0',
+                            i === activeSuggestion && 'bg-white/[0.12]',
+                          )}
+                        >
+                          {p.name}
+                        </button>
+                      ))
+                    ) : (
+                      <p className="px-3.5 py-2.5 text-xs text-[var(--glass-muted)]">
+                        Not on the party list — the name will be saved as typed.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div>
