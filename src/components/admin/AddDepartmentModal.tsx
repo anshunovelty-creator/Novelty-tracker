@@ -13,6 +13,7 @@ import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { ModalShell } from './modals';
+import { WithExample } from '@/components/ui/FieldAffix';
 
 const inputCls = cn(
   'w-full px-3 py-2 rounded-lg text-sm bg-[var(--field-bg)] border border-[var(--field-border)]',
@@ -91,26 +92,28 @@ export default function AddDepartmentModal({ onClose, onSaved }: Props) {
         <div className="px-5 py-4 overflow-y-auto space-y-4">
           <div>
             <FieldLabel required>Key</FieldLabel>
-            <input
-              type="text"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              placeholder="e.g. Warehouse2"
-              autoComplete="off"
-              className={cn(inputCls, 'font-mono')}
-            />
+            <WithExample example="Warehouse2">
+                <input
+                type="text"
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+                autoComplete="off"
+                className={cn(inputCls, 'font-mono')}
+              />
+            </WithExample>
           </div>
 
           <div>
             <FieldLabel required>Display name</FieldLabel>
-            <input
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="e.g. Warehouse 2 Team"
-              autoComplete="off"
-              className={inputCls}
-            />
+            <WithExample example="Warehouse 2 Team">
+                <input
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                autoComplete="off"
+                className={inputCls}
+              />
+            </WithExample>
           </div>
         </div>
 

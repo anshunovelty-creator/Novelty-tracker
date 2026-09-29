@@ -10,6 +10,7 @@ import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { ModalShell } from './modals';
+import { WithExample } from '@/components/ui/FieldAffix';
 
 const inputCls = cn(
   'w-full px-3 py-2 rounded-lg text-sm bg-[var(--field-bg)] border border-[var(--field-border)]',
@@ -81,26 +82,28 @@ export default function AddRecipientModal({ onClose, onAdded }: Props) {
         <div className="px-5 py-4 overflow-y-auto space-y-4">
           <div>
             <RecipientLabel required>Email</RecipientLabel>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="e.g. accounts@yourcompany.com"
-              autoComplete="off"
-              className={inputCls}
-            />
+            <WithExample example="accounts@yourcompany.com">
+                <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="off"
+                className={inputCls}
+              />
+            </WithExample>
           </div>
 
           <div>
             <RecipientLabel>Label</RecipientLabel>
-            <input
-              type="text"
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder="e.g. Accounts (optional)"
-              autoComplete="off"
-              className={inputCls}
-            />
+            <WithExample example="Accounts">
+                <input
+                type="text"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                autoComplete="off"
+                className={inputCls}
+              />
+            </WithExample>
           </div>
         </div>
 

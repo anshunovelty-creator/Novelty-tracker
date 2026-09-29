@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { ModalShell } from './modals';
 import type { Plate } from '@/lib/types';
+import { WithExample, WithUnit } from '@/components/ui/FieldAffix';
 
 const inputCls = cn(
   'w-full px-3 py-2 rounded-lg text-sm bg-[var(--field-bg)] border border-[var(--field-border)]',
@@ -117,19 +118,19 @@ export default function AddPlateModal({ editing, onClose, onSaved }: Props) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <PlateLabel required>Party</PlateLabel>
-              <input
-                value={party}
-                onChange={(e) => setParty(e.target.value)}
-                placeholder="e.g. DHANUKA - SANAND"
-                className={inputCls}
-              />
+              <WithExample example="DHANUKA - SANAND">
+                  <input
+                  value={party}
+                  onChange={(e) => setParty(e.target.value)}
+                  className={inputCls}
+                />
+              </WithExample>
             </div>
             <div>
               <PlateLabel>PM code</PlateLabel>
               <input
                 value={pmCode}
                 onChange={(e) => setPmCode(e.target.value)}
-                placeholder="Optional"
                 className={cn(inputCls, 'font-mono')}
               />
             </div>
@@ -140,7 +141,6 @@ export default function AddPlateModal({ editing, onClose, onSaved }: Props) {
             <input
               value={itemName}
               onChange={(e) => setItemName(e.target.value)}
-              placeholder="Optional"
               className={inputCls}
             />
           </div>
@@ -148,44 +148,48 @@ export default function AddPlateModal({ editing, onClose, onSaved }: Props) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <PlateLabel>Across size (H)</PlateLabel>
-              <input
-                value={acrossSize}
-                onChange={(e) => setAcrossSize(e.target.value)}
-                placeholder="Optional"
-                className={cn(inputCls, 'font-mono')}
-              />
+              <WithUnit unit="mm">
+                  <input
+                  value={acrossSize}
+                  onChange={(e) => setAcrossSize(e.target.value)}
+                  className={cn(inputCls, 'font-mono')}
+                />
+              </WithUnit>
             </div>
             <div>
               <PlateLabel>Around size (W)</PlateLabel>
-              <input
-                value={aroundSize}
-                onChange={(e) => setAroundSize(e.target.value)}
-                placeholder="Optional"
-                className={cn(inputCls, 'font-mono')}
-              />
+              <WithUnit unit="mm">
+                  <input
+                  value={aroundSize}
+                  onChange={(e) => setAroundSize(e.target.value)}
+                  className={cn(inputCls, 'font-mono')}
+                />
+              </WithUnit>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <PlateLabel>Cylinder</PlateLabel>
-              <input
-                type="number"
-                inputMode="numeric"
-                value={cylinder}
-                onChange={(e) => setCylinder(e.target.value)}
-                placeholder="Optional"
-                className={cn(inputCls, 'font-mono')}
-              />
+              <WithUnit unit="teeth">
+                  <input
+                  type="number"
+                  inputMode="numeric"
+                  value={cylinder}
+                  onChange={(e) => setCylinder(e.target.value)}
+                  className={cn(inputCls, 'font-mono')}
+                />
+              </WithUnit>
             </div>
             <div>
               <PlateLabel>Location</PlateLabel>
-              <input
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="Rack / shelf / bay"
-                className={inputCls}
-              />
+              <WithExample example="Rack B2">
+                  <input
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  className={inputCls}
+                />
+              </WithExample>
             </div>
           </div>
 
@@ -206,7 +210,6 @@ export default function AddPlateModal({ editing, onClose, onSaved }: Props) {
                 inputMode="numeric"
                 value={labelPerRound}
                 onChange={(e) => setLabelPerRound(e.target.value)}
-                placeholder="Optional"
                 className={cn(inputCls, 'font-mono')}
               />
             </div>
@@ -226,9 +229,9 @@ export default function AddPlateModal({ editing, onClose, onSaved }: Props) {
                 }
               }}
               rows={3}
-              placeholder="Etched serial — optional. One per plate; Shift + Enter for another."
               className={cn(inputCls, 'font-mono resize-y')}
             />
+            <p className="text-xs text-[var(--glass-muted)] mt-1.5">Etched serial, one per plate. Shift + Enter for the next.</p>
           </div>
         </div>
 

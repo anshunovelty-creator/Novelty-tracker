@@ -293,9 +293,9 @@ function DepartmentRow({
                   <input
                     value={clientFacingName}
                     onChange={(e) => setClientFacingName(e.target.value)}
-                    placeholder={dept.display_name}
                     className={inputCls}
                   />
+                  <p className="text-xs text-[var(--glass-muted)] mt-1.5">Leave empty to show clients &ldquo;{dept.display_name}&rdquo;.</p>
                 </Field>
               </div>
 

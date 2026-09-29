@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { ModalShell } from './modals';
 import type { FlatbedDie } from '@/lib/types';
+import { WithExample, WithUnit } from '@/components/ui/FieldAffix';
 
 const inputCls = cn(
   'w-full px-3 py-2 rounded-lg text-sm bg-[var(--field-bg)] border border-[var(--field-border)]',
@@ -125,33 +126,38 @@ export default function AddFlatbedDieModal({ editing, onClose, onSaved }: Props)
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <FlatbedDieLabel required>Length</FlatbedDieLabel>
-              <input
-                value={length}
-                onChange={(e) => setLength(e.target.value)}
-                placeholder="e.g. 85"
-                className={cn(inputCls, 'font-mono')}
-              />
+              <WithUnit unit="mm">
+                  <input
+                  value={length}
+                  onChange={(e) => setLength(e.target.value)}
+                  className={cn(inputCls, 'font-mono')}
+                />
+              </WithUnit>
             </div>
             <div>
               <FlatbedDieLabel required>Width</FlatbedDieLabel>
-              <input
-                value={width}
-                onChange={(e) => setWidth(e.target.value)}
-                placeholder="e.g. 60 or 85 x 60"
-                className={cn(inputCls, 'font-mono')}
-              />
+              <WithExample example="60, or 85 x 60">
+                  <WithUnit unit="mm">
+                    <input
+                    value={width}
+                    onChange={(e) => setWidth(e.target.value)}
+                    className={cn(inputCls, 'font-mono')}
+                  />
+                </WithUnit>
+              </WithExample>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <FlatbedDieLabel required>Repeat length</FlatbedDieLabel>
-              <input
-                value={repeatLength}
-                onChange={(e) => setRepeatLength(e.target.value)}
-                placeholder="e.g. 85"
-                className={cn(inputCls, 'font-mono')}
-              />
+              <WithUnit unit="mm">
+                  <input
+                  value={repeatLength}
+                  onChange={(e) => setRepeatLength(e.target.value)}
+                  className={cn(inputCls, 'font-mono')}
+                />
+              </WithUnit>
             </div>
             <div>
               <FlatbedDieLabel required>UPS</FlatbedDieLabel>
@@ -160,7 +166,6 @@ export default function AddFlatbedDieModal({ editing, onClose, onSaved }: Props)
                 inputMode="numeric"
                 value={ups}
                 onChange={(e) => handleUpsChange(e.target.value)}
-                placeholder="Labels per sheet/stroke"
                 className={cn(inputCls, 'font-mono')}
               />
             </div>
@@ -169,42 +174,46 @@ export default function AddFlatbedDieModal({ editing, onClose, onSaved }: Props)
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <FlatbedDieLabel required>Gap</FlatbedDieLabel>
-              <input
-                value={gap}
-                onChange={(e) => setGap(e.target.value)}
-                placeholder="e.g. 5 MM"
-                className={inputCls}
-              />
+              <WithExample example="5 MM">
+                  <input
+                  value={gap}
+                  onChange={(e) => setGap(e.target.value)}
+                  className={inputCls}
+                />
+              </WithExample>
             </div>
             <div>
               <FlatbedDieLabel required>Corner radius</FlatbedDieLabel>
-              <input
-                value={corner}
-                onChange={(e) => setCorner(e.target.value)}
-                placeholder="e.g. ROUND, SPECIAL"
-                className={inputCls}
-              />
+              <WithExample example="ROUND, SPECIAL">
+                  <input
+                  value={corner}
+                  onChange={(e) => setCorner(e.target.value)}
+                  className={inputCls}
+                />
+              </WithExample>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <FlatbedDieLabel required>Shape</FlatbedDieLabel>
-              <input
-                value={shape}
-                onChange={(e) => setShape(e.target.value)}
-                placeholder="e.g. RECTANGLE, OVAL"
-                className={inputCls}
-              />
+              <WithExample example="RECTANGLE, OVAL">
+                  <input
+                  value={shape}
+                  onChange={(e) => setShape(e.target.value)}
+                  className={inputCls}
+                />
+              </WithExample>
             </div>
             <div>
               <FlatbedDieLabel required>Location</FlatbedDieLabel>
-              <input
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="Rack / shelf / bay"
-                className={inputCls}
-              />
+              <WithExample example="Rack B2">
+                  <input
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  className={inputCls}
+                />
+              </WithExample>
             </div>
           </div>
 

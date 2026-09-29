@@ -16,6 +16,7 @@ import { ModalShell } from './modals';
 import { Button } from '@/components/ui/Button';
 import type { Job } from '@/lib/types';
 import { SearchClearButton } from '@/components/ui/SearchClearButton';
+import { WithExample, WithUnit } from '@/components/ui/FieldAffix';
 
 const inputCls = cn(
   'w-full px-3 py-2 rounded-lg text-sm bg-[var(--field-bg)] border border-[var(--field-border)]',
@@ -217,28 +218,30 @@ export default function ManualStockModal({ onClose, onAdded }: Props) {
 
           <div>
             <StockLabel required>Quantity in stock</StockLabel>
-            <input
-              type="number"
-              inputMode="numeric"
-              min={1}
-              value={qty}
-              onChange={(e) => setQty(e.target.value ? Number(e.target.value) : '')}
-              placeholder="e.g. 12000"
-              className={cn(inputCls, 'font-mono')}
-            />
+            <WithUnit unit="labels">
+                <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                value={qty}
+                onChange={(e) => setQty(e.target.value ? Number(e.target.value) : '')}
+                className={cn(inputCls, 'font-mono')}
+              />
+            </WithUnit>
           </div>
 
           {/* Identity — auto-filled and locked when a job is picked, because
               the server takes the job's values regardless. */}
           <div>
             <StockLabel required={!pickedJob}>Party</StockLabel>
-            <input
-              value={party}
-              onChange={(e) => setParty(e.target.value)}
-              disabled={Boolean(pickedJob)}
-              placeholder="e.g. DHANUKA - SANAND"
-              className={cn(inputCls, 'disabled:opacity-60')}
-            />
+            <WithExample example="DHANUKA - SANAND">
+                <input
+                value={party}
+                onChange={(e) => setParty(e.target.value)}
+                disabled={Boolean(pickedJob)}
+                className={cn(inputCls, 'disabled:opacity-60')}
+              />
+            </WithExample>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -248,7 +251,6 @@ export default function ManualStockModal({ onClose, onAdded }: Props) {
                 value={jobName}
                 onChange={(e) => setJobName(e.target.value)}
                 disabled={Boolean(pickedJob)}
-                placeholder="Optional"
                 className={cn(inputCls, 'disabled:opacity-60')}
               />
             </div>
@@ -258,7 +260,6 @@ export default function ManualStockModal({ onClose, onAdded }: Props) {
                 value={pmCode}
                 onChange={(e) => setPmCode(e.target.value)}
                 disabled={Boolean(pickedJob)}
-                placeholder="Optional"
                 className={cn(inputCls, 'font-mono disabled:opacity-60')}
               />
             </div>
@@ -267,19 +268,19 @@ export default function ManualStockModal({ onClose, onAdded }: Props) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <StockLabel>Location</StockLabel>
-              <input
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="Rack / shelf"
-                className={inputCls}
-              />
+              <WithExample example="Rack B2">
+                  <input
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  className={inputCls}
+                />
+              </WithExample>
             </div>
             <div>
               <StockLabel>Remark</StockLabel>
               <input
                 value={remark}
                 onChange={(e) => setRemark(e.target.value)}
-                placeholder="Optional"
                 className={inputCls}
               />
             </div>

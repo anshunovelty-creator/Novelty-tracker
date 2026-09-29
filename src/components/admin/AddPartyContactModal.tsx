@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { ModalShell } from './modals';
 import type { Party, PartyContact } from '@/lib/types';
+import { WithExample } from '@/components/ui/FieldAffix';
 
 const inputCls = cn(
   'w-full px-3 py-2 rounded-lg text-sm bg-[var(--field-bg)] border border-[var(--field-border)]',
@@ -123,7 +124,6 @@ export default function AddPartyContactModal({ existing, onClose, onSaved }: Pro
               type="text"
               value={contactName}
               onChange={(e) => setContactName(e.target.value)}
-              placeholder="e.g. Rajesh Singh"
               autoComplete="off"
               className={inputCls}
             />
@@ -131,14 +131,15 @@ export default function AddPartyContactModal({ existing, onClose, onSaved }: Pro
 
           <div>
             <ContactLabel>Email</ContactLabel>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="e.g. orders@party.com"
-              autoComplete="off"
-              className={inputCls}
-            />
+            <WithExample example="orders@party.com">
+                <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="off"
+                className={inputCls}
+              />
+            </WithExample>
           </div>
 
           <div>
@@ -147,10 +148,10 @@ export default function AddPartyContactModal({ existing, onClose, onSaved }: Pro
               type="text"
               value={whatsapp}
               onChange={(e) => setWhatsapp(e.target.value)}
-              placeholder="Country code + number, e.g. 919876543210"
               autoComplete="off"
               className={cn(inputCls, 'font-mono')}
             />
+            <p className="text-xs text-[var(--glass-muted)] mt-1.5">Country code + number, no spaces — like 919876543210.</p>
           </div>
         </div>
 

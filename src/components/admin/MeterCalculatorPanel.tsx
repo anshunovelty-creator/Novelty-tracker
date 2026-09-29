@@ -97,7 +97,6 @@ type FieldSpec = {
   key:         string;
   label:       string;
   ariaLabel:   string;
-  placeholder: string;
   /** A typed value must pass this to count. Default: above zero. */
   valid?:      (n: number) => boolean;
   /** How a solved value is presented — whole labels round down, etc. */
@@ -126,14 +125,14 @@ const has = (v: Partial<Values>, ...keys: string[]) => keys.every((k) => v[k] !=
 
 const METER: CalcSpec = {
   fields: [
-    { key: 'qty', label: 'Qty', ariaLabel: 'Label quantity', placeholder: '10000',
+    { key: 'qty', label: 'Qty', ariaLabel: 'Label quantity',
       round: nearestWhole, format: (n) => formatNum(n, 0) },
-    { key: 'cyl', label: 'Cylinder', ariaLabel: 'Cylinder, in teeth', placeholder: '88',
+    { key: 'cyl', label: 'Cylinder', ariaLabel: 'Cylinder, in teeth',
       round: round2, format: (n) => formatNum(n) },
-    { key: 'ups', label: 'Ups', ariaLabel: 'Number of ups', placeholder: '1', valid: atLeastOne,
+    { key: 'ups', label: 'Ups', ariaLabel: 'Number of ups', valid: atLeastOne,
       round: ceilWhole, format: (n) => formatNum(n, 0) },
     // Never round a material request down.
-    { key: 'metres', label: 'Total metres', ariaLabel: 'Total metres', placeholder: '336', unit: 'm',
+    { key: 'metres', label: 'Total metres', ariaLabel: 'Total metres', unit: 'm',
       round: ceilWhole, format: (n) => formatNum(n) },
   ],
   solve(v, missing) {
@@ -159,14 +158,14 @@ const METER: CalcSpec = {
 
 const GAP: CalcSpec = {
   fields: [
-    { key: 'cyl', label: 'Cylinder', ariaLabel: 'Cylinder, in teeth', placeholder: '75',
+    { key: 'cyl', label: 'Cylinder', ariaLabel: 'Cylinder, in teeth',
       round: round2, format: (n) => formatNum(n) },
-    { key: 'length', label: 'Length (mm)', ariaLabel: 'Label length, in mm', placeholder: '230',
+    { key: 'length', label: 'Length (mm)', ariaLabel: 'Label length, in mm',
       round: round2, format: (n) => formatNum(n) },
     // Whole labels that fit round the cylinder — the readout gives the gap that leaves.
-    { key: 'ups', label: 'Ups', ariaLabel: 'Number of ups', placeholder: '1', valid: atLeastOne,
+    { key: 'ups', label: 'Ups', ariaLabel: 'Number of ups', valid: atLeastOne,
       round: floorWhole, format: (n) => formatNum(n, 0) },
-    { key: 'gap', label: 'Gap between labels', ariaLabel: 'Gap between labels, in mm', placeholder: '8.13', unit: 'mm',
+    { key: 'gap', label: 'Gap between labels', ariaLabel: 'Gap between labels, in mm', unit: 'mm',
       valid: (n) => n >= 0, round: round2, format: (n) => formatNum(n) },
   ],
   solve(v, missing) {
@@ -208,15 +207,15 @@ const perLabel = (h: number, w: number, rate: number) => ((h * w) / (MM_PER_INCH
 
 const RATE: CalcSpec = {
   fields: [
-    { key: 'h', label: 'Height (mm)', ariaLabel: 'Label height, in mm', placeholder: '77',
+    { key: 'h', label: 'Height (mm)', ariaLabel: 'Label height, in mm',
       round: round2, format: (n) => formatNum(n) },
-    { key: 'w', label: 'Width (mm)', ariaLabel: 'Label width, in mm', placeholder: '122',
+    { key: 'w', label: 'Width (mm)', ariaLabel: 'Label width, in mm',
       round: round2, format: (n) => formatNum(n) },
-    { key: 'rate', label: 'Rate / sq in', ariaLabel: 'Rate per square inch, in paise', placeholder: '3.3',
+    { key: 'rate', label: 'Rate / sq in', ariaLabel: 'Rate per square inch, in paise',
       round: (n) => parseFloat(n.toFixed(4)), format: (n) => formatNum(n, 4) },
-    { key: 'qty', label: 'Qty', ariaLabel: 'Label quantity', placeholder: '23300',
+    { key: 'qty', label: 'Qty', ariaLabel: 'Label quantity',
       round: nearestWhole, format: (n) => formatNum(n, 0) },
-    { key: 'total', label: 'Total amount', ariaLabel: 'Total amount, in rupees', placeholder: '—', prefix: '₹',
+    { key: 'total', label: 'Total amount', ariaLabel: 'Total amount, in rupees', prefix: '₹',
       round: round2, format: (n) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
   ],
   solve(v, missing) {
@@ -331,7 +330,6 @@ function Field({ id, spec, value, solvedValue, onChange }: FieldProps) {
         autoComplete="off"
         value={solved ? solvedValue : value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={spec.placeholder}
         aria-label={solved ? `${spec.ariaLabel} (worked out)` : spec.ariaLabel}
         className={cn(fieldCls, solved && solvedFieldCls)}
         {...(solved ? select : {})}
@@ -657,7 +655,6 @@ export default function MeterCalculatorPanel() {
                 list={fid('mat-list')}
                 value={material}
                 onChange={(e) => setMaterial(e.target.value)}
-                placeholder="e.g. AM89240F"
                 autoComplete="off"
                 aria-label="Material (shown for the party, not used in the rate)"
                 className={cn(fieldCls, 'font-semibold')}

@@ -332,7 +332,6 @@ export default function AddShadeCardModal({ mode, card, onClose, onSaved }: Prop
                   onKeyDown={handlePartyKeyDown}
                   onFocus={() => partySuggestions.length > 0 && !partyOnList && setShowPartySuggestions(true)}
                   onBlur={() => setTimeout(() => setShowPartySuggestions(false), 150)}
-                  placeholder="Start typing to search the party list…"
                 />
                 {showPartySuggestions && (
                   <div
@@ -375,7 +374,6 @@ export default function AddShadeCardModal({ mode, card, onClose, onSaved }: Prop
               <input
                 id="sc-product" className={inputCls} value={productName} required
                 onChange={(e) => setProductName(e.target.value)}
-                placeholder="The label this card is for"
               />
             </div>
           </div>
@@ -470,8 +468,8 @@ export default function AddShadeCardModal({ mode, card, onClose, onSaved }: Prop
               <input
                 id="sc-qnap" className={inputCls} value={qnapPath}
                 onChange={(e) => setQnapPath(e.target.value)}
-                placeholder="Reference only — where the artwork sits"
               />
+              <p className="text-xs text-[var(--glass-muted)] mt-1.5">Reference only — where the artwork sits.</p>
             </div>
 
             <div>

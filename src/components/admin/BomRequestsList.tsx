@@ -425,8 +425,8 @@ export default function BomRequestsList({ canDecide, canManageStock }: Props) {
           title={`Decline ${declining.ref}`}
           description={`${formatQty(declining.running_meter)} m × ${formatQty(declining.material_width_mm)} mm of ${declining.material_name}. Production sees this note.`}
           label="Why (optional)"
+          example="use the 300 mm stock we already have"
           kind="textarea"
-          placeholder="e.g. use the 300 mm stock we already have"
           confirmLabel="Decline request"
           onCancel={() => setDeclining(null)}
           onConfirm={(note) => {

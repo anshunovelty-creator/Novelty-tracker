@@ -93,7 +93,6 @@ export default function RemoveAdminModal({ member, onClose, onRemoved }: Props) 
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Confirm it's you"
             autoComplete="current-password"
             autoFocus
             className={inputCls}

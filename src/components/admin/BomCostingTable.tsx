@@ -656,7 +656,6 @@ export default function BomCostingTable({ canDecide }: Props) {
           label="Metres coming back to stock"
           kind="number"
           required
-          placeholder={`up to ${formatMeters(returning.stock_issued_m)}`}
           confirmLabel="Return to stock"
           onCancel={() => setReturning(null)}
           onConfirm={(value) => {
@@ -685,8 +684,8 @@ export default function BomCostingTable({ canDecide }: Props) {
             </>
           }
           label="Message for Admin (optional)"
+          example="stock is short — need by Friday"
           kind="textarea"
-          placeholder="e.g. stock is short — need by Friday"
           confirmLabel="Send request"
           onCancel={() => setRequesting(null)}
           onConfirm={(message) => {

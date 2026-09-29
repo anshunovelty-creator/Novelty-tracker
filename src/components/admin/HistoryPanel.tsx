@@ -622,10 +622,10 @@ function ReleasesSection({
           title={`Quality Check — Run #${qcRun.run_number}`}
           description="Leave blank for a clean pass. If filled, the remark will be visible to the client."
           label="QC Remark (optional)"
+          example="Minor colour variation within acceptable range"
           kind="textarea"
           initialValue={qcRun.qc_remark ?? ''}
           confirmLabel="Save QC"
-          placeholder="e.g. Minor colour variation within acceptable range…"
           onCancel={() => setQcRun(null)}
           onConfirm={(remark) => {
             const run = qcRun;
@@ -762,7 +762,6 @@ function AddReleaseForm({
           min={1}
           value={qty}
           onChange={(e) => setQty(e.target.value)}
-          placeholder="e.g. 20000"
           className="block mt-1 w-28 bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1.5 text-sm text-[var(--glass-ink)]"
         />
       </label>

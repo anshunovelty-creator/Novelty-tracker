@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { ModalShell } from './modals';
 import type { Party, PendingDispatchNotification } from '@/lib/types';
+import { WithExample, WithUnit } from '@/components/ui/FieldAffix';
 
 const inputCls = cn(
   'w-full px-3 py-2 rounded-lg text-sm bg-[var(--field-bg)] border border-[var(--field-border)]',
@@ -128,14 +129,15 @@ export default function AddCustomDispatchModal({ existing, onClose, onSaved }: P
 
           <div>
             <FieldLabel required>PO number</FieldLabel>
-            <input
-              type="text"
-              value={poNumber}
-              onChange={(e) => setPoNumber(e.target.value)}
-              placeholder="e.g. PO-1234"
-              autoComplete="off"
-              className={inputCls}
-            />
+            <WithExample example="PO-1234">
+                <input
+                type="text"
+                value={poNumber}
+                onChange={(e) => setPoNumber(e.target.value)}
+                autoComplete="off"
+                className={inputCls}
+              />
+            </WithExample>
           </div>
 
           <div>
@@ -144,7 +146,6 @@ export default function AddCustomDispatchModal({ existing, onClose, onSaved }: P
               type="text"
               value={jobName}
               onChange={(e) => setJobName(e.target.value)}
-              placeholder="Optional"
               autoComplete="off"
               className={inputCls}
             />
@@ -156,7 +157,6 @@ export default function AddCustomDispatchModal({ existing, onClose, onSaved }: P
               type="text"
               value={pmCode}
               onChange={(e) => setPmCode(e.target.value)}
-              placeholder="Optional"
               autoComplete="off"
               className={cn(inputCls, 'font-mono')}
             />
@@ -176,27 +176,29 @@ export default function AddCustomDispatchModal({ existing, onClose, onSaved }: P
             </div>
             <div>
               <FieldLabel>Qty</FieldLabel>
-              <input
-                type="number"
-                min="0"
-                value={qty}
-                onChange={(e) => setQty(e.target.value)}
-                placeholder="Optional"
-                className={inputCls}
-              />
+              <WithUnit unit="labels">
+                  <input
+                  type="number"
+                  min="0"
+                  value={qty}
+                  onChange={(e) => setQty(e.target.value)}
+                  className={inputCls}
+                />
+              </WithUnit>
             </div>
           </div>
 
           <div>
             <FieldLabel>Remark</FieldLabel>
-            <input
-              type="text"
-              value={remark}
-              onChange={(e) => setRemark(e.target.value)}
-              placeholder="Optional — e.g. why this is manual"
-              autoComplete="off"
-              className={inputCls}
-            />
+            <WithExample example="why this is manual">
+                <input
+                type="text"
+                value={remark}
+                onChange={(e) => setRemark(e.target.value)}
+                autoComplete="off"
+                className={inputCls}
+              />
+            </WithExample>
           </div>
         </div>
 

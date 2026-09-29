@@ -71,6 +71,7 @@ import AddressSlipLabel, {
 import type { Job } from '@/lib/types';
 import { useBranding } from '@/components/brand/BrandingProvider';
 import { SearchClearButton } from '@/components/ui/SearchClearButton';
+import { WithExample } from '@/components/ui/FieldAffix';
 
 /**
  * The five artworks this page can put on a sheet.
@@ -770,7 +771,6 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
                       rows={7}
                       value={toAddress}
                       onChange={(e) => setToAddress(e.target.value)}
-                      placeholder={'CONSIGNEE NAME PVT LTD\nB-31, Sector 85,\nNoida, Gautam Budh Nagar\nUttar Pradesh\n201305'}
                       className={cn(FIELD, 'py-2 leading-relaxed resize-y')}
                     />
                   </div>
@@ -806,7 +806,6 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
                     id="s-material"
                     value={materialName}
                     onChange={(e) => setMaterialName(e.target.value)}
-                    placeholder="STICKER LABEL PET BOTTLE 1 LTR TRACKER"
                     className={FIELD}
                   />
                 </div>
@@ -836,7 +835,6 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
                     id="s-product"
                     value={product}
                     onChange={(e) => setProduct(e.target.value)}
-                    placeholder="INTIMATE WASH LABELS"
                     className={FIELD}
                   />
                 </div>
@@ -860,15 +858,17 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className={LABEL_CLS} htmlFor="s-direction">Winding direction</label>
-                    <input id="s-direction" value={direction}
-                      onChange={(e) => setDirection(e.target.value)}
-                      placeholder="#4" className={FIELD} />
+                    <WithExample example="#4">
+                        <input id="s-direction" value={direction}
+                        onChange={(e) => setDirection(e.target.value)}
+                        className={FIELD} />
+                    </WithExample>
                   </div>
                   <div>
                     <label className={LABEL_CLS} htmlFor="s-operator">Operator</label>
                     <input id="s-operator" value={operator}
                       onChange={(e) => setOperator(e.target.value)}
-                      placeholder="N & BH" className={FIELD} />
+                      className={FIELD} />
                   </div>
                 </div>
               </>

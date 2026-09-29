@@ -10,6 +10,7 @@ import { createPortal } from 'react-dom';
 import { AlertTriangle } from 'lucide-react';
 import { cn, formatQty } from '@/lib/utils';
 import { buttonClass } from '@/components/ui/Button';
+import { WithExample, WithUnit } from '@/components/ui/FieldAffix';
 import type { Stage } from '@/lib/constants/stages';
 import type { Job } from '@/lib/types';
 
@@ -224,7 +225,7 @@ export function PromptModal({
   min,
   initialValue = '',
   confirmLabel = 'Save',
-  placeholder,
+  example,
   onCancel,
   onConfirm,
 }: {
@@ -236,7 +237,8 @@ export function PromptModal({
   min?: number;
   initialValue?: string;
   confirmLabel?: string;
-  placeholder?: string;
+  /** Shown under the field while it has focus — never inside it. */
+  example?: string;
   onCancel: () => void;
   onConfirm: (value: string) => void;
 }) {
@@ -267,28 +269,28 @@ export function PromptModal({
         <label htmlFor={fieldId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
           {label}
         </label>
-        {kind === 'textarea' ? (
-          <textarea
-            id={fieldId}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            rows={3}
-            placeholder={placeholder}
-            className={cn(inputCls, 'resize-none')}
-          />
-        ) : (
-          <input
-            id={fieldId}
-            type={kind === 'number' ? 'number' : 'text'}
-            inputMode={kind === 'number' ? 'numeric' : undefined}
-            min={kind === 'number' ? min ?? 1 : undefined}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
-            placeholder={placeholder}
-            className={cn(inputCls, kind === 'number' && 'font-mono')}
-          />
-        )}
+        <WithExample example={example}>
+          {kind === 'textarea' ? (
+            <textarea
+              id={fieldId}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              rows={3}
+              className={cn(inputCls, 'resize-none')}
+            />
+          ) : (
+            <input
+              id={fieldId}
+              type={kind === 'number' ? 'number' : 'text'}
+              inputMode={kind === 'number' ? 'numeric' : undefined}
+              min={kind === 'number' ? min ?? 1 : undefined}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
+              className={cn(inputCls, kind === 'number' && 'font-mono')}
+            />
+          )}
+        </WithExample>
         {kind === 'number' && trimmed !== '' && numberBad && (
           <p className="text-xs text-red-300 mt-1">Enter a quantity of {min ?? 1} or more.</p>
         )}
@@ -350,14 +352,15 @@ export function SequentialWarningModal({
             <label htmlFor={reasonId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
               Reason for skipping *
             </label>
-            <textarea
-              id={reasonId}
-              value={remark}
-              onChange={(e) => setRemark(e.target.value)}
-              rows={2}
-              placeholder="e.g. Stage was completed offline — updating system to match…"
-              className={cn(inputCls, 'resize-none')}
-            />
+            <WithExample example="Stage was completed offline — updating system to match">
+                <textarea
+                id={reasonId}
+                value={remark}
+                onChange={(e) => setRemark(e.target.value)}
+                rows={2}
+                className={cn(inputCls, 'resize-none')}
+              />
+            </WithExample>
             <div className="flex gap-3 justify-end mt-4">
               <button onClick={onCancel} className={btnCancel}>
                 Cancel
@@ -433,14 +436,15 @@ export function RevertStageModal({
         <label htmlFor={reasonId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
           Reason for reverting *
         </label>
-        <textarea
-          id={reasonId}
-          value={remark}
-          onChange={(e) => setRemark(e.target.value)}
-          rows={2}
-          placeholder="e.g. Stage was marked by mistake — job is still at artwork…"
-          className={cn(inputCls, 'resize-none')}
-        />
+        <WithExample example="Stage was marked by mistake — job is still at artwork">
+            <textarea
+            id={reasonId}
+            value={remark}
+            onChange={(e) => setRemark(e.target.value)}
+            rows={2}
+            className={cn(inputCls, 'resize-none')}
+          />
+        </WithExample>
 
         <div className="flex gap-3 justify-end mt-4">
           <button onClick={onCancel} className={btnCancel}>
@@ -485,14 +489,15 @@ export function OnHoldModal({
         <label htmlFor={reasonId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
           Halt Reason *
         </label>
-        <textarea
-          id={reasonId}
-          value={remark}
-          onChange={(e) => setRemark(e.target.value)}
-          rows={3}
-          placeholder="e.g. Awaiting shade card approval from client…"
-          className={cn(inputCls, 'resize-none')}
-        />
+        <WithExample example="Awaiting shade card approval from client">
+            <textarea
+            id={reasonId}
+            value={remark}
+            onChange={(e) => setRemark(e.target.value)}
+            rows={3}
+            className={cn(inputCls, 'resize-none')}
+          />
+        </WithExample>
 
         <div className="flex gap-3 justify-end mt-4">
           <button onClick={onCancel} className={btnCancel}>
@@ -537,14 +542,15 @@ export function QCModal({
         <label htmlFor={remarkId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
           QC Remark (optional)
         </label>
-        <textarea
-          id={remarkId}
-          value={remark}
-          onChange={(e) => setRemark(e.target.value)}
-          rows={3}
-          placeholder="e.g. Minor colour variation within acceptable range…"
-          className={cn(inputCls, 'resize-none')}
-        />
+        <WithExample example="Minor colour variation within acceptable range">
+            <textarea
+            id={remarkId}
+            value={remark}
+            onChange={(e) => setRemark(e.target.value)}
+            rows={3}
+            className={cn(inputCls, 'resize-none')}
+          />
+        </WithExample>
 
         <div className="flex gap-3 justify-end mt-4">
           <button onClick={onCancel} className={btnCancel}>
@@ -598,17 +604,18 @@ export function PartialDispatchModal({
         <label htmlFor={qtyId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
           Quantity to dispatch now *
         </label>
-        <input
-          id={qtyId}
-          type="number"
-          inputMode="numeric"
-          min={1}
-          max={remaining}
-          value={qty}
-          onChange={(e) => setQty(e.target.value ? Number(e.target.value) : '')}
-          placeholder={`Max: ${remaining.toLocaleString('en-IN')}`}
-          className={cn(inputCls, 'font-mono')}
-        />
+        <WithUnit unit="labels">
+            <input
+            id={qtyId}
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={remaining}
+            value={qty}
+            onChange={(e) => setQty(e.target.value ? Number(e.target.value) : '')}
+            className={cn(inputCls, 'font-mono')}
+          />
+        </WithUnit>
         {typeof qty === 'number' && qty > remaining && (
           <p className="text-xs text-red-300 mt-1">Cannot exceed remaining quantity.</p>
         )}
@@ -617,16 +624,17 @@ export function PartialDispatchModal({
         <label htmlFor={stockId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mt-4 mb-1.5">
           Labels left in stock
         </label>
-        <input
-          id={stockId}
-          type="number"
-          inputMode="numeric"
-          min={0}
-          value={stockLeft}
-          onChange={(e) => setStockLeft(e.target.value ? Number(e.target.value) : '')}
-          placeholder={formatQty(computedLeft)}
-          className={cn(inputCls, 'font-mono')}
-        />
+        <WithUnit unit="labels">
+            <input
+            id={stockId}
+            type="number"
+            inputMode="numeric"
+            min={0}
+            value={stockLeft}
+            onChange={(e) => setStockLeft(e.target.value ? Number(e.target.value) : '')}
+            className={cn(inputCls, 'font-mono')}
+          />
+        </WithUnit>
         <p className="text-xs text-[var(--glass-muted)] mt-1.5">
           Defaults to{' '}
           <strong className="text-[var(--glass-ink)] font-mono">{formatQty(computedLeft)}</strong>
@@ -695,16 +703,18 @@ export function FullDispatchModal({
           <label htmlFor={extraId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
             Any extra labels printed?
           </label>
-          <input
-            id={extraId}
-            type="number"
-            inputMode="numeric"
-            min={0}
-            value={extraQty}
-            onChange={(e) => setExtraQty(e.target.value ? Number(e.target.value) : '')}
-            placeholder="Leave blank if none"
-            className={cn(inputCls, 'font-mono')}
-          />
+          <WithUnit unit="labels">
+              <input
+              id={extraId}
+              type="number"
+              inputMode="numeric"
+              min={0}
+              value={extraQty}
+              onChange={(e) => setExtraQty(e.target.value ? Number(e.target.value) : '')}
+              className={cn(inputCls, 'font-mono')}
+            />
+          </WithUnit>
+          <p className="text-xs text-[var(--glass-muted)] mt-1.5">Leave empty if none.</p>
 
           {hasExtra && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
@@ -712,13 +722,14 @@ export function FullDispatchModal({
                 <label htmlFor={locId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
                   Location
                 </label>
-                <input
-                  id={locId}
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  placeholder="Rack / shelf"
-                  className={inputCls}
-                />
+                <WithExample example="Rack B2">
+                    <input
+                    id={locId}
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    className={inputCls}
+                  />
+                </WithExample>
               </div>
               <div>
                 <label htmlFor={remarkId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
@@ -728,7 +739,6 @@ export function FullDispatchModal({
                   id={remarkId}
                   value={remark}
                   onChange={(e) => setRemark(e.target.value)}
-                  placeholder="Optional"
                   className={inputCls}
                 />
               </div>
@@ -821,17 +831,21 @@ export function PrintRunModal({
         <label htmlFor={qtyId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
           How many labels printed in this run? *
         </label>
-        <input
-          id={qtyId}
-          type="number"
-          inputMode="numeric"
-          min={1}
-          max={remainingBefore}
-          value={qty}
-          onChange={(e) => setQty(e.target.value ? Number(e.target.value) : '')}
-          placeholder={`Max: ${remainingBefore.toLocaleString('en-IN')}`}
-          className={cn(inputCls, 'font-mono')}
-        />
+        <WithUnit unit="labels">
+            <input
+            id={qtyId}
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={remainingBefore}
+            value={qty}
+            onChange={(e) => setQty(e.target.value ? Number(e.target.value) : '')}
+            className={cn(inputCls, 'font-mono')}
+          />
+        </WithUnit>
+        <p className="text-xs text-[var(--glass-muted)] mt-1.5">
+          Up to <strong className="text-[var(--glass-ink)] font-mono">{formatQty(remainingBefore)}</strong> labels.
+        </p>
         {qtyNum > remainingBefore && (
           <p className="text-xs text-red-300 mt-1">Cannot exceed remaining quantity.</p>
         )}
@@ -847,14 +861,15 @@ export function PrintRunModal({
         <label htmlFor={notesId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5 mt-4">
           Notes (optional)
         </label>
-        <textarea
-          id={notesId}
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          rows={2}
-          placeholder="e.g. Client requested early partial delivery…"
-          className={cn(inputCls, 'resize-none')}
-        />
+        <WithExample example="Client requested early partial delivery">
+            <textarea
+            id={notesId}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+            className={cn(inputCls, 'resize-none')}
+          />
+        </WithExample>
 
         <div className="flex flex-col sm:flex-row gap-2 justify-end mt-5">
           <button onClick={onCancel} className={btnCancel}>

@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { ModalShell } from './modals';
 import { useDepartments } from '@/hooks/useReferenceData';
+import { WithExample } from '@/components/ui/FieldAffix';
 
 type DepartmentOption = { key: string; display_name: string };
 
@@ -121,14 +122,15 @@ export default function AddMemberModal({ onClose, onAdded }: Props) {
         <div className="px-5 py-4 overflow-y-auto space-y-4">
           <div>
             <MemberLabel required>Email</MemberLabel>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="e.g. name@yourcompany.com"
-              autoComplete="off"
-              className={inputCls}
-            />
+            <WithExample example="name@yourcompany.com">
+                <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="off"
+                className={inputCls}
+              />
+            </WithExample>
           </div>
 
           <div>
@@ -172,10 +174,10 @@ export default function AddMemberModal({ onClose, onAdded }: Props) {
               type="text"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="At least 8 characters"
               autoComplete="off"
               className={cn(inputCls, 'font-mono')}
             />
+            <p className="text-xs text-[var(--glass-muted)] mt-1.5">At least 8 characters.</p>
           </div>
         </div>
 

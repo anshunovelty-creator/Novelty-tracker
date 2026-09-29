@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { ModalShell } from './modals';
 import type { JobSeparation, Party } from '@/lib/types';
+import { WithExample, WithUnit } from '@/components/ui/FieldAffix';
 
 const inputCls = cn(
   'w-full px-3 py-2 rounded-lg text-sm bg-[var(--field-bg)] border border-[var(--field-border)]',
@@ -204,7 +205,6 @@ export default function AddJobSeparationModal({ editing, prefill, onClose, onSav
                 onChange={(e) => { setParty(e.target.value); setPartyConfirmed(false); }}
                 onFocus={() => (partySuggestions.length > 0 || party.trim()) && setShowPartySuggestions(true)}
                 onBlur={() => setTimeout(() => setShowPartySuggestions(false), 150)}
-                placeholder="Start typing to search the party list…"
                 autoComplete="off"
                 className={inputCls}
               />
@@ -240,12 +240,13 @@ export default function AddJobSeparationModal({ editing, prefill, onClose, onSav
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <JsLabel required>PO No</JsLabel>
-              <input
-                value={poNo}
-                onChange={(e) => setPoNo(e.target.value)}
-                placeholder="e.g. 5000460185"
-                className={cn(inputCls, 'font-mono')}
-              />
+              <WithExample example="5000460185">
+                  <input
+                  value={poNo}
+                  onChange={(e) => setPoNo(e.target.value)}
+                  className={cn(inputCls, 'font-mono')}
+                />
+              </WithExample>
             </div>
             <div>
               <JsLabel required>PO Date</JsLabel>
@@ -261,47 +262,51 @@ export default function AddJobSeparationModal({ editing, prefill, onClose, onSav
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <JsLabel>PM Code</JsLabel>
-              <input
-                value={pmCode}
-                onChange={(e) => setPmCode(e.target.value)}
-                placeholder="e.g. 2920398"
-                className={cn(inputCls, 'font-mono')}
-              />
+              <WithExample example="2920398">
+                  <input
+                  value={pmCode}
+                  onChange={(e) => setPmCode(e.target.value)}
+                  className={cn(inputCls, 'font-mono')}
+                />
+              </WithExample>
             </div>
             <div>
               <JsLabel required>Material Name</JsLabel>
-              <input
-                value={materialName}
-                onChange={(e) => setMaterialName(e.target.value)}
-                placeholder="e.g. KURANTO 525FS 1L LABEL_AR_01"
-                className={inputCls}
-              />
+              <WithExample example="KURANTO 525FS 1L LABEL_AR_01">
+                  <input
+                  value={materialName}
+                  onChange={(e) => setMaterialName(e.target.value)}
+                  className={inputCls}
+                />
+              </WithExample>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <JsLabel required>Quantity</JsLabel>
-              <input
-                type="number"
-                inputMode="numeric"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                placeholder="e.g. 1200"
-                className={cn(inputCls, 'font-mono')}
-              />
+              <WithUnit unit="labels">
+                  <input
+                  type="number"
+                  inputMode="numeric"
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                  className={cn(inputCls, 'font-mono')}
+                />
+              </WithUnit>
             </div>
             <div>
               <JsLabel required>Rate</JsLabel>
-              <input
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                value={rate}
-                onChange={(e) => setRate(e.target.value)}
-                placeholder="e.g. 22.50"
-                className={cn(inputCls, 'font-mono')}
-              />
+              <WithUnit unit="₹ / label">
+                  <input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  value={rate}
+                  onChange={(e) => setRate(e.target.value)}
+                  className={cn(inputCls, 'font-mono')}
+                />
+              </WithUnit>
             </div>
           </div>
 
@@ -334,7 +339,6 @@ export default function AddJobSeparationModal({ editing, prefill, onClose, onSav
             <input
               value={jobStatus}
               onChange={(e) => setJobStatus(e.target.value)}
-              placeholder="Optional"
               className={inputCls}
             />
           </div>
@@ -342,21 +346,23 @@ export default function AddJobSeparationModal({ editing, prefill, onClose, onSav
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <JsLabel>Job Card Status</JsLabel>
-              <input
-                value={jcStatus}
-                onChange={(e) => setJcStatus(e.target.value.toUpperCase())}
-                placeholder="e.g. DONE"
-                className={inputCls}
-              />
+              <WithExample example="DONE">
+                  <input
+                  value={jcStatus}
+                  onChange={(e) => setJcStatus(e.target.value.toUpperCase())}
+                  className={inputCls}
+                />
+              </WithExample>
             </div>
             <div>
               <JsLabel>AW SENT to U1</JsLabel>
-              <input
-                value={awSendTo}
-                onChange={(e) => setAwSendTo(e.target.value.toUpperCase())}
-                placeholder="e.g. REPEAT"
-                className={inputCls}
-              />
+              <WithExample example="REPEAT">
+                  <input
+                  value={awSendTo}
+                  onChange={(e) => setAwSendTo(e.target.value.toUpperCase())}
+                  className={inputCls}
+                />
+              </WithExample>
             </div>
           </div>
         </div>

@@ -21,6 +21,7 @@ import type { BomMaterial } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import SortableHeaderLabel from './SortableHeaderLabel';
 import { SkeletonRows } from '@/components/ui/Skeleton';
+import { WithExample } from '@/components/ui/FieldAffix';
 
 const EMPTY: BomMaterial[] = [];
 
@@ -230,17 +231,21 @@ export default function BomMaterialsManager({ canManage }: Props) {
           <h3 className="text-sm font-semibold text-[var(--glass-ink)]">New material</h3>
           <div className="mt-3 grid gap-2 sm:grid-cols-[2fr_2fr_1fr_auto] sm:items-end">
             <Field label="Name">
-              <input autoFocus value={addDraft.name} onChange={(e) => setAddDraft({ ...addDraft, name: e.target.value })}
-                     onKeyDown={(e) => { if (e.key === 'Enter') add(); }} placeholder="Chromo Paper 80gsm" className={cn(inputClass, 'w-full')} />
+              <WithExample example="Chromo Paper 80gsm">
+                  <input autoFocus value={addDraft.name} onChange={(e) => setAddDraft({ ...addDraft, name: e.target.value })}
+                       onKeyDown={(e) => { if (e.key === 'Enter') add(); }} className={cn(inputClass, 'w-full')} />
+              </WithExample>
             </Field>
             <Field label="Specification (optional)">
-              <input value={addDraft.specification} onChange={(e) => setAddDraft({ ...addDraft, specification: e.target.value })}
-                     onKeyDown={(e) => { if (e.key === 'Enter') add(); }} placeholder="gsm / micron / finish" className={cn(inputClass, 'w-full')} />
+              <WithExample example="gsm / micron / finish">
+                  <input value={addDraft.specification} onChange={(e) => setAddDraft({ ...addDraft, specification: e.target.value })}
+                       onKeyDown={(e) => { if (e.key === 'Enter') add(); }} className={cn(inputClass, 'w-full')} />
+              </WithExample>
             </Field>
             <Field label="₹ per m²">
               <input type="number" min="0" step="any" inputMode="decimal" value={addDraft.rate}
                      onChange={(e) => setAddDraft({ ...addDraft, rate: e.target.value })}
-                     onKeyDown={(e) => { if (e.key === 'Enter') add(); }} placeholder="0.00"
+                     onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
                      className={cn(inputClass, 'w-full font-mono tabular-nums text-right')} />
             </Field>
             <Button intent="primary" icon={Check} busy={busyId === 'new'} onClick={add}>Add</Button>

@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { ModalShell } from './modals';
 import { DIE_STATUSES, type Die, type DieStatus } from '@/lib/types';
+import { WithExample, WithUnit } from '@/components/ui/FieldAffix';
 
 const inputCls = cn(
   'w-full px-3 py-2 rounded-lg text-sm bg-[var(--field-bg)] border border-[var(--field-border)]',
@@ -129,97 +130,106 @@ export default function AddDieModal({ editing, onClose, onSaved }: Props) {
         <div className="px-5 py-4 overflow-y-auto space-y-4">
           <div>
             <DieLabel required>Job</DieLabel>
-            <input
-              value={jobName}
-              onChange={(e) => setJobName(e.target.value)}
-              placeholder="e.g. DHANUKA TARGA SUPER 250 ML"
-              className={inputCls}
-            />
+            <WithExample example="DHANUKA TARGA SUPER 250 ML">
+                <input
+                value={jobName}
+                onChange={(e) => setJobName(e.target.value)}
+                className={inputCls}
+              />
+            </WithExample>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <DieLabel required>Length</DieLabel>
-              <input
-                value={length}
-                onChange={(e) => setLength(e.target.value)}
-                placeholder="e.g. 85"
-                className={cn(inputCls, 'font-mono')}
-              />
+              <WithUnit unit="mm">
+                  <input
+                  value={length}
+                  onChange={(e) => setLength(e.target.value)}
+                  className={cn(inputCls, 'font-mono')}
+                />
+              </WithUnit>
             </div>
             <div>
               <DieLabel required>Width</DieLabel>
-              <input
-                value={width}
-                onChange={(e) => setWidth(e.target.value)}
-                placeholder="e.g. 60 or 85 x 60"
-                className={cn(inputCls, 'font-mono')}
-              />
+              <WithExample example="60, or 85 x 60">
+                  <WithUnit unit="mm">
+                    <input
+                    value={width}
+                    onChange={(e) => setWidth(e.target.value)}
+                    className={cn(inputCls, 'font-mono')}
+                  />
+                </WithUnit>
+              </WithExample>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <DieLabel required>Cylinder</DieLabel>
-              <input
-                type="number"
-                inputMode="numeric"
-                value={cylinder}
-                onChange={(e) => setCylinder(e.target.value)}
-                placeholder="e.g. 81"
-                className={cn(inputCls, 'font-mono')}
-              />
+              <WithUnit unit="teeth">
+                  <input
+                  type="number"
+                  inputMode="numeric"
+                  value={cylinder}
+                  onChange={(e) => setCylinder(e.target.value)}
+                  className={cn(inputCls, 'font-mono')}
+                />
+              </WithUnit>
             </div>
             <div>
               <DieLabel required>Material</DieLabel>
-              <input
-                value={material}
-                onChange={(e) => setMaterial(e.target.value)}
-                placeholder="e.g. 0.75 CHROMO SILVER"
-                className={inputCls}
-              />
+              <WithExample example="0.75 CHROMO SILVER">
+                  <input
+                  value={material}
+                  onChange={(e) => setMaterial(e.target.value)}
+                  className={inputCls}
+                />
+              </WithExample>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <DieLabel required>Ups per repeat</DieLabel>
-              <input
-                type="number"
-                inputMode="numeric"
-                value={ups}
-                onChange={(e) => setUps(e.target.value)}
-                placeholder="Labels per revolution"
-                className={cn(inputCls, 'font-mono')}
-              />
+              <WithUnit unit="ups">
+                  <input
+                  type="number"
+                  inputMode="numeric"
+                  value={ups}
+                  onChange={(e) => setUps(e.target.value)}
+                  className={cn(inputCls, 'font-mono')}
+                />
+              </WithUnit>
             </div>
             <div>
               <DieLabel required>Gap across</DieLabel>
-              <input
-                value={gap}
-                onChange={(e) => setGap(e.target.value)}
-                placeholder="e.g. 5 MM"
-                className={inputCls}
-              />
+              <WithExample example="5 MM">
+                  <input
+                  value={gap}
+                  onChange={(e) => setGap(e.target.value)}
+                  className={inputCls}
+                />
+              </WithExample>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <DieLabel required>Corner radius</DieLabel>
-              <input
-                value={corner}
-                onChange={(e) => setCorner(e.target.value)}
-                placeholder="e.g. ROUND, SPECIAL"
-                className={inputCls}
-              />
+              <WithExample example="ROUND, SPECIAL">
+                  <input
+                  value={corner}
+                  onChange={(e) => setCorner(e.target.value)}
+                  className={inputCls}
+                />
+              </WithExample>
             </div>
             <div>
               <DieLabel required>Serial no</DieLabel>
               <input
                 value={serialNo}
                 onChange={(e) => setSerialNo(e.target.value)}
-                placeholder="Etched on the die"
                 className={cn(inputCls, 'font-mono')}
               />
             </div>
@@ -237,12 +247,13 @@ export default function AddDieModal({ editing, onClose, onSaved }: Props) {
             </div>
             <div>
               <DieLabel required>Die location</DieLabel>
-              <input
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="Rack / shelf / bay"
-                className={inputCls}
-              />
+              <WithExample example="Rack B2">
+                  <input
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  className={inputCls}
+                />
+              </WithExample>
             </div>
           </div>
 
@@ -272,12 +283,13 @@ export default function AddDieModal({ editing, onClose, onSaved }: Props) {
               </div>
               <div>
                 <DieLabel required>Damage reason</DieLabel>
-                <input
-                  value={damageReason}
-                  onChange={(e) => setDamageReason(e.target.value)}
-                  placeholder="e.g. Cracked during mounting"
-                  className={inputCls}
-                />
+                <WithExample example="Cracked during mounting">
+                    <input
+                    value={damageReason}
+                    onChange={(e) => setDamageReason(e.target.value)}
+                    className={inputCls}
+                  />
+                </WithExample>
               </div>
             </div>
           )}

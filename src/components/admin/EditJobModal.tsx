@@ -23,6 +23,7 @@ import type { Job, PrintingUnit, JobType, PrintingMethod } from '@/lib/types';
 import { canDeptEditDeliveryDate } from '@/lib/constants/departments';
 import type { DeptPermissions } from '@/lib/constants/departments';
 import { usePrintingUnits } from '@/hooks/useReferenceData';
+import { WithExample, WithUnit } from '@/components/ui/FieldAffix';
 
 const NO_UNITS: PrintingUnit[] = [];
 
@@ -178,54 +179,57 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
         <div className="px-5 py-4 overflow-y-auto space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormField label="PO Number" required>
-              <input
-                required
-                value={form.po_number}
-                onChange={(e) => set('po_number', e.target.value)}
-                placeholder="e.g. PO/2026/001"
-                className={cn(inputCls, 'font-mono')}
-              />
+              <WithExample example="PO/2026/001">
+                  <input
+                  required
+                  value={form.po_number}
+                  onChange={(e) => set('po_number', e.target.value)}
+                  className={cn(inputCls, 'font-mono')}
+                />
+              </WithExample>
             </FormField>
             <FormField label="PM Code">
-              <input
-                value={form.pm_code}
-                onChange={(e) => set('pm_code', e.target.value)}
-                placeholder="e.g. PM-4521"
-                autoComplete="off"
-                className={cn(inputCls, 'font-mono')}
-              />
+              <WithExample example="PM-4521">
+                  <input
+                  value={form.pm_code}
+                  onChange={(e) => set('pm_code', e.target.value)}
+                  autoComplete="off"
+                  className={cn(inputCls, 'font-mono')}
+                />
+              </WithExample>
             </FormField>
           </div>
 
           <FormField label="Party / Client" required>
-            <input
-              required
-              value={form.party}
-              onChange={(e) => set('party', e.target.value)}
-              placeholder="e.g. DHANUKA - SANAND"
-              className={inputCls}
-            />
+            <WithExample example="DHANUKA - SANAND">
+                <input
+                required
+                value={form.party}
+                onChange={(e) => set('party', e.target.value)}
+                className={inputCls}
+              />
+            </WithExample>
           </FormField>
 
           <FormField label="Job Name">
             <input
               value={form.job_name}
               onChange={(e) => set('job_name', e.target.value)}
-              placeholder="e.g. Haz Label Printed Diafenthiuron 50% WP"
               className={inputCls}
             />
           </FormField>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormField label="Label Qty">
-              <input
-                type="number"
-                min={1}
-                value={form.label_qty}
-                onChange={(e) => set('label_qty', e.target.value)}
-                placeholder="e.g. 500000"
-                className={cn(inputCls, 'font-mono')}
-              />
+              <WithUnit unit="labels">
+                  <input
+                  type="number"
+                  min={1}
+                  value={form.label_qty}
+                  onChange={(e) => set('label_qty', e.target.value)}
+                  className={cn(inputCls, 'font-mono')}
+                />
+              </WithUnit>
             </FormField>
             <FormField label="Job Type">
               <select
@@ -288,7 +292,6 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
               rows={3}
               value={form.notes}
               onChange={(e) => set('notes', e.target.value)}
-              placeholder="Anything the floor should know about this job"
               className={cn(inputCls, 'resize-none')}
             />
           </FormField>

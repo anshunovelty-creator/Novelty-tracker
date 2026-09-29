@@ -278,7 +278,6 @@ export default function MachineBoard({ dept, collapsed }: Props) {
             <input
               value={machineName}
               onChange={(e) => setMachineName(e.target.value)}
-              placeholder="Machine 3"
               className="block mt-1 bg-white/[0.06] border border-white/10 min-h-11 rounded-lg px-2 py-1.5 text-xs text-[var(--glass-ink)] w-40"
             />
           </label>
@@ -287,7 +286,6 @@ export default function MachineBoard({ dept, collapsed }: Props) {
             <input
               value={machineLocation}
               onChange={(e) => setMachineLocation(e.target.value)}
-              placeholder="Ground floor"
               className="block mt-1 bg-white/[0.06] border border-white/10 min-h-11 rounded-lg px-2 py-1.5 text-xs text-[var(--glass-ink)] w-40"
             />
           </label>
@@ -297,7 +295,6 @@ export default function MachineBoard({ dept, collapsed }: Props) {
               value={machineRate}
               onChange={(e) => setMachineRate(e.target.value.replace(/[^0-9]/g, ''))}
               inputMode="numeric"
-              placeholder="25000"
               title="Used to estimate finish times automatically"
               className="block mt-1 bg-white/[0.06] border border-white/10 min-h-11 rounded-lg px-2 py-1.5 text-xs text-[var(--glass-ink)] w-40 font-mono"
             />
@@ -825,7 +822,6 @@ function MachineRate({
           inputMode="numeric"
           autoFocus
           aria-label={`Labels per hour for ${machine.name}`}
-          placeholder="25000"
           className="w-24 rounded border border-white/10 bg-white/[0.06] px-1.5 py-1 font-mono text-[11px] text-[var(--glass-ink)]"
         />
         <span className="text-[11px] text-[var(--glass-muted)]">/hr</span>

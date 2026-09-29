@@ -24,6 +24,7 @@ import type {
   RegisterAccount, RegisterDeal, RegisterActivity, RegisterStage, RegisterDealStatus,
 } from '@/lib/types';
 import { SearchClearButton } from '@/components/ui/SearchClearButton';
+import { WithExample } from '@/components/ui/FieldAffix';
 
 // ── constants ────────────────────────────────────────────────
 const STAGES: { id: RegisterStage; name: string; dot: string }[] = [
@@ -587,13 +588,13 @@ function AccountFormModal({ account, onClose, onSaved }: {
         <div className="space-y-3">
           <div>
             <label className={labelCls}>Company name *</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Meghmani Organics" className={inputCls} autoFocus />
+            <WithExample example="Meghmani Organics"><input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} autoFocus /></WithExample>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className={labelCls}>Contact person</label>
               <input value={contactName ?? ''} onChange={(e) => setContactName(e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>Their role</label>
-              <input value={contactRole ?? ''} onChange={(e) => setContactRole(e.target.value)} placeholder="Purchase / Packaging dev" className={inputCls} /></div>
+              <WithExample example="Purchase / Packaging dev"><input value={contactRole ?? ''} onChange={(e) => setContactRole(e.target.value)} className={inputCls} /></WithExample></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className={labelCls}>Phone</label>
@@ -608,12 +609,12 @@ function AccountFormModal({ account, onClose, onSaved }: {
                 {SEGMENTS.map((s) => <option key={s}>{s}</option>)}
               </select></div>
             <div><label className={labelCls}>Location</label>
-              <input value={city ?? ''} onChange={(e) => setCity(e.target.value)} placeholder="Ankleshwar" className={inputCls} /></div>
+              <input value={city ?? ''} onChange={(e) => setCity(e.target.value)} className={inputCls} /></div>
           </div>
           <div>
             <label className={labelCls}>Notes</label>
             <textarea value={notes ?? ''} onChange={(e) => setNotes(e.target.value)} rows={3}
-              placeholder="Substrates they run, rate history, who signs off…" className={cn(inputCls, 'resize-none')} />
+              className={cn(inputCls, 'resize-none')} />
           </div>
         </div>
         <div className="flex items-center gap-3 justify-between mt-5">
@@ -729,7 +730,7 @@ function DealFormModal({ deal, presetAccountId, accounts, onClose, onSaved }: {
           </div>
           <div>
             <label className={labelCls}>Job / enquiry *</label>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. 500ml herbicide front + back label" className={inputCls} autoFocus />
+            <WithExample example="500ml herbicide front + back label"><input value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} autoFocus /></WithExample>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className={labelCls}>Stage</label>
@@ -737,18 +738,18 @@ function DealFormModal({ deal, presetAccountId, accounts, onClose, onSaved }: {
                 {STAGES.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select></div>
             <div><label className={labelCls}>Owner</label>
-              <input value={owner ?? ''} onChange={(e) => setOwner(e.target.value)} placeholder="Who's following up" className={inputCls} /></div>
+              <input value={owner ?? ''} onChange={(e) => setOwner(e.target.value)} className={inputCls} /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className={labelCls}>Quantity</label>
-              <input value={qty ?? ''} onChange={(e) => setQty(e.target.value)} placeholder="1,00,000 labels" className={inputCls} /></div>
+              <WithExample example="1,00,000 labels"><input value={qty ?? ''} onChange={(e) => setQty(e.target.value)} className={inputCls} /></WithExample></div>
             <div><label className={labelCls}>Order value ₹</label>
-              <input value={value} onChange={(e) => setValue(e.target.value)} inputMode="decimal" placeholder="1,85,000" className={cn(inputCls, 'font-mono')} /></div>
+              <input value={value} onChange={(e) => setValue(e.target.value)} inputMode="decimal" className={cn(inputCls, 'font-mono')} /></div>
           </div>
           <div><label className={labelCls}>Substrate / spec</label>
-            <input value={substrate ?? ''} onChange={(e) => setSubstrate(e.target.value)} placeholder="Chromo art paper, 5 col + varnish" className={inputCls} /></div>
+            <WithExample example="Chromo art paper, 5 col + varnish"><input value={substrate ?? ''} onChange={(e) => setSubstrate(e.target.value)} className={inputCls} /></WithExample></div>
           <div><label className={labelCls}>Next action</label>
-            <input value={nextAction ?? ''} onChange={(e) => setNextAction(e.target.value)} placeholder="Call purchase for artwork approval" className={inputCls} /></div>
+            <input value={nextAction ?? ''} onChange={(e) => setNextAction(e.target.value)} className={inputCls} /></div>
           <div>
             <label className={labelCls}>Next action date</label>
             <input type="date" value={nextDate ?? ''} onChange={(e) => setNextDate(e.target.value)} className={inputCls} />
@@ -794,7 +795,7 @@ function DealFormModal({ deal, presetAccountId, accounts, onClose, onSaved }: {
         title="Mark as lost"
         description="Why was it lost?"
         label="Reason"
-        placeholder="Rate, lead time, quality, no reason given…"
+        example="rate, lead time, quality, no reason given"
         confirmLabel="Mark lost"
         onCancel={() => setPromptingLost(false)}
         onConfirm={(reason) => { setPromptingLost(false); patch({ status: 'lost', lost_reason: reason }, 'Marked lost'); }}
@@ -854,7 +855,7 @@ function LogFollowUpModal({ deal, account, onClose, onSaved }: {
           </div>
           <div><label className={labelCls}>What was said</label>
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} autoFocus
-              placeholder="Spoke to purchase — artwork approved, PO expected next week" className={cn(inputCls, 'resize-none')} /></div>
+              className={cn(inputCls, 'resize-none')} /></div>
           <div><label className={labelCls}>Next action</label>
             <input value={nextAction} onChange={(e) => setNextAction(e.target.value)} className={inputCls} /></div>
           <div>

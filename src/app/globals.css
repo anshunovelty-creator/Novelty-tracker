@@ -452,3 +452,34 @@ select:disabled {
 @media (prefers-reduced-motion: reduce) {
   .admin-light .skeleton { animation: none; background: rgba(12,42,32,.08); }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   EMPTY vs FILLED FIELDS
+   Forms carry no placeholders — staff read a sample value as one
+   already entered. Instead an empty field looks unfinished: dashed
+   edge, sunk into the card. Once it holds a value it turns solid and
+   white, sitting forward. React keeps a controlled input's `value`
+   attribute in sync, so [value=""] tracks the live value.
+   Search and chat boxes keep their placeholder and are left alone.
+   ═══════════════════════════════════════════════════════════════ */
+.admin-light input[value=""]:not([placeholder]):not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not(:focus):not(:disabled) {
+  border-style: dashed;
+  background-color: var(--glass-bg);
+}
+
+/* A worked example (<WithExample>) under a field, revealed only
+   while that field is being filled — so it can never pass for data. */
+.field-example {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 160ms ease-out, opacity 160ms ease-out;
+}
+.field-example > span { overflow: hidden; }
+:focus-within > .field-example {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .field-example { transition: none; }
+}

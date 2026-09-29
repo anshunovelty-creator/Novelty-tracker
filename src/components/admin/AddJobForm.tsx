@@ -9,6 +9,7 @@ import type { AddJobFormData, ScheduledReleaseInput, JobType, PrintingUnit, Labe
 import { LoadingButton } from '@/components/ui/Loading';
 import toast from 'react-hot-toast';
 import { usePrintingUnits } from '@/hooks/useReferenceData';
+import { WithExample, WithUnit } from '@/components/ui/FieldAffix';
 
 const NO_UNITS: PrintingUnit[] = [];
 
@@ -298,25 +299,27 @@ const AddJobForm = React.forwardRef<AddJobFormHandle, Props>(function AddJobForm
         {/* Row 1: PO + PM code + Party */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Field label="PO Number *">
-            <input
-              required
-              value={form.po_number}
-              onChange={(e) => set('po_number', e.target.value)}
-              placeholder="e.g. PO/2026/001"
-              className={inputCls}
-            />
+            <WithExample example="PO/2026/001">
+                <input
+                required
+                value={form.po_number}
+                onChange={(e) => set('po_number', e.target.value)}
+                className={inputCls}
+              />
+            </WithExample>
           </Field>
           <Field label="PM Code">
             <div className="relative">
-              <input
-                value={form.pm_code ?? ''}
-                onChange={(e) => set('pm_code', e.target.value)}
-                onFocus={() => pmSuggestions.length > 0 && setShowPmSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowPmSuggestions(false), 150)}
-                placeholder="e.g. PM-4521"
-                autoComplete="off"
-                className={inputCls}
-              />
+              <WithExample example="PM-4521">
+                  <input
+                  value={form.pm_code ?? ''}
+                  onChange={(e) => set('pm_code', e.target.value)}
+                  onFocus={() => pmSuggestions.length > 0 && setShowPmSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowPmSuggestions(false), 150)}
+                  autoComplete="off"
+                  className={inputCls}
+                />
+              </WithExample>
               {showPmSuggestions && (
                 <div className="absolute z-20 top-full left-0 right-0 mt-1 glass-strong glass rounded-lg shadow-lg overflow-hidden">
                   <p className="px-3 py-1.5 text-xs text-[var(--glass-muted)] bg-white/[0.06] border-b border-white/10">
@@ -347,13 +350,14 @@ const AddJobForm = React.forwardRef<AddJobFormHandle, Props>(function AddJobForm
             </div>
           </Field>
           <Field label="Party / Client *">
-            <input
-              required
-              value={form.party}
-              onChange={(e) => set('party', e.target.value)}
-              placeholder="e.g. UPL Limited"
-              className={inputCls}
-            />
+            <WithExample example="UPL Limited">
+                <input
+                required
+                value={form.party}
+                onChange={(e) => set('party', e.target.value)}
+                className={inputCls}
+              />
+            </WithExample>
           </Field>
         </div>
 
@@ -370,19 +374,19 @@ const AddJobForm = React.forwardRef<AddJobFormHandle, Props>(function AddJobForm
             <input
               value={form.job_name ?? ''}
               onChange={(e) => set('job_name', e.target.value)}
-              placeholder="Product / label name"
               className={inputCls}
             />
           </Field>
           <Field label="Label Qty">
-            <input
-              type="number"
-              min={1}
-              value={form.label_qty ?? ''}
-              onChange={(e) => set('label_qty', e.target.value ? Number(e.target.value) : null)}
-              placeholder="e.g. 500000"
-              className={cn(inputCls, 'font-mono')}
-            />
+            <WithUnit unit="labels">
+                <input
+                type="number"
+                min={1}
+                value={form.label_qty ?? ''}
+                onChange={(e) => set('label_qty', e.target.value ? Number(e.target.value) : null)}
+                className={cn(inputCls, 'font-mono')}
+              />
+            </WithUnit>
           </Field>
           <Field label="Job Type">
             <select
@@ -492,7 +496,6 @@ const AddJobForm = React.forwardRef<AddJobFormHandle, Props>(function AddJobForm
           <textarea
             value={form.notes ?? ''}
             onChange={(e) => set('notes', e.target.value)}
-            placeholder="Any additional notes…"
             rows={2}
             className={cn(inputCls, 'resize-none')}
           />
@@ -517,6 +520,11 @@ const AddJobForm = React.forwardRef<AddJobFormHandle, Props>(function AddJobForm
 
           {form.is_scheduled_release && (
             <div className="space-y-3">
+              <div className="grid grid-cols-12 gap-2 text-xs text-[var(--glass-muted)]" aria-hidden="true">
+                <span className="col-span-1" />
+                <span className="col-span-4">Qty</span>
+                <span className="col-span-5">Planned date</span>
+              </div>
               {releases.map((release, idx) => (
                 <div key={idx} className="grid grid-cols-12 gap-2 items-end">
                   <div className="col-span-1 text-center">
@@ -528,7 +536,7 @@ const AddJobForm = React.forwardRef<AddJobFormHandle, Props>(function AddJobForm
                       min={1}
                       value={release.planned_qty || ''}
                       onChange={(e) => updateRelease(idx, 'planned_qty', Number(e.target.value))}
-                      placeholder="Qty"
+                      aria-label={`Release ${release.release_number} quantity`}
                       className={cn(inputCls, 'font-mono text-xs')}
                     />
                   </div>
@@ -536,6 +544,7 @@ const AddJobForm = React.forwardRef<AddJobFormHandle, Props>(function AddJobForm
                     <input
                       type="date"
                       value={release.planned_date}
+                      aria-label={`Release ${release.release_number} planned date`}
                       onChange={(e) => updateRelease(idx, 'planned_date', e.target.value)}
                       className={cn(inputCls, 'text-xs')}
                     />

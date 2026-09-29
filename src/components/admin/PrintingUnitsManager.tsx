@@ -177,20 +177,19 @@ export default function PrintingUnitsManager() {
         className="rounded-xl border border-black/[0.08] bg-white p-4 shadow-sm"
       >
         <h2 className="text-sm font-semibold text-[var(--glass-ink)] mb-3">Add a unit</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] sm:items-end gap-2">
           <div>
-            <label htmlFor="new-unit-name" className="sr-only">Unit name</label>
+            <label htmlFor="new-unit-name" className="block text-xs text-[var(--glass-muted)] mb-1">Unit name</label>
             <input
               id="new-unit-name"
               className={inputCls}
-              placeholder="Unit name, e.g. Unit-3"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               disabled={creating}
             />
           </div>
           <div>
-            <label htmlFor="new-unit-method" className="sr-only">Printing method</label>
+            <label htmlFor="new-unit-method" className="block text-xs text-[var(--glass-muted)] mb-1">Printing method</label>
             <select
               id="new-unit-method"
               className={inputCls}

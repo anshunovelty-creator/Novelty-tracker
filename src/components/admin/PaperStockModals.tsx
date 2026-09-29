@@ -17,6 +17,7 @@ import { formatMeters } from '@/lib/paperStock';
 import type { BomMaterial, PaperRoll } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { ModalShell } from './modals';
+import { WithExample } from '@/components/ui/FieldAffix';
 
 export type ReceivePrefill = {
   material_id?:       string;
@@ -159,7 +160,7 @@ export function ReceiveRollsModal({
 
         <div className={cn('grid gap-3', orderMode ? 'grid-cols-1' : 'grid-cols-2')}>
           <Field label="Location (optional)">
-            <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Rack B2" className={fieldCls} />
+            <input value={location} onChange={(e) => setLocation(e.target.value)} className={fieldCls} />
           </Field>
           {!orderMode && (
             <Field label="Supplier (optional)">
@@ -168,7 +169,7 @@ export function ReceiveRollsModal({
           )}
         </div>
         <Field label="Note (optional)">
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. invoice no., batch" className={fieldCls} />
+          <WithExample example="invoice no., batch"><input value={note} onChange={(e) => setNote(e.target.value)} className={fieldCls} /></WithExample>
         </Field>
 
         <div className="flex gap-3 justify-end pt-1">
@@ -239,7 +240,7 @@ export function AdjustRollModal({ roll, onClose }: { roll: PaperRoll; onClose: (
         )}
         {remainingChanged && validRemaining && (
           <Field label="Reason (optional)">
-            <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. physical count, damaged edge" className={fieldCls} />
+            <WithExample example="physical count, damaged edge"><input value={reason} onChange={(e) => setReason(e.target.value)} className={fieldCls} /></WithExample>
           </Field>
         )}
         <div className="flex gap-3 justify-end pt-1">
