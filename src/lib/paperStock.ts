@@ -50,6 +50,43 @@ export function summariseStock(rolls: PaperRoll[]): StockLine[] {
   );
 }
 
+export type MaterialGroup = {
+  material_id:   string;
+  material_name: string;
+  rolls:         number;
+  meters:        number;
+  locations:     string[];
+  last_received: string | null;
+  lines:         StockLine[];   // one per width, narrow → wide
+};
+
+/**
+ * Stock lines folded one level up, by material — the Inventory tab's top
+ * level ("AM89240F · 3 widths · 24,500 m"). Expects summariseStock's order,
+ * so groups come out A→Z and widths narrow→wide.
+ */
+export function groupStockByMaterial(lines: StockLine[]): MaterialGroup[] {
+  const byId = new Map<string, MaterialGroup>();
+  for (const line of lines) {
+    let group = byId.get(line.material_id);
+    if (!group) {
+      group = {
+        material_id: line.material_id, material_name: line.material_name,
+        rolls: 0, meters: 0, locations: [], last_received: null, lines: [],
+      };
+      byId.set(line.material_id, group);
+    }
+    group.rolls += line.rolls;
+    group.meters = Math.round((group.meters + line.meters) * 100) / 100;
+    for (const loc of line.locations) if (!group.locations.includes(loc)) group.locations.push(loc);
+    if (line.last_received && (!group.last_received || line.last_received > group.last_received)) {
+      group.last_received = line.last_received;
+    }
+    group.lines.push(line);
+  }
+  return Array.from(byId.values());
+}
+
 /** "4 full + 1 part" / "3 rolls" — how the floor says it. */
 export function describeRolls(line: Pick<StockLine, 'rolls' | 'full_rolls' | 'part_rolls'>): string {
   if (line.part_rolls === 0) return `${line.rolls} roll${line.rolls === 1 ? '' : 's'}`;
