@@ -33,8 +33,11 @@ import { Search, Send, Check, Undo2, SplitSquareHorizontal, Loader2, PackageMinu
 import { useFitToViewport } from '@/hooks/useFitToViewport';
 import toast from 'react-hot-toast';
 import { cn, formatQty, formatNumericDate } from '@/lib/utils';
-import { materialExpense, orderDifference, formatInr } from '@/lib/bom';
-import { summariseStock, stockKey, describeRolls, formatMeters, type StockLine } from '@/lib/paperStock';
+import { materialExpense, orderDifference, formatInr, marginPercent, costingTotals, parseInputNumber } from '@/lib/bom';
+import {
+  summariseStock, stockKey, describeRolls, formatMeters, stockNeed, suggestedIssue, stockShortfall, stockCoverPct,
+  type StockLine,
+} from '@/lib/paperStock';
 import { usePaperStock } from '@/hooks/usePaperStock';
 import type { DateRange } from '@/lib/jobSeparationQuery';
 import type { BomCostingRow, BomMaterial, BomMaterialRequest, BomRequestStatus } from '@/lib/types';
@@ -106,12 +109,6 @@ function draftFromRow(row: BomCostingRow): Draft {
 
 function sameDraft(a: Draft, b: Draft): boolean {
   return a.material_id === b.material_id && a.width === b.width && a.metres === b.metres;
-}
-
-function num(value: string): number | null {
-  if (!value.trim()) return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
 }
 
 // Exactly what's on screen — the saved figures, not the drafts.
@@ -227,14 +224,7 @@ export default function BomCostingTable({ canDecide }: Props) {
     [rows],
   );
 
-  const totals = useMemo(() => {
-    let orderValue = 0, expense = 0, priced = 0;
-    for (const r of exportRows) {
-      orderValue += r.job.order_value ?? 0;
-      if (r.expense !== null) { expense += r.expense; priced += 1; }
-    }
-    return { orderValue, expense, priced, difference: orderValue - expense };
-  }, [exportRows]);
+  const totals = useMemo(() => costingTotals(exportRows), [exportRows]);
 
   function draftFor(row: BomCostingRow): Draft {
     return drafts[row.job.id] ?? draftFromRow(row);
@@ -262,8 +252,8 @@ export default function BomCostingTable({ canDecide }: Props) {
 
   async function saveRow(row: BomCostingRow) {
     const draft = draftFor(row);
-    const width  = num(draft.width);
-    const metres = num(draft.metres);
+    const width  = parseInputNumber(draft.width);
+    const metres = parseInputNumber(draft.metres);
     if (draft.width.trim()  && (width  === null || width  <= 0)) { toast.error('Width must be a number above 0'); return; }
     if (draft.metres.trim() && (metres === null || metres <= 0)) { toast.error('Running metres must be a number above 0'); return; }
 
@@ -612,8 +602,8 @@ export default function BomCostingTable({ canDecide }: Props) {
 
       {issuing && (() => {
         const { row, line } = issuing;
-        const need = Math.max((row.costing?.running_meter ?? 0) - row.stock_issued_m, 0);
-        const suggested = Math.min(need || line.meters, line.meters);
+        const need = stockNeed(row.costing?.running_meter, row.stock_issued_m);
+        const suggested = suggestedIssue(need, line.meters);
         return (
           <PromptModal
             title={`Use ${line.material_name} from stock for ${row.job.sr_no ?? row.job.party}`}
@@ -766,13 +756,11 @@ type Preview = {
 function previewFigures(row: BomCostingRow, draft: Draft, materialsById: Map<string, BomMaterial>): Preview {
   const material = draft.material_id ? materialsById.get(draft.material_id) : undefined;
   const rate = material ? material.rate_per_sqm : null;
-  const width = num(draft.width);
-  const metres = num(draft.metres);
+  const width = parseInputNumber(draft.width);
+  const metres = parseInputNumber(draft.metres);
   const expense = materialExpense(metres, width, rate);
   const difference = orderDifference(row.job.order_value, expense);
-  const marginPct = difference !== null && row.job.order_value
-    ? ((difference / row.job.order_value) * 100).toFixed(1)
-    : null;
+  const marginPct = marginPercent(difference, row.job.order_value);
   const rateNote = material && !(rate && rate > 0) ? 'No rate on master' : null;
   return { expense, difference, marginPct, rateNote };
 }
@@ -861,7 +849,7 @@ function StockCell({
   stockByKey: Map<string, StockLine>; stockLines: StockLine[];
   busy: boolean; onUse: (line: StockLine) => void; onReturn: () => void;
 }) {
-  const width = num(draft.width);
+  const width = parseInputNumber(draft.width);
   const issued = row.stock_issued_m;
   const usage = issued > 0 ? <StockUsagePill row={row} busy={busy} onReturn={onReturn} /> : null;
 
@@ -870,8 +858,8 @@ function StockCell({
   }
 
   const line = stockByKey.get(stockKey(draft.material_id, width));
-  const need = Math.max((num(draft.metres) ?? 0) - issued, 0);
-  const short = line && need > 0 && line.meters < need ? Math.round((need - line.meters) * 100) / 100 : 0;
+  const need = stockNeed(parseInputNumber(draft.metres), issued);
+  const short = line ? stockShortfall(need, line.meters) : 0;
 
   // Same material, wider rolls — could be slit down. A hint, not an option.
   const wider = line ? [] : stockLines.filter((l) => l.material_id === draft.material_id && l.width_mm > width);
@@ -904,7 +892,7 @@ function StockCell({
             <div className="mt-1 h-1 w-16 rounded-full bg-black/[0.07] overflow-hidden" aria-hidden="true">
               <div
                 className={cn('h-full rounded-full', short ? 'bg-amber-500' : 'bg-emerald-500')}
-                style={{ width: `${Math.min(100, Math.round((line.meters / need) * 100))}%` }}
+                style={{ width: `${stockCoverPct(line.meters, need)}%` }}
               />
             </div>
           )}

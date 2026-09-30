@@ -33,6 +33,42 @@ export function orderDifference(
   return Math.round((orderValue - expense) * 100) / 100;
 }
 
+/**
+ * Difference as a share of order value, one decimal ("12.5"). Null until
+ * the difference is known, and when there's no order value to divide by.
+ */
+export function marginPercent(
+  difference: number | null,
+  orderValue: number | null | undefined,
+): string | null {
+  return difference !== null && orderValue
+    ? ((difference / orderValue) * 100).toFixed(1)
+    : null;
+}
+
+/**
+ * The costing sheet's totals line. Order value counts every row; expense
+ * only the rows that are priced (`priced` says how many), so the
+ * difference is order value less what's been priced so far.
+ */
+export function costingTotals(
+  rows: { job: { order_value: number | null }; expense: number | null }[],
+): { orderValue: number; expense: number; priced: number; difference: number } {
+  let orderValue = 0, expense = 0, priced = 0;
+  for (const r of rows) {
+    orderValue += r.job.order_value ?? 0;
+    if (r.expense !== null) { expense += r.expense; priced += 1; }
+  }
+  return { orderValue, expense, priced, difference: orderValue - expense };
+}
+
+/** A typed input → a number; null when blank or not a number. */
+export function parseInputNumber(value: string): number | null {
+  if (!value.trim()) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 /** Rupees with Indian grouping, no currency sign — the caller places the ₹. */
 export function formatInr(value: number | null | undefined): string {
   if (value === null || value === undefined) return '—';
