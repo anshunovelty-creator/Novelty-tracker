@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { Package, Scissors, Disc, Users, SplitSquareHorizontal, Contact, ClipboardList, Truck, Menu, X, Building2, LayoutDashboard, Printer, Palette, Settings, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
@@ -20,17 +20,13 @@ import {
 } from '@/lib/constants/departments';
 import { Logo } from '@/components/brand/Logo';
 import ExportButton from './ExportButton';
+import { useBomPendingCount, useDispatchPendingCount } from '@/hooks/useBadgeCounts';
 
 type Props = {
   dept:        DeptPermissions;
   displayName: string;
   userEmail:   string;
 };
-
-// How often the header re-checks for material requests nobody has answered.
-// Slow on purpose: this is a badge, not a wall display, and it rides the
-// count-only branch of the API so it never pulls the request bodies.
-const BOM_BADGE_POLL_MS = 60_000;
 
 /** How the section strip is currently drawn. The header steps down this
  *  ladder one rung at a time, and only when the rung above genuinely no
@@ -166,25 +162,12 @@ export default function AdminHeader({ dept, displayName, userEmail }: Props) {
   // can see the section at all, so nobody else even asks.
   const showBom = canDeptUseBOM(dept);
 
-  // React Query owns the poll now: refetchInterval already skips firing
-  // while the tab is in the background (matching the old manual
-  // document.visibilityState check), and a failed poll just leaves the
-  // last successful count on screen rather than resetting to 0 — a badge
-  // is not worth a toast.
-  const { data: bomPending = 0 } = useQuery({
-    queryKey: ['bom-requests', 'pending-count'],
-    queryFn: async () => {
-      const res = await fetch('/api/bom-requests?count=pending');
-      if (!res.ok) throw new Error('Failed to load pending BOM count');
-      const data = await res.json();
-      return data.pending ?? 0;
-    },
-    enabled: showBom,
-    refetchInterval: BOM_BADGE_POLL_MS,
-  });
+  // Realtime-driven count with a slow fallback poll — see useBadgeCounts.
+  // BomTabs reads the same query, so the number is fetched once.
+  const bomPending = useBomPendingCount(showBom);
 
   // Parties with a dispatch batch still waiting to be emailed. Only
-  // Dispatch/Admin manage this queue — same poll cadence as the BOM badge.
+  // Dispatch/Admin manage this queue — kept live the same way as the BOM badge.
   const canQueue = canDeptManageDispatchNotifications(dept);
 
   // Dispatch Emails now also holds the party-contact and internal-recipient
@@ -195,17 +178,7 @@ export default function AdminHeader({ dept, displayName, userEmail }: Props) {
   const showDispatchEmails =
     canQueue || canDeptManagePartyContacts(dept) || canDeptManageNotificationRecipients(dept);
 
-  const { data: dispatchPending = 0 } = useQuery({
-    queryKey: ['dispatch-notifications', 'pending-count'],
-    queryFn: async () => {
-      const res = await fetch('/api/dispatch-notifications?count=pending');
-      if (!res.ok) throw new Error('Failed to load pending dispatch count');
-      const data = await res.json();
-      return data.pending ?? 0;
-    },
-    enabled: canQueue,
-    refetchInterval: BOM_BADGE_POLL_MS,
-  });
+  const dispatchPending = useDispatchPendingCount(canQueue);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
