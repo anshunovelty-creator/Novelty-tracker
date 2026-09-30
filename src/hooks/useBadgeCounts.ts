@@ -13,7 +13,7 @@
 // to rows it could already fetch.
 //
 // Self-healing, in case the socket drops or the table is not yet in the
-// supabase_realtime publication (see migration *_realtime_badges.sql):
+// supabase_realtime publication (see migration 068_realtime_badges.sql):
 //   - a slow fallback poll (react-query pauses it while the tab is hidden);
 //   - a refetch when the tab becomes visible again, if the count is stale;
 //   - a refetch whenever the channel (re)subscribes, to catch anything that
