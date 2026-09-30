@@ -138,8 +138,8 @@ GRANT EXECUTE ON FUNCTION public.trim_dispatch_notification_history()      TO se
 
 -- 3a. client_job_view / client_status_log_view stay SECURITY DEFINER
 -- (the anon /track portal depends on it) but become read-only.
-REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
-  ON public.client_job_view, public.client_status_log_view
+-- REVOKE ALL (not a list) so PG17's MAINTAIN privilege goes too.
+REVOKE ALL ON public.client_job_view, public.client_status_log_view
   FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.client_job_view, public.client_status_log_view TO anon, authenticated;
 
@@ -157,9 +157,7 @@ DO $$
 BEGIN
   IF to_regclass('public.client_print_run_stage_log_view') IS NOT NULL THEN
     ALTER VIEW public.client_print_run_stage_log_view SET (security_invoker = true);
-    REVOKE ALL ON public.client_print_run_stage_log_view FROM PUBLIC, anon;
-    REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
-      ON public.client_print_run_stage_log_view FROM authenticated;
+    REVOKE ALL ON public.client_print_run_stage_log_view FROM PUBLIC, anon, authenticated;
     GRANT SELECT ON public.client_print_run_stage_log_view TO authenticated;
   ELSE
     RAISE NOTICE '066: client_print_run_stage_log_view not present, skipping';
