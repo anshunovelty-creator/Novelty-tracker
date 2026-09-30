@@ -11,8 +11,8 @@
 // something waiting.
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
+import { useBomPendingCount } from '@/hooks/useBadgeCounts';
 import BomCostingTable from './BomCostingTable';
 import BomRequestsList from './BomRequestsList';
 import BomMaterialsManager from './BomMaterialsManager';
@@ -33,17 +33,9 @@ export default function BomTabs({ canDecide, canManageStock }: { canDecide: bool
   // rest.
   const [tab, setTab] = useState<Tab>('costing');
 
-  // Shares the header badge's query key, so the count is fetched once and
-  // both places update together when a request is raised or answered.
-  const { data: pending = 0 } = useQuery({
-    queryKey: ['bom-requests', 'pending-count'],
-    queryFn: async () => {
-      const res = await fetch('/api/bom-requests?count=pending');
-      if (!res.ok) throw new Error('Failed to load pending count');
-      const data = await res.json();
-      return (data.pending ?? 0) as number;
-    },
-  });
+  // Same live count as the header badge (one query, one Realtime channel),
+  // so both update together when a request is raised or answered.
+  const pending = useBomPendingCount();
 
   return (
     <div className="space-y-4">
