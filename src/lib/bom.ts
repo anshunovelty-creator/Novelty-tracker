@@ -48,18 +48,23 @@ export function marginPercent(
 
 /**
  * The costing sheet's totals line. Order value counts every row; expense
- * only the rows that are priced (`priced` says how many), so the
- * difference is order value less what's been priced so far.
+ * only the rows that are priced (`priced` says how many). The difference
+ * compares like with like — priced rows' order value less their expense —
+ * so an unpriced order never shows up as pure margin.
  */
 export function costingTotals(
   rows: { job: { order_value: number | null }; expense: number | null }[],
 ): { orderValue: number; expense: number; priced: number; difference: number } {
-  let orderValue = 0, expense = 0, priced = 0;
+  let orderValue = 0, pricedOrderValue = 0, expense = 0, priced = 0;
   for (const r of rows) {
     orderValue += r.job.order_value ?? 0;
-    if (r.expense !== null) { expense += r.expense; priced += 1; }
+    if (r.expense !== null) {
+      pricedOrderValue += r.job.order_value ?? 0;
+      expense += r.expense;
+      priced += 1;
+    }
   }
-  return { orderValue, expense, priced, difference: orderValue - expense };
+  return { orderValue, expense, priced, difference: pricedOrderValue - expense };
 }
 
 /** A typed input → a number; null when blank or not a number. */

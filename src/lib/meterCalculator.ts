@@ -17,17 +17,20 @@ export function formatRupees(n: number, digits = 2): string {
   return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 }
 
-/** Trims float noise (279.40000000000003) before formatting. */
+/** Trims float noise (279.40000000000003) before formatting. `+ 0` turns
+ *  the -0 that a -1e-14 rounds to into 0, so an exact fit never reads "-0". */
 export function round2(n: number): number {
-  return parseFloat(n.toFixed(2));
+  return parseFloat(n.toFixed(2)) + 0;
 }
 
 // Ups and metres round one way on purpose (whole ups that fit, metres never
-// short) — from 2 decimals, not the raw float, so 2.0000001 ups stays 2.
+// short). Ups floor with a tiny epsilon, not from 2 decimals: 2.0000001
+// stays 2, but 2.998 must also stay 2 — rounding it to 3.00 first would
+// offer an up that doesn't fit. Metres still ceil from 2 decimals.
 // A quantity rounds to the nearest label instead: the totals it's worked
 // back from are themselves rounded (₹11,195.74 gives 23,299.99… labels,
 // which is 23,300), and a label either way doesn't matter.
-export const floorWhole = (n: number) => Math.floor(round2(n));
+export const floorWhole = (n: number) => Math.floor(n + 1e-9);
 export const ceilWhole  = (n: number) => Math.ceil(round2(n));
 export const nearestWhole = (n: number) => Math.round(n);
 
@@ -149,7 +152,10 @@ export const GAP: CalcSpec = {
   },
   warn(v) {
     const gap = (v.cyl * CYLINDER_PITCH_MM) / v.ups - v.length;
-    if (gap >= 0) return null;
+    // Half a hundredth of tolerance: an exact fit comes out as -1e-14, and a
+    // cylinder worked back to 2 decimals can be a few µm short. Neither is
+    // an overlap anyone could measure.
+    if (gap >= -0.005) return null;
     return `Labels overlap — ${formatNum(round2(-gap))} mm too long for this cylinder at ${formatNum(v.ups, 0)} ${v.ups === 1 ? 'up' : 'ups'}.`;
   },
 };

@@ -65,17 +65,18 @@ describe('rounding helpers', () => {
     expect(round2(3.13333)).toBe(3.13);
   });
 
-  it('floorWhole: whole ups that fit, from 2 dp so float noise stays down', () => {
+  it('floorWhole: whole ups that fit; float noise stays down', () => {
     expect(floorWhole(2.0000001)).toBe(2);
     expect(floorWhole(2.994)).toBe(2);
     expect(floorWhole(3.99)).toBe(3);
+    expect(floorWhole(3)).toBe(3);
+    expect(floorWhole(2.9999999999999996)).toBe(3);
   });
 
-  it('floorWhole rounds UP when the value is within 0.005 below a whole number', () => {
-    // Current behaviour: round2(2.996) is 3.00, so floor gives 3 even though
-    // only 2.996 ups fit. See the Gap tab's overlap test below.
-    expect(floorWhole(2.995)).toBe(3);
-    expect(floorWhole(2.996)).toBe(3);
+  it('floorWhole never rounds up to an up that does not fit', () => {
+    expect(floorWhole(2.995)).toBe(2);
+    expect(floorWhole(2.996)).toBe(2);
+    expect(floorWhole(2.9999)).toBe(2);
   });
 
   it('ceilWhole: never short, but 2 dp noise does not add a whole unit', () => {
@@ -318,36 +319,36 @@ describe('Gap tab', () => {
     expect(GAP.readout({ length: 90 }, null)).toEqual([]);
   });
 
-  // ── Suspected bugs: current behaviour pinned, flagged for review ──
+  // ── Fixed 2026-09-30: false overlap warnings and ups rounding up ──
 
-  it('SUSPECTED BUG: cylinder worked back from a 0 gap warns of a "0 mm" overlap', () => {
+  it('cylinder worked back from a 0 gap gives no overlap warning', () => {
     // 50 mm labels, no gap, 3 ups → cyl = 150 ÷ 3.175 = 47.2441, shown as
-    // 47.24. warn() recomputes the gap from that ROUNDED cylinder:
-    // 47.24 × 3.175 ÷ 3 − 50 = −0.0043 mm, so it reports an overlap that
-    // formats as "0 mm". The operator asked for 0 gap and gets an alarm.
+    // 47.24. Re-checking the gap from that rounded cylinder is −0.0043 mm,
+    // inside the half-hundredth tolerance, so no alarm.
     const out = calc(GAP, { length: 50, ups: 3, gap: 0 });
     expect(out.known.cyl).toBe(47.24);
     expect(out.error).toBeNull();
-    expect(out.warning).toBe('Labels overlap — 0 mm too long for this cylinder at 3 ups.');
+    expect(out.warning).toBeNull();
   });
 
-  it('SUSPECTED BUG: a label that exactly fills its up shows a "-0" gap and an overlap warning', () => {
-    // 96-tooth = 304.8 mm; ÷ 3 ups = 101.6 mm, so a 101.6 mm label leaves
-    // exactly 0. In floating point 304.8 ÷ 3 − 101.6 is −1.4e-14: round2
-    // keeps the sign (−0), the field shows "-0", and warn() — testing the
-    // raw value, not the rounded one — reports a "0 mm" overlap.
+  it('a label that exactly fills its up shows a 0 gap and no warning', () => {
+    // 96-tooth = 304.8 mm; ÷ 3 ups = 101.6 mm. Float gives −1.4e-14.
     const out = calc(GAP, { cyl: 96, length: 101.6, ups: 3 });
-    expect(Object.is(out.known.gap, -0)).toBe(true);
-    expect(out.display.gap).toBe('-0');
-    expect(out.warning).toBe('Labels overlap — 0 mm too long for this cylinder at 3 ups.');
+    expect(Object.is(out.known.gap, 0)).toBe(true);
+    expect(out.display.gap).toBe('0');
+    expect(out.warning).toBeNull();
   });
 
-  it('SUSPECTED BUG: ups within 0.005 of the next whole number round up, then overlap', () => {
-    // 88-tooth, 93.2 mm label, 0 gap: 279.4 ÷ 93.2 = 2.9979 ups. round2 → 3.00,
-    // floor → 3 ups, which don't fit: the warning then contradicts the answer.
+  it('ups just under a whole number stay down: 2.998 ups is 2, with a wider gap', () => {
+    // 88-tooth, 93.2 mm label, 0 gap: 279.4 ÷ 93.2 = 2.9979 ups → 2 that fit.
     const out = calc(GAP, { cyl: 88, length: 93.2, gap: 0 });
-    expect(out.known.ups).toBe(3);
-    expect(out.warning).toBe('Labels overlap — 0.07 mm too long for this cylinder at 3 ups.');
+    expect(out.known.ups).toBe(2);
+    expect(out.warning).toBeNull();
+  });
+
+  it('a real overlap still warns', () => {
+    const out = calc(GAP, { cyl: 88, length: 100, ups: 3 });
+    expect(out.warning).toBe('Labels overlap — 6.87 mm too long for this cylinder at 3 ups.');
   });
 });
 

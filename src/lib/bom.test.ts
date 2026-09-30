@@ -112,17 +112,15 @@ describe('costingTotals', () => {
     expect(costingTotals([])).toEqual({ orderValue: 0, expense: 0, priced: 0, difference: 0 });
   });
 
-  it('SUSPECTED BUG: unpriced rows add order value but no expense, inflating the total difference', () => {
+  it('unpriced rows count toward order value but not the difference', () => {
     // One priced job (₹12,000 order, ₹10,000 material) and one not yet
-    // priced (₹50,000 order). The total Difference reads ₹52,000 — the
-    // unpriced order shows up as pure margin, which is the reading bom.ts
-    // says the screen must never give. (The totals line does show
-    // "1 priced" beside it.)
+    // priced (₹50,000 order). The difference compares priced rows only —
+    // ₹2,000 — so the unpriced order never reads as pure margin.
     const t = costingTotals([row(12000, 10000), row(50000, null)]);
     expect(t.priced).toBe(1);
     expect(t.orderValue).toBe(62000);
     expect(t.expense).toBe(10000);
-    expect(t.difference).toBe(52000);
+    expect(t.difference).toBe(2000);
   });
 
   it('totals are not rounded to paise (display formatting does that)', () => {
