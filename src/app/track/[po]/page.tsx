@@ -4,7 +4,7 @@
 // Every read goes through the service-role client, on the server only. The
 // anon role has no access to the client_* views or print_runs (migration
 // 067), so nothing here can be replayed from a browser with the public anon
-// key: the exact PO + Company Name gate below is the only way in. The
+// key: the whole-PO + Company Name gate below is the only way in. The
 // service-role key never reaches the client (server component; the admin
 // client is server-only).
 //
@@ -31,16 +31,23 @@ const JOB_COLUMNS =
   'urgent, urgent_priority, dispatched_qty, remaining_qty, halt_remark, qc_remark, ' +
   'is_scheduled_release, is_closed, total_qty_dispatched';
 
-// Exact, case-insensitive match on one column. ILIKE with every LIKE
-// metacharacter escaped (\ % _) behaves as case-insensitive equality, so a
-// typed wildcard matches literally instead of widening the search.
-// PostgREST rewrites `*` to `%` inside like/ilike values and offers no
-// escape for it, so a term containing `*` falls back to a case-sensitive
-// exact eq() — never a pattern.
-function exactMatch(column: 'po_number' | 'pm_code', term: string) {
-  const query = createAdminClient().from('client_job_view').select(JOB_COLUMNS);
-  if (term.includes('*')) return query.eq(column, term);
-  return query.ilike(column, term.replace(/[\\%_]/g, '\\$&'));
+// The /track lookup key: lowercase, letters and digits only. Mirrors the
+// jobs.po_norm / pm_norm generated columns (migration 069), so a client
+// typing "abc 123 25" finds PO "ABC-123/25". Plain equality — no pattern,
+// so a short or wildcard-looking term can never widen the search.
+function normalizeRef(term: string): string {
+  return term.replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+}
+
+// Job ids whose normalised PO number or PM code equals `key`.
+async function matchingJobIds(key: string): Promise<string[] | null> {
+  const admin = createAdminClient();
+  const [byPo, byPm] = await Promise.all([
+    admin.from('jobs').select('id').eq('po_norm', key),
+    admin.from('jobs').select('id').eq('pm_norm', key),
+  ]);
+  if (byPo.error || byPm.error) return null;
+  return Array.from(new Set([...(byPo.data ?? []), ...(byPm.data ?? [])].map((r) => r.id as string)));
 }
 
 export default async function TrackJobPage({ params, searchParams }: Params) {
@@ -55,29 +62,25 @@ export default async function TrackJobPage({ params, searchParams }: Params) {
   try { searchTerm = decodeURIComponent(po).trim(); } catch { searchTerm = po.trim(); }
   const partyTerm = (party ?? '').trim();
 
-  // Look up by the exact PO number or PM code (never a substring), AND
-  // require the Company Name to match. PO numbers are assigned by each
-  // client independently, so two different companies can genuinely share
-  // the same PO number — without the Company Name filter, one client's
-  // search could return another client's job. Job name is deliberately not
-  // searchable so an outsider can't fish for orders by guessing product/
-  // item names. The two lookups are separate column filters rather than an
-  // .or() string, so user input is never parsed as PostgREST filter syntax.
+  // Look up by the whole PO number or PM code (never a substring; spaces,
+  // hyphens, slashes and case ignored), AND require the Company Name to
+  // match. PO numbers are assigned by each client independently, so two
+  // different companies can genuinely share the same PO number — without
+  // the Company Name filter, one client's search could return another
+  // client's job. Job name is deliberately not searchable so an outsider
+  // can't fish for orders by guessing product/item names.
   let jobs: Job[] = [];
-  if (searchTerm.length >= 2 && partyTerm.length >= 2) {
-    const [byPo, byPm] = await Promise.all([
-      exactMatch('po_number', searchTerm),
-      exactMatch('pm_code', searchTerm),
-    ]);
-    if (!byPo.error && !byPm.error) {
-      // Company Name stays a case-insensitive contains-match, applied here
-      // to the few rows sharing the exact PO, so it needs no DB pattern.
-      const partyNeedle = partyTerm.toLowerCase();
-      const seen = new Set<string>();
-      for (const row of [...(byPo.data ?? []), ...(byPm.data ?? [])] as unknown as Job[]) {
-        if (seen.has(row.id)) continue;
-        seen.add(row.id);
-        if ((row.party ?? '').toLowerCase().includes(partyNeedle)) jobs.push(row);
+  const refKey = normalizeRef(searchTerm);
+  if (refKey.length >= 2 && partyTerm.length >= 2) {
+    const ids = await matchingJobIds(refKey);
+    if (ids && ids.length > 0) {
+      const { data, error } = await adminClient.from('client_job_view').select(JOB_COLUMNS).in('id', ids);
+      if (!error) {
+        // Company Name stays a case-insensitive contains-match, applied here
+        // to the few rows sharing the PO, so it needs no DB pattern.
+        const partyNeedle = partyTerm.toLowerCase();
+        jobs = ((data ?? []) as unknown as Job[])
+          .filter((row) => (row.party ?? '').toLowerCase().includes(partyNeedle));
       }
     }
   }
