@@ -87,6 +87,44 @@ export function groupStockByMaterial(lines: StockLine[]): MaterialGroup[] {
   return Array.from(byId.values());
 }
 
+// ── A job against the rack ─────────────────────────────────────────
+
+/** Metres a job still needs from stock: running metres less what it already has. Never negative. */
+export function stockNeed(runningMeter: number | null | undefined, issued: number): number {
+  return Math.max((runningMeter ?? 0) - issued, 0);
+}
+
+/** What "Use from stock" offers: the need, capped at what's on the rack — or all of it when nothing's needed. */
+export function suggestedIssue(need: number, available: number): number {
+  return Math.min(need || available, available);
+}
+
+/** Metres the rack is short of the need, rounded to 2 dp. 0 when covered. */
+export function stockShortfall(need: number, available: number): number {
+  return need > 0 && available < need ? Math.round((need - available) * 100) / 100 : 0;
+}
+
+/** How much of the need the rack covers, as a whole percent capped at 100 (the cell's thin bar). */
+export function stockCoverPct(available: number, need: number): number {
+  return Math.min(100, Math.round((available / need) * 100));
+}
+
+/**
+ * A job's stock movements → gross out, gross back, and the net it actually
+ * used — the chip shows "6,000 out · 500 back" so the floor can see where
+ * the paper went. Issues are stored negative and returns positive; other
+ * kinds (receive, adjust) aren't the job's. Each rounded to 2 dp.
+ */
+export function stockUsage(moves: { meters: number; kind: string }[] | null | undefined) {
+  let out = 0, back = 0;
+  for (const m of moves ?? []) {
+    if (m.kind === 'issue')  out  += -Number(m.meters);
+    if (m.kind === 'return') back += Number(m.meters);
+  }
+  const round = (n: number) => Math.round(n * 100) / 100;
+  return { stock_issued_m: round(out - back), stock_out_m: round(out), stock_returned_m: round(back) };
+}
+
 /** "4 full + 1 part" / "3 rolls" — how the floor says it. */
 export function describeRolls(line: Pick<StockLine, 'rolls' | 'full_rolls' | 'part_rolls'>): string {
   if (line.part_rolls === 0) return `${line.rolls} roll${line.rolls === 1 ? '' : 's'}`;

@@ -24,6 +24,7 @@ import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions, canDeptUseBOM } from '@/lib/constants/departments';
 import { parseDateRange, rangeOrClause, parseLimit, searchOrClause } from '@/lib/jobSeparationQuery';
 import { materialExpense } from '@/lib/bom';
+import { stockUsage } from '@/lib/paperStock';
 import type { BomCostingRow, BomCosting, BomMaterialRequest } from '@/lib/types';
 
 // What comes back from the embedded select below. bom_costings is 1:1 with
@@ -78,18 +79,6 @@ function shapeCosting(raw: RawCosting | null): BomCosting | null {
     updated_by:        raw.updated_by,
     updated_at:        raw.updated_at,
   };
-}
-
-// Gross out, gross back, and the net the job actually used — the chip shows
-// "6,000 out · 500 back" so the floor can see where the paper went.
-function stockTotals(moves: RawRow['stock']) {
-  let out = 0, back = 0;
-  for (const m of moves ?? []) {
-    if (m.kind === 'issue')  out  += -Number(m.meters);
-    if (m.kind === 'return') back += Number(m.meters);
-  }
-  const round = (n: number) => Math.round(n * 100) / 100;
-  return { stock_issued_m: round(out - back), stock_out_m: round(out), stock_returned_m: round(back) };
 }
 
 export async function GET(request: NextRequest) {
@@ -153,7 +142,7 @@ export async function GET(request: NextRequest) {
     },
     costing:        shapeCosting(one(r.costing)),
     latest_request: one(r.requests),
-    ...stockTotals(r.stock),
+    ...stockUsage(r.stock),
   }));
 
   return NextResponse.json({ rows, hasMore });
