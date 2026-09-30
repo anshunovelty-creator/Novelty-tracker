@@ -1,11 +1,19 @@
 // src/app/track/[po]/page.tsx
 // Server component — fetches job data server-side for instant first paint.
-// Uses the anon Supabase key via client_job_view + client_status_log_view.
+//
+// Every read goes through the service-role client, on the server only. The
+// anon role has no access to the client_* views or print_runs (migration
+// 067), so nothing here can be replayed from a browser with the public anon
+// key: the exact PO + Company Name gate below is the only way in. The
+// service-role key never reaches the client (server component; the admin
+// client is server-only).
+//
+// Each select names only the columns the /track UI renders — never the
+// internal free-text `notes` on jobs, print_runs or dispatch_schedules.
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-import { createClient } from '@supabase/supabase-js';
 import { unstable_noStore as noStore } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/admin';
 import TrackJobAccordion from '@/components/track/TrackJobAccordion';
@@ -17,11 +25,23 @@ type Params = {
   searchParams: Promise<{ id?: string; party?: string }>;
 };
 
-// Anon client for public reads — reads through client_job_view and client_status_log_view
-const anonClient = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// Client-safe job fields actually rendered by the track components.
+const JOB_COLUMNS =
+  'id, po_number, pm_code, party, job_name, label_qty, po_date, delivery_date, status, job_type, ' +
+  'urgent, urgent_priority, dispatched_qty, remaining_qty, halt_remark, qc_remark, ' +
+  'is_scheduled_release, is_closed, total_qty_dispatched';
+
+// Exact, case-insensitive match on one column. ILIKE with every LIKE
+// metacharacter escaped (\ % _) behaves as case-insensitive equality, so a
+// typed wildcard matches literally instead of widening the search.
+// PostgREST rewrites `*` to `%` inside like/ilike values and offers no
+// escape for it, so a term containing `*` falls back to a case-sensitive
+// exact eq() — never a pattern.
+function exactMatch(column: 'po_number' | 'pm_code', term: string) {
+  const query = createAdminClient().from('client_job_view').select(JOB_COLUMNS);
+  if (term.includes('*')) return query.eq(column, term);
+  return query.ilike(column, term.replace(/[\\%_]/g, '\\$&'));
+}
 
 export default async function TrackJobPage({ params, searchParams }: Params) {
   noStore();
@@ -32,30 +52,34 @@ export default async function TrackJobPage({ params, searchParams }: Params) {
   const searchTerm = decodeURIComponent(po).trim();
   const partyTerm = (party ?? '').trim();
 
-  // Require a real search term — a blank/whitespace-only value would
-  // otherwise ilike-match every job in the system once escaped below.
-  // Escape ilike wildcards (% _) so a typed one matches literally instead
-  // of broadening the search, and strip .or()'s own filter separators
-  // (, ( )) so the term can't inject additional filter clauses.
-  const escape = (s: string) => s.replace(/[%_]/g, '\\$&').replace(/[,()]/g, ' ');
-  const pattern = `%${escape(searchTerm)}%`;
-  const partyPattern = `%${escape(partyTerm)}%`;
+  // Look up by the exact PO number or PM code (never a substring), AND
+  // require the Company Name to match. PO numbers are assigned by each
+  // client independently, so two different companies can genuinely share
+  // the same PO number — without the Company Name filter, one client's
+  // search could return another client's job. Job name is deliberately not
+  // searchable so an outsider can't fish for orders by guessing product/
+  // item names. The two lookups are separate column filters rather than an
+  // .or() string, so user input is never parsed as PostgREST filter syntax.
+  let jobs: Job[] = [];
+  if (searchTerm.length >= 2 && partyTerm.length >= 2) {
+    const [byPo, byPm] = await Promise.all([
+      exactMatch('po_number', searchTerm),
+      exactMatch('pm_code', searchTerm),
+    ]);
+    if (!byPo.error && !byPm.error) {
+      // Company Name stays a case-insensitive contains-match, applied here
+      // to the few rows sharing the exact PO, so it needs no DB pattern.
+      const partyNeedle = partyTerm.toLowerCase();
+      const seen = new Set<string>();
+      for (const row of [...(byPo.data ?? []), ...(byPm.data ?? [])] as unknown as Job[]) {
+        if (seen.has(row.id)) continue;
+        seen.add(row.id);
+        if ((row.party ?? '').toLowerCase().includes(partyNeedle)) jobs.push(row);
+      }
+    }
+  }
 
-  // Search by PO number or PM code, AND require the Company Name to match.
-  // PO numbers are assigned by each client independently, so two different
-  // companies can genuinely share the same PO number — without the Company
-  // Name filter, one client's search could return another client's job.
-  // Job name is deliberately not searchable so an outsider can't fish for
-  // orders by guessing product/item names.
-  const { data: jobs, error } = (searchTerm.length < 2 || partyTerm.length < 2)
-    ? { data: [], error: null }
-    : await anonClient
-        .from('client_job_view')
-        .select('*')
-        .or(`po_number.ilike.${pattern},pm_code.ilike.${pattern}`)
-        .ilike('party', partyPattern);
-
-  if (error || !jobs || jobs.length === 0) {
+  if (jobs.length === 0) {
     return (
       <div className="text-center py-16">
         <p className="text-2xl mb-2">🔍</p>
@@ -83,27 +107,30 @@ export default async function TrackJobPage({ params, searchParams }: Params) {
   const scheduledIds = jobs.filter((j: Job) => j.is_scheduled_release).map((j: Job) => j.id);
 
   const [logsRes, timestampsRes, schedulesRes, printRunsRes] = await Promise.all([
-    anonClient
+    adminClient
       .from('client_status_log_view')
-      .select('*')
+      .select('id, job_id, status, department_display, changed_at, remark, qty_dispatched')
       .in('job_id', jobIds)
       .order('changed_at', { ascending: true }),
     adminClient
       .from('job_stage_timestamps')
-      .select('*')
+      .select('id, job_id, stage, completed_at')
       .in('job_id', jobIds),
+    // Scheduled releases for the matched jobs. This used to use the anon
+    // key, but dispatch_schedules has RLS with no anon policy, so it always
+    // came back empty. `notes` is left out: staff type it into the admin
+    // "Notes (optional)" box with no hint that clients would see it.
     scheduledIds.length > 0
-      ? anonClient
+      ? adminClient
           .from('dispatch_schedules')
-          .select('*')
+          .select('id, job_id, release_number, planned_qty, planned_date, actual_qty, actual_date, status')
           .in('job_id', scheduledIds)
           .order('release_number')
       : Promise.resolve({ data: [] }),
     // Always fetch — the client_job_view.has_partial_runs flag is unreliable
     // on drifted databases, so we render the runs card whenever runs exist.
-    // Excludes `notes` — internal free text not meant for the client portal
-    // (see migrations/003_print_runs.sql anon-grant comment).
-    anonClient
+    // Excludes `notes` — internal free text not meant for the client portal.
+    adminClient
       .from('print_runs')
       .select('id, job_id, run_number, qty_this_run, qty_remaining_after, status, current_stage, started_at, dispatched_at, qc_remark, schedule_id')
       .in('job_id', jobIds)
