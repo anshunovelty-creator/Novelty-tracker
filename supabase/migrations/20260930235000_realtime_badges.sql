@@ -17,7 +17,7 @@
 -- refetch of the server-computed count.
 --
 -- Until this runs the badges still work: the channel simply never fires
--- and the 5-minute fallback poll plus refetch-on-focus keep them current.
+-- and the 2-minute fallback poll plus refetch-on-focus keep them current.
 -- ============================================================
 
 DO $$

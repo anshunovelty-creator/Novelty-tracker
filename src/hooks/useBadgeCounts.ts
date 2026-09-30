@@ -30,7 +30,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
 
 /** Fallback only — Realtime is the primary signal. */
-const FALLBACK_POLL_MS = 5 * 60_000;
+const FALLBACK_POLL_MS = 2 * 60_000;
 /** Collapse a burst of row changes into a single count refetch. */
 const DEBOUNCE_MS = 500;
 
@@ -97,7 +97,8 @@ function retain(source: BadgeSource, queryClient: QueryClient): () => void {
         subscribedOnce = true;
       }
       // CHANNEL_ERROR / TIMED_OUT / CLOSED: nothing to do — supabase-js
-      // retries on its own and the fallback poll covers the gap.
+      // retries on its own, and the 2-minute fallback poll covers the gap
+      // (including the rare binding-mismatch error it never rejoins from).
     });
 
   live.set(source.table, entry);
