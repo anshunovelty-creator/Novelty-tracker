@@ -49,7 +49,10 @@ export default async function TrackJobPage({ params, searchParams }: Params) {
 
   const { po } = await params;
   const { id: selectedJobId, party } = await searchParams;
-  const searchTerm = decodeURIComponent(po).trim();
+  // Next has already decoded the param once; decoding again throws on a
+  // literal "%" (URIError), so fall back to the raw value.
+  let searchTerm: string;
+  try { searchTerm = decodeURIComponent(po).trim(); } catch { searchTerm = po.trim(); }
   const partyTerm = (party ?? '').trim();
 
   // Look up by the exact PO number or PM code (never a substring), AND

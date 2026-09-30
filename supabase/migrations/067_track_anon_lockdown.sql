@@ -42,3 +42,12 @@ REVOKE ALL ON public.print_runs FROM anon;
 -- /track reads both through the service-role client now.
 REVOKE ALL ON public.dispatch_schedules   FROM anon;
 REVOKE ALL ON public.job_stage_timestamps FROM anon;
+
+-- Replace 066's comments, which described the old anon-direct design.
+COMMENT ON VIEW public.client_job_view IS
+  'Client portal (/track) read model. security_invoker; no anon/authenticated '
+  'access (067). Read only server-side via the service-role client in '
+  'src/app/track/[po]/page.tsx.';
+COMMENT ON VIEW public.client_status_log_view IS
+  'Client portal (/track) status history. security_invoker; no anon/authenticated '
+  'access (067). Read only server-side via the service-role client.';
