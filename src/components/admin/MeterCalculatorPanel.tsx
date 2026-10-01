@@ -7,8 +7,9 @@
 // PrepressTodoPanel at bottom-[172px], this one at bottom-[248px] (same
 // 76px rhythm throughout).
 //
-// Three calculators behind tabs, ported from the shop's "meter calculator"
-// sheet (METER & RATE). Each is one equation:
+// Four calculators behind tabs. Basic is a standard Windows-style
+// calculator (BasicCalculator.tsx). The other three are ported from the
+// shop's "meter calculator" sheet (METER & RATE), each one equation:
 //   Meter — metres = tooth × 3.175 × qty ÷ ups ÷ 1000
 //   Gap   — gap    = tooth × 3.175 ÷ ups − length
 //   Rate  — total  = h × w ÷ 25.4² (sq in) × rate ÷ 100 (paise → ₹) × qty
@@ -33,6 +34,8 @@ import type { BomMaterial } from '@/lib/types';
 import { requestOpen, subscribeActiveWidget } from '@/lib/floatingWidgetCoordinator';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
 import PanelResizeHandles from './PanelResizeHandles';
+import BasicCalculator, { useBasicCalculator } from './BasicCalculator';
+import { isBlank } from '@/lib/basicCalculator';
 import { METER, GAP, RATE, runCalc, type CalcSpec, type FieldSpec } from '@/lib/meterCalculator';
 
 const fieldCls = cn(
@@ -55,13 +58,17 @@ const headerBtnCls = cn(
 
 const captionCls = 'text-[10px] font-medium uppercase tracking-[0.025em] text-[var(--glass-muted)]';
 
-type Tab = 'meter' | 'gap' | 'rate';
+type Tab = 'meter' | 'gap' | 'rate' | 'basic';
+type SpecTab = Exclude<Tab, 'basic'>;
 
-const TABS: { value: Tab; label: string; spec: CalcSpec }[] = [
-  { value: 'meter', label: 'Meter', spec: METER },
-  { value: 'gap',   label: 'Gap',   spec: GAP },
-  { value: 'rate',  label: 'Rate',  spec: RATE },
+const TABS: { value: Tab; label: string }[] = [
+  { value: 'meter', label: 'Meter' },
+  { value: 'gap',   label: 'Gap' },
+  { value: 'rate',  label: 'Rate' },
+  { value: 'basic', label: 'Basic' },
 ];
+
+const SPECS: Record<SpecTab, CalcSpec> = { meter: METER, gap: GAP, rate: RATE };
 
 // ── Pieces ─────────────────────────────────────────────────────────
 
@@ -220,7 +227,7 @@ function CalcBody({
 }
 
 // Ups start at 1 — the common case, and one less field to fill.
-const INITIAL: Record<Tab, Record<string, string>> = {
+const INITIAL: Record<SpecTab, Record<string, string>> = {
   meter: { ups: '1' },
   gap:   { ups: '1' },
   rate:  {},
@@ -233,10 +240,10 @@ export default function MeterCalculatorPanel() {
     // New key with the tabs: a size saved for the tab-less panel would open
     // this one too short and scroll.
     id: 'meter-calculator-tabs',
-    // Tall enough for the fullest tab (Rate's material + two field rows +
-    // answer + hint + readout) so the window never scrolls while typing.
+    // Tall enough for the fullest tab (Basic's toolbar + display + six rows
+    // of 44px keys) so the window never scrolls while typing.
     defaultWidth: 360,
-    defaultHeight: 530,
+    defaultHeight: 590,
     minWidth: 300,
     minHeight: 260,
     anchorRight: 20,
@@ -257,7 +264,8 @@ export default function MeterCalculatorPanel() {
   // transient-overlay behavior as PrepressTodoPanel and NotesFeed.
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    // defaultPrevented: Basic used this Escape to clear its sum.
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented) setOpen(false); };
     const onPointerDown = (e: PointerEvent) => {
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
         setOpen(false);
@@ -277,11 +285,12 @@ export default function MeterCalculatorPanel() {
   }
 
   const [tab, setTab] = useState<Tab>('meter');
-  const tabRefs = useRef<Record<Tab, HTMLButtonElement | null>>({ meter: null, gap: null, rate: null });
+  const tabRefs = useRef<Record<Tab, HTMLButtonElement | null>>({ meter: null, gap: null, rate: null, basic: null });
   const uid = useId();
   const fid = (name: string) => `${uid}-${name}`;
 
-  const [values, setValues] = useState<Record<Tab, Record<string, string>>>(INITIAL);
+  const [values, setValues] = useState<Record<SpecTab, Record<string, string>>>(INITIAL);
+  const basic = useBasicCalculator();
   const [material, setMaterial] = useState('');
 
   // Material suggestions from the BOM master. The calculator is open to
@@ -304,19 +313,20 @@ export default function MeterCalculatorPanel() {
     [materialsQuery.data],
   );
 
-  const current = TABS.find((t) => t.value === tab)!;
-
   function setField(key: string, value: string) {
+    if (tab === 'basic') return;
     setValues((prev) => ({ ...prev, [tab]: { ...prev[tab], [key]: value } }));
   }
 
   // Clear resets only the tab in view — the others keep their numbers.
-  const initial = INITIAL[tab];
-  const dirty =
-    Object.entries(values[tab]).some(([k, v]) => v !== (initial[k] ?? '')) ||
-    (tab === 'rate' && material !== '');
+  // On Basic it's the C key (the history stays).
+  const dirty = tab === 'basic'
+    ? !isBlank(basic.state)
+    : Object.entries(values[tab]).some(([k, v]) => v !== (INITIAL[tab][k] ?? '')) ||
+      (tab === 'rate' && material !== '');
 
   function handleClear() {
+    if (tab === 'basic') { basic.dispatch({ type: 'key', key: 'C' }); return; }
     setValues((prev) => ({ ...prev, [tab]: INITIAL[tab] }));
     if (tab === 'rate') setMaterial('');
   }
@@ -342,7 +352,7 @@ export default function MeterCalculatorPanel() {
     return (
       <button
         onClick={handleOpen}
-        aria-label="Calculator — meter, gap and rate"
+        aria-label="Calculator — meter, gap, rate and basic"
         className={cn(
           'fixed bottom-[248px] right-5 z-40 h-14 w-14 rounded-full',
           'bg-brand-primary hover:bg-brand-primary-hover text-white',
@@ -387,12 +397,12 @@ export default function MeterCalculatorPanel() {
         </div>
       </header>
 
-      <div className="overflow-y-auto px-4 py-3">
+      <div className="flex flex-col overflow-y-auto px-4 py-3">
         <div
           role="tablist"
           aria-label="Calculator"
           onKeyDown={onTabKey}
-          className="grid grid-cols-3 gap-1 rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-1"
+          className="grid shrink-0 grid-cols-4 gap-1 rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-1"
         >
           {TABS.map((t) => (
             <button
@@ -417,7 +427,13 @@ export default function MeterCalculatorPanel() {
           ))}
         </div>
 
-        <div id={fid('tabpanel')} role="tabpanel" aria-labelledby={fid(`tab-${tab}`)} className="mt-3">
+        <div
+          id={fid('tabpanel')}
+          role="tabpanel"
+          aria-labelledby={fid(`tab-${tab}`)}
+          // Basic's keypad grows into the panel's spare height.
+          className={cn('mt-3', tab === 'basic' && 'flex flex-1 flex-col')}
+        >
           {tab === 'rate' && (
             <div className="mb-2">
               <label htmlFor={fid('mat')} className={cn(captionCls, 'block text-center mb-1')}>Material</label>
@@ -437,14 +453,18 @@ export default function MeterCalculatorPanel() {
             </div>
           )}
 
-          {/* key: each tab's fields are separate inputs, not reused ones. */}
-          <CalcBody
-            key={tab}
-            spec={current.spec}
-            values={values[tab]}
-            onChange={setField}
-            idFor={(k) => fid(`${tab}-${k}`)}
-          />
+          {tab === 'basic' ? (
+            <BasicCalculator state={basic.state} dispatch={basic.dispatch} />
+          ) : (
+            // key: each tab's fields are separate inputs, not reused ones.
+            <CalcBody
+              key={tab}
+              spec={SPECS[tab]}
+              values={values[tab]}
+              onChange={setField}
+              idFor={(k) => fid(`${tab}-${k}`)}
+            />
+          )}
         </div>
       </div>
     </section>
