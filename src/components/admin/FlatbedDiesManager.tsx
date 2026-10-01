@@ -90,7 +90,7 @@ function sortFlatbedDies(dies: FlatbedDie[], field: SortField, dir: SortDir): Fl
 // the value sent as ?field=. "All fields" (value 'all') skips the param,
 // falling back to the server's multi-column OR search.
 const FLATBED_DIE_SEARCH_FIELDS: { value: string; label: string; placeholder: string }[] = [
-  { value: 'all',       label: 'All fields', placeholder: 'Search shape, corner or location' },
+  { value: 'all',       label: 'All fields', placeholder: 'Search length, width, shape, corner or location' },
   { value: 'shape',     label: 'Shape',      placeholder: 'Search by shape' },
   { value: 'corner',    label: 'Corner',     placeholder: 'Search by corner' },
   { value: 'location',  label: 'Location',   placeholder: 'Search by location' },

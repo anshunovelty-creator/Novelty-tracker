@@ -98,7 +98,7 @@ const STATUS_BADGE: Record<DieStatus, string> = {
 // as ?field=. "All fields" (value 'all') skips the param, falling back to
 // the server's multi-column OR search.
 const DIE_SEARCH_FIELDS: { value: string; label: string; placeholder: string }[] = [
-  { value: 'all',       label: 'All fields',    placeholder: 'Search job, material, corner, serial no or location' },
+  { value: 'all',       label: 'All fields',    placeholder: 'Search job, length, width, material, corner, serial no or location' },
   { value: 'job_name',  label: 'Job name',      placeholder: 'Search by job name' },
   { value: 'serial_no', label: 'Serial no',     placeholder: 'Search by serial no' },
   { value: 'material',  label: 'Material',      placeholder: 'Search by material' },

@@ -10,7 +10,7 @@ import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptManageDiesPlates } from '@/lib/constants/departments';
 import { DIE_STATUSES, type DieStatus } from '@/lib/types';
-import { containsPattern, orContains } from '@/lib/search';
+import { containsPattern, orMatch } from '@/lib/search';
 
 // Optional free text: blank means "not recorded", not an empty string.
 function text(value: unknown): string | null {
@@ -52,7 +52,7 @@ function resolveStatus(body: Record<string, unknown>):
 // and PostgREST/supabase-js does not apply a `column::text` cast through
 // the filter builder (confirmed: it raises "operator does not exist:
 // integer ~~* unknown") — so those match on the exact number instead.
-type DieSearchField = { column: string; type: 'text' | 'int' };
+type DieSearchField = { column: string; type: 'text' | 'size' | 'int' };
 
 const DIE_SEARCH_FIELDS: Record<string, DieSearchField> = {
   job_name:  { column: 'job_name',  type: 'text' },
@@ -60,8 +60,8 @@ const DIE_SEARCH_FIELDS: Record<string, DieSearchField> = {
   material:  { column: 'material',  type: 'text' },
   corner:    { column: 'corner',    type: 'text' },
   location:  { column: 'location',  type: 'text' },
-  length:    { column: 'length',    type: 'text' },
-  width:     { column: 'width',     type: 'text' },
+  length:    { column: 'length',    type: 'size' },
+  width:     { column: 'width',     type: 'size' },
   gap:       { column: 'gap',       type: 'text' },
   cylinder:  { column: 'cylinder',  type: 'int' },
   ups:       { column: 'ups',       type: 'int' },
@@ -92,14 +92,18 @@ export async function GET(request: NextRequest) {
       if (!Number.isFinite(n)) return NextResponse.json({ dies: [] });
       query = query.eq(config.column, Math.trunc(n));
     } else if (config) {
-      // Picked a specific text field — search just that column.
-      query = query.ilike(config.column, containsPattern(search));
+      // Picked a specific text field — search just that column. Sizes match
+      // on the whole millimetre: "210" finds 210 and 210.84, not 1210 or 2100.
+      query = config.type === 'size'
+        ? query.or(orMatch([], [config.column], search))
+        : query.ilike(config.column, containsPattern(search));
     } else {
       // "All fields" — someone holding a die searches by whatever they can
-      // read off it: the job it was cut for, its material, its corner
-      // style, or its serial — or where it should be sitting.
-      query = query.or(orContains(
-        ['job_name', 'material', 'corner', 'serial_no', 'location'], search,
+      // read off it: the job it was cut for, its size, its material, its
+      // corner style, or its serial — or where it should be sitting.
+      // Length and width match on the whole millimetre, as above.
+      query = query.or(orMatch(
+        ['job_name', 'material', 'corner', 'serial_no', 'location'], ['length', 'width'], search,
       ));
     }
   }

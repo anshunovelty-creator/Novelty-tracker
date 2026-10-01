@@ -14,7 +14,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptManageDiesPlates } from '@/lib/constants/departments';
-import { containsPattern, orContains } from '@/lib/search';
+import { containsPattern, orMatch } from '@/lib/search';
 
 // Optional free text: blank means "not recorded", not an empty string.
 function text(value: unknown): string | null {
@@ -31,15 +31,15 @@ function integer(value: unknown): number | null {
 // Field-scoped search: a whitelist, not a raw column name from the query
 // string. Integer columns match on the exact number — see /api/dies for
 // why .ilike() can't be used on them.
-type FlatbedDieSearchField = { column: string; type: 'text' | 'int' };
+type FlatbedDieSearchField = { column: string; type: 'text' | 'size' | 'int' };
 
 const FLATBED_DIE_SEARCH_FIELDS: Record<string, FlatbedDieSearchField> = {
   serial_no: { column: 'serial_no', type: 'int' },
   shape:     { column: 'shape',     type: 'text' },
   corner:    { column: 'corner',    type: 'text' },
   location:  { column: 'location',  type: 'text' },
-  length:    { column: 'length',    type: 'text' },
-  width:     { column: 'width',     type: 'text' },
+  length:    { column: 'length',    type: 'size' },
+  width:     { column: 'width',     type: 'size' },
   repeat_length: { column: 'repeat_length', type: 'text' },
   gap:       { column: 'gap',       type: 'text' },
   ups:       { column: 'ups',       type: 'int' },
@@ -68,11 +68,14 @@ export async function GET(request: NextRequest) {
       if (!Number.isFinite(n)) return NextResponse.json({ flatbed_dies: [] });
       query = query.eq(config.column, Math.trunc(n));
     } else if (config) {
-      query = query.ilike(config.column, containsPattern(search));
+      // Sizes match on the whole millimetre: "87" finds 87 and 87.5, not 187 or 870.
+      query = config.type === 'size'
+        ? query.or(orMatch([], [config.column], search))
+        : query.ilike(config.column, containsPattern(search));
     } else {
-      // "All fields" — shape, corner, location are the only free-text
-      // columns worth matching a loose search against.
-      query = query.or(orContains(['shape', 'corner', 'location'], search));
+      // "All fields" — shape, corner and location match loosely; length and
+      // width match on the whole millimetre, as above.
+      query = query.or(orMatch(['shape', 'corner', 'location'], ['length', 'width'], search));
     }
   }
 
