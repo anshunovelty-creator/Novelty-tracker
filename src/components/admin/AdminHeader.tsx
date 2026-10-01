@@ -16,6 +16,7 @@ import {
   canDeptManageTeam,
   canDeptManageNotificationRecipients,
   canDeptExportData,
+  canDeptViewStock,
   type DeptPermissions,
 } from '@/lib/constants/departments';
 import { Logo } from '@/components/brand/Logo';
@@ -207,13 +208,15 @@ export default function AdminHeader({ dept, displayName, userEmail }: Props) {
   // the logo — which is why ten sub-pages each grew their own "Back to
   // dashboard" link to compensate.
   //
-  // Label stock, dies, plates and job separation are readable by every
-  // department — Dispatch (stock) and Prepress (dies/plates/job separation)
-  // are the only ones who can change them, enforced in /api/stock, /api/dies,
-  // /api/plates, /api/job-separations.
+  // Dies, plates and job separation are readable by every department —
+  // Prepress is the only one who can change them, enforced in /api/dies,
+  // /api/plates, /api/job-separations. Label stock is its own pair of
+  // features: stock_view to see the tab, stock_edit to change the shelf,
+  // enforced in /api/stock and by RLS on label_stock (071).
   const navItems: NavItem[] = [
     { href: '/admin',                label: 'Dashboard',                       icon: LayoutDashboard },
-    { href: '/admin/stock',          label: 'Label Stock',  short: 'Stock',    icon: Package },
+    ...(canDeptViewStock(dept)
+      ? [{ href: '/admin/stock', label: 'Label Stock', short: 'Stock', icon: Package }] : []),
     { href: '/admin/slips',          label: 'Slips',                           icon: Printer },
     { href: '/admin/dies',           label: 'Dies',                            icon: Scissors },
     { href: '/admin/plates',         label: 'Plates',                          icon: Disc },

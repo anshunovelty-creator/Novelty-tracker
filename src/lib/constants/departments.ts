@@ -111,9 +111,14 @@ export function canDeptEditJobDetails(perms: DeptPermissions | null): boolean {
   return hasFeature(perms, 'job_detail_edit');
 }
 
-/** Who may change the label stock shelf. */
+/** Who may change the label stock shelf — add, edit, dispatch out, delete. */
 export function canDeptManageStock(perms: DeptPermissions | null): boolean {
   return hasFeature(perms, 'stock_edit');
+}
+
+/** Who may see Label Stock at all. Managing it implies seeing it — migration 071. */
+export function canDeptViewStock(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'stock_view') || hasFeature(perms, 'stock_edit');
 }
 
 /** Who may print box slips for a carton. Seeded to Dispatch — migration 052. */

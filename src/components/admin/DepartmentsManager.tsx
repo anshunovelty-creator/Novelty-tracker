@@ -26,7 +26,8 @@ import { DEPARTMENTS_KEY } from '@/hooks/useReferenceData';
 const FEATURES: { key: string; label: string }[] = [
   { key: 'printing_edit',                 label: 'Set printing method' },
   { key: 'job_detail_edit',                label: 'Edit job details' },
-  { key: 'stock_edit',                     label: 'Manage label stock' },
+  { key: 'stock_view',                     label: 'See label stock' },
+  { key: 'stock_edit',                     label: 'Manage label stock (add, edit, dispatch, delete)' },
   { key: 'dispatch_notifications',         label: 'Send dispatch emails' },
   { key: 'box_slip_print',                 label: 'Print box slips' },
   { key: 'roll_slip_print',                label: 'Print roll slips' },

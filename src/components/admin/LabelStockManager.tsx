@@ -1,15 +1,17 @@
 'use client';
 // src/components/admin/LabelStockManager.tsx
-// The shelf. Everything printed and not yet shipped, searchable by whatever
-// is written on the label in someone's hand.
+// The shelf. Everything printed and not yet shipped, folded by company —
+// one folder per party ("DHANUKA - SANAND · 4 entries · 52,000 labels") —
+// and searchable by whatever is written on the label in someone's hand.
 //
-// Read-only for most departments; Dispatch and Admin get the two verbs that
-// change the shelf — add a manual entry, and mark a row dispatched out.
+// Read-only for most departments; Dispatch and Admin can add a manual
+// entry, and per row: dispatch some or all of it out, edit, or delete.
+// Admin alone can clear the dispatched-out history.
 
 import dynamic from 'next/dynamic';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { Search, Plus, PackageCheck, History, Package } from 'lucide-react';
+import { Search, Plus, PackageCheck, History, Package, ChevronRight, Pencil, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatQty, formatAdminDate } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
@@ -19,7 +21,9 @@ import CsvExportButton from './CsvExportButton';
 import { SearchClearButton } from '@/components/ui/SearchClearButton';
 
 // Loaded on first open, not with the page — it only renders when open.
-const ManualStockModal = dynamic(() => import('./ManualStockModal'), { ssr: false });
+const ManualStockModal   = dynamic(() => import('./ManualStockModal'), { ssr: false });
+const DispatchStockModal = dynamic(() => import('./LabelStockModals').then((m) => m.DispatchStockModal), { ssr: false });
+const EditStockModal     = dynamic(() => import('./LabelStockModals').then((m) => m.EditStockModal), { ssr: false });
 
 const STOCK_EXPORT_COLUMNS: CsvColumn<LabelStock>[] = [
   { header: 'Kind',            value: (s) => s.kind },
@@ -51,13 +55,57 @@ const KIND_HINT: Record<StockKind, string> = {
   Manual:    'Added by hand',
 };
 
-export default function LabelStockManager({ canManage }: { canManage: boolean }) {
+type PartyFolder = {
+  key:     string;          // normalised party — "Dhanuka  sanand " and "DHANUKA SANAND" are one company
+  party:   string;          // as written on the newest entry
+  entries: LabelStock[];
+  liveQty: number;          // on the shelf; dispatched history rows don't count
+  live:    number;
+  locations: string[];
+};
+
+const partyKey = (party: string) => party.trim().replace(/\s+/g, ' ').toUpperCase();
+
+/** One folder per company, A→Z; entries inside stay newest first. */
+function groupByParty(stock: LabelStock[]): PartyFolder[] {
+  const map = new Map<string, PartyFolder>();
+  for (const s of stock) {
+    const key = partyKey(s.party);
+    let f = map.get(key);
+    if (!f) {
+      f = { key, party: s.party.trim(), entries: [], liveQty: 0, live: 0, locations: [] };
+      map.set(key, f);
+    }
+    f.entries.push(s);
+    if (!s.is_dispatched) {
+      f.liveQty += s.qty;
+      f.live    += 1;
+      if (s.location && !f.locations.includes(s.location)) f.locations.push(s.location);
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => a.party.localeCompare(b.party));
+}
+
+export default function LabelStockManager({
+  canManage, canClearHistory = false,
+}: {
+  canManage: boolean;
+  canClearHistory?: boolean;
+}) {
   const [search,      setSearch]      = useState('');
   const [showHistory, setShowHistory] = useState(false);
   const [adding,      setAdding]      = useState(false);
+  const [dispatching, setDispatching] = useState<LabelStock | null>(null);
+  const [editing,     setEditing]     = useState<LabelStock | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [busyId,      setBusyId]      = useState<string | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing,     setClearing]     = useState(false);
+  // Company folders that are open — several at once, to compare.
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
 
   const queryClient = useQueryClient();
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['stock'] });
 
   const [debouncedSearch, setDebouncedSearch] = useState('');
   useEffect(() => {
@@ -78,52 +126,74 @@ export default function LabelStockManager({ canManage }: { canManage: boolean })
     },
     placeholderData: keepPreviousData,
   });
-  const stock   = stockQuery.data ?? [];
+  const stock   = stockQuery.data;
   const loading = stockQuery.isLoading;
 
   useEffect(() => {
     if (stockQuery.error) toast.error((stockQuery.error as Error).message);
   }, [stockQuery.error]);
 
-  async function markDispatched(entry: LabelStock) {
+  const folders = useMemo(() => groupByParty(stock ?? []), [stock]);
+
+  // A search opens every company it matched — once its results have
+  // arrived, not on the previous results still showing — and clearing it
+  // folds them back up.
+  useEffect(() => {
+    if (!debouncedSearch.trim()) setOpen(new Set());
+  }, [debouncedSearch]);
+  useEffect(() => {
+    if (debouncedSearch.trim() && !stockQuery.isPlaceholderData) {
+      setOpen(new Set(folders.map((f) => f.key)));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-open on search results only, not on every refetch
+  }, [debouncedSearch, stockQuery.isPlaceholderData]);
+
+  function toggle(key: string) {
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+
+  async function remove(entry: LabelStock) {
     setBusyId(entry.id);
     try {
-      const res = await fetch(`/api/stock/${entry.id}`, {
-        method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ is_dispatched: true }),
-      });
+      const res  = await fetch(`/api/stock/${entry.id}`, { method: 'DELETE' });
       const data = await res.json();
-      if (!res.ok) {
-        toast.error(data.error ?? 'Failed to update stock');
-        return;
-      }
-      // Out of the live list; still there if history is showing — branch per
-      // cached view's own history flag, since both variants may be cached
-      // from earlier in this session. findAll + per-query setQueryData
-      // instead of setQueriesData's updater, which only exposes the old
-      // data — not the query itself — in this version's types.
-      queryClient.getQueryCache().findAll({ queryKey: ['stock'] }).forEach((query) => {
-        const historyView = (query.queryKey as unknown[])[2] as boolean;
-        queryClient.setQueryData<LabelStock[]>(query.queryKey, (old) =>
-          old === undefined
-            ? old
-            : historyView
-              ? old.map((s) => (s.id === entry.id ? (data.stock as LabelStock) : s))
-              : old.filter((s) => s.id !== entry.id)
-        );
-      });
-      toast.success(`${formatQty(entry.qty)} labels dispatched out of stock`);
+      if (!res.ok) { toast.error(data.error ?? 'Failed to delete'); return; }
+      toast.success(`${formatQty(entry.qty)} labels for ${entry.party} deleted`);
+      refresh();
     } catch {
       toast.error('Network error');
     } finally {
       setBusyId(null);
+      setConfirmDeleteId(null);
     }
   }
 
-  const liveTotal = stock
-    .filter((s) => !s.is_dispatched)
-    .reduce((sum, s) => sum + s.qty, 0);
+  async function clearHistory() {
+    setClearing(true);
+    try {
+      const res  = await fetch('/api/stock/history', { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error ?? 'Failed to clear history'); return; }
+      toast.success(
+        data.cleared === 0
+          ? 'No dispatched history to clear'
+          : `Cleared ${data.cleared} dispatched ${data.cleared === 1 ? 'entry' : 'entries'} from history`,
+      );
+      refresh();
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setClearing(false);
+      setConfirmClear(false);
+    }
+  }
+
+  const liveTotal = folders.reduce((sum, f) => sum + f.liveQty, 0);
+  const liveCount = folders.reduce((sum, f) => sum + f.live, 0);
 
   return (
     <div className="space-y-3">
@@ -166,7 +236,7 @@ export default function LabelStockManager({ canManage }: { canManage: boolean })
           {showHistory ? 'Showing history' : 'Show history'}
         </button>
 
-        <CsvExportButton rows={stock} columns={STOCK_EXPORT_COLUMNS} filename="label-stock" />
+        <CsvExportButton rows={stock ?? []} columns={STOCK_EXPORT_COLUMNS} filename="label-stock" />
 
         {canManage && (
           <Button intent="primary" icon={Plus} onClick={() => setAdding(true)}>
@@ -175,13 +245,35 @@ export default function LabelStockManager({ canManage }: { canManage: boolean })
         )}
       </div>
 
+      {/* Admin only, and only where the history is on screen — clearing
+          what you can't see would be a blind delete. Live stock stays. */}
+      {showHistory && canClearHistory && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {confirmClear ? (
+            <>
+              <span className="text-sm text-red-700">
+                Permanently delete every dispatched-out entry? Stock on the shelf stays.
+              </span>
+              <Button intent="danger" size="sm" busy={clearing} onClick={clearHistory}>Clear history</Button>
+              <Button size="sm" onClick={() => setConfirmClear(false)} disabled={clearing}>Keep</Button>
+            </>
+          ) : (
+            <Button size="sm" intent="danger" icon={Trash2} onClick={() => setConfirmClear(true)}>
+              Clear history
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* Running total — the number people actually come here for */}
-      {!showHistory && !loading && stock.length > 0 && (
+      {!loading && folders.length > 0 && (
         <p className="text-sm text-[var(--glass-muted)]">
           <strong className="text-[var(--glass-ink)] font-mono">{formatQty(liveTotal)}</strong>
-          {' '}labels across{' '}
-          <strong className="text-[var(--glass-ink)]">{stock.length}</strong>
-          {' '}{stock.length === 1 ? 'entry' : 'entries'}
+          {' '}labels in stock across{' '}
+          <strong className="text-[var(--glass-ink)]">{liveCount}</strong>
+          {' '}{liveCount === 1 ? 'entry' : 'entries'} for{' '}
+          <strong className="text-[var(--glass-ink)]">{folders.length}</strong>
+          {' '}{folders.length === 1 ? 'company' : 'companies'}
           {search && ' matching your search'}
         </p>
       )}
@@ -189,108 +281,206 @@ export default function LabelStockManager({ canManage }: { canManage: boolean })
       {loading ? (
         <div className="space-y-2" aria-hidden="true">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-20 rounded-xl bg-black/[0.04]" />
+            <div key={i} className="h-14 rounded-xl bg-black/[0.04]" />
           ))}
         </div>
-      ) : stock.length === 0 ? (
+      ) : folders.length === 0 ? (
         <EmptyState hasSearch={Boolean(search)} showHistory={showHistory} />
       ) : (
         <ul className="space-y-2">
-          {stock.map((entry) => (
-            <li
-              key={entry.id}
-              className={cn(
-                'rounded-xl border border-black/[0.08] bg-white p-4',
-                entry.is_dispatched && 'opacity-60',
-              )}
-            >
-              <div className="flex flex-col sm:flex-row sm:items-start gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={cn('text-[11px] font-medium px-1.5 py-0.5 rounded', KIND_BADGE[entry.kind])}
-                      title={KIND_HINT[entry.kind]}
-                    >
-                      {entry.kind}
+          {folders.map((folder) => {
+            const isOpen  = open.has(folder.key);
+            const panelId = `stock-folder-${folder.key.replace(/[^A-Z0-9]+/g, '-')}`;
+            const history = folder.entries.length - folder.live;
+            return (
+              <li key={folder.key} className="rounded-xl border border-black/[0.08] bg-white overflow-hidden">
+                {/* Level 1 — the company */}
+                <button
+                  type="button"
+                  onClick={() => toggle(folder.key)}
+                  aria-expanded={isOpen}
+                  aria-controls={panelId}
+                  className={cn(
+                    'w-full min-h-14 flex items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-black/[0.03]',
+                    isOpen && 'bg-black/[0.03] border-b border-black/[0.06]',
+                  )}
+                >
+                  <ChevronRight
+                    className={cn('w-4 h-4 shrink-0 text-[var(--glass-muted)] transition-transform motion-reduce:transition-none', isOpen && 'rotate-90')}
+                    aria-hidden="true"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-[var(--glass-ink)] break-words">{folder.party}</span>
+                    <span className="block text-xs text-[var(--glass-muted)] mt-0.5">
+                      {folder.live} {folder.live === 1 ? 'entry' : 'entries'} in stock
+                      {showHistory && history > 0 && ` · ${history} dispatched`}
+                      {folder.locations.length > 0 && ` · ${folder.locations.join(', ')}`}
                     </span>
-                    {entry.job_card_number && (
-                      <span className="font-mono text-xs font-semibold text-[var(--glass-ink)]">
-                        {entry.job_card_number.toUpperCase()}
-                      </span>
-                    )}
-                    {entry.pm_code && (
-                      <span className="font-mono text-xs text-[var(--glass-muted)]">
-                        PM {entry.pm_code}
-                      </span>
-                    )}
-                    {entry.is_dispatched && (
-                      <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
-                        Dispatched out
-                      </span>
-                    )}
-                  </div>
+                  </span>
+                  <span className="font-mono text-base font-bold text-[var(--glass-ink)] shrink-0">
+                    {formatQty(folder.liveQty)}
+                  </span>
+                </button>
 
-                  <p className="text-sm font-semibold text-[var(--glass-ink)] mt-1.5 break-words">
-                    {entry.party}
-                  </p>
-                  {entry.job_name && (
-                    <p className="text-xs text-[var(--glass-muted)] mt-0.5 break-words">
-                      {entry.job_name}
-                    </p>
-                  )}
-
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-[var(--glass-muted)]">
-                    {entry.location && (
-                      <span>
-                        Location <strong className="text-[var(--glass-ink)]">{entry.location}</strong>
-                      </span>
-                    )}
-                    {entry.remark && <span className="break-words">{entry.remark}</span>}
-                    <span className="font-mono">Added {formatAdminDate(entry.created_at)}</span>
-                    {entry.is_dispatched && entry.dispatched_at && (
-                      <span className="font-mono">
-                        Out {formatAdminDate(entry.dispatched_at)}
-                        {entry.dispatched_by ? ` · ${entry.dispatched_by}` : ''}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Quantity is the headline of the row */}
-                <div className="flex items-center gap-3 sm:flex-col sm:items-end shrink-0">
-                  <p className="font-mono text-lg font-bold text-[var(--glass-ink)] leading-none">
-                    {formatQty(entry.qty)}
-                  </p>
-
-                  {canManage && !entry.is_dispatched && (
-                    <button
-                      onClick={() => markDispatched(entry)}
-                      disabled={busyId === entry.id}
-                      aria-label={`Mark ${formatQty(entry.qty)} labels for ${entry.party} as dispatched`}
-                      className={cn(
-                        'inline-flex items-center justify-center gap-1.5 min-h-11 px-3 rounded-lg',
-                        'text-xs font-medium border border-emerald-200 bg-emerald-50 text-emerald-800',
-                        'hover:bg-emerald-100 disabled:opacity-50 transition-colors whitespace-nowrap',
-                      )}
-                    >
-                      <PackageCheck className="w-4 h-4" aria-hidden="true" />
-                      {busyId === entry.id ? 'Saving…' : 'Dispatched'}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </li>
-          ))}
+                {/* Level 2 — its entries */}
+                {isOpen && (
+                  <ul id={panelId} className="divide-y divide-black/[0.06] bg-[var(--glass-bg)]">
+                    {folder.entries.map((entry) => (
+                      <StockRow
+                        key={entry.id}
+                        entry={entry}
+                        canManage={canManage}
+                        confirmingDelete={confirmDeleteId === entry.id}
+                        busy={busyId === entry.id}
+                        onDispatch={() => setDispatching(entry)}
+                        onEdit={() => setEditing(entry)}
+                        onAskDelete={() => setConfirmDeleteId(entry.id)}
+                        onCancelDelete={() => setConfirmDeleteId(null)}
+                        onDelete={() => remove(entry)}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
 
       {adding && (
         <ManualStockModal
           onClose={() => setAdding(false)}
-          onAdded={() => { setAdding(false); queryClient.invalidateQueries({ queryKey: ['stock'] }); }}
+          onAdded={() => { setAdding(false); refresh(); }}
+        />
+      )}
+      {dispatching && (
+        <DispatchStockModal
+          entry={dispatching}
+          onClose={() => setDispatching(null)}
+          onSaved={() => { setDispatching(null); refresh(); }}
+        />
+      )}
+      {editing && (
+        <EditStockModal
+          entry={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); refresh(); }}
         />
       )}
     </div>
+  );
+}
+
+function StockRow({
+  entry, canManage, confirmingDelete, busy,
+  onDispatch, onEdit, onAskDelete, onCancelDelete, onDelete,
+}: {
+  entry: LabelStock;
+  canManage: boolean;
+  confirmingDelete: boolean;
+  busy: boolean;
+  onDispatch: () => void;
+  onEdit: () => void;
+  onAskDelete: () => void;
+  onCancelDelete: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <li className={cn('px-4 py-3', entry.is_dispatched && 'opacity-60')}>
+      <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={cn('text-[11px] font-medium px-1.5 py-0.5 rounded', KIND_BADGE[entry.kind])}
+              title={KIND_HINT[entry.kind]}
+            >
+              {entry.kind}
+            </span>
+            {entry.job_card_number && (
+              <span className="font-mono text-xs font-semibold text-[var(--glass-ink)]">
+                {entry.job_card_number.toUpperCase()}
+              </span>
+            )}
+            {entry.pm_code && (
+              <span className="font-mono text-xs text-[var(--glass-muted)]">
+                PM {entry.pm_code}
+              </span>
+            )}
+            {entry.is_dispatched && (
+              <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
+                Dispatched out
+              </span>
+            )}
+          </div>
+
+          {entry.job_name && (
+            <p className="text-sm text-[var(--glass-ink)] mt-1.5 break-words">{entry.job_name}</p>
+          )}
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-xs text-[var(--glass-muted)]">
+            {entry.location && (
+              <span>
+                Location <strong className="text-[var(--glass-ink)]">{entry.location}</strong>
+              </span>
+            )}
+            {entry.remark && <span className="break-words">{entry.remark}</span>}
+            <span className="font-mono">Added {formatAdminDate(entry.created_at)}</span>
+            {entry.is_dispatched && entry.dispatched_at && (
+              <span className="font-mono">
+                Out {formatAdminDate(entry.dispatched_at)}
+                {entry.dispatched_by ? ` · ${entry.dispatched_by}` : ''}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Quantity is the headline of the row */}
+        <div className="flex flex-wrap items-center gap-2 sm:flex-col sm:items-end shrink-0">
+          <p className="font-mono text-lg font-bold text-[var(--glass-ink)] leading-none">
+            {formatQty(entry.qty)}
+          </p>
+
+          {canManage && !entry.is_dispatched && (
+            <div className="flex items-center gap-1.5">
+              {confirmingDelete ? (
+                <>
+                  <span className="text-xs text-red-700 mr-1">Delete this entry?</span>
+                  <Button intent="danger" size="sm" busy={busy} onClick={onDelete}>Delete</Button>
+                  <Button size="sm" onClick={onCancelDelete}>Keep</Button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={onDispatch}
+                    aria-label={`Dispatch labels for ${entry.party} out of stock`}
+                    className={cn(
+                      'inline-flex items-center justify-center gap-1.5 min-h-11 px-3 rounded-lg',
+                      'text-xs font-medium border border-emerald-200 bg-emerald-50 text-emerald-800',
+                      'hover:bg-emerald-100 transition-colors whitespace-nowrap',
+                    )}
+                  >
+                    <PackageCheck className="w-4 h-4" aria-hidden="true" />
+                    Dispatch
+                  </button>
+                  <Button
+                    size="sm" icon={Pencil}
+                    aria-label={`Edit stock entry for ${entry.party}`}
+                    title="Edit"
+                    onClick={onEdit}
+                  />
+                  <Button
+                    size="sm" intent="danger" icon={Trash2}
+                    aria-label={`Delete stock entry for ${entry.party}`}
+                    title="Delete an entry added by mistake — use Dispatch for labels that went out"
+                    onClick={onAskDelete}
+                  />
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </li>
   );
 }
 

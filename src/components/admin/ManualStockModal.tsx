@@ -3,8 +3,10 @@
 // Adding stock the system never saw — an old run found on a shelf, or labels
 // missed when a dispatch was recorded.
 //
-// Picking a job is the fast path: every identity field fills itself from the
-// job, and the server re-reads that job rather than trusting what we send.
+// Picking the order from Job Separation is the fast path — the worksheet
+// holds every PO, including ones whose job card is closed or that never got
+// one. Every identity field fills itself from that row, and the server
+// re-reads it rather than trusting what we send.
 // The free-text fallback exists because stock is sometimes found with nothing
 // but a party name on the box, and refusing to record it helps no one.
 
@@ -14,7 +16,7 @@ import toast from 'react-hot-toast';
 import { cn, formatJobCardNumber } from '@/lib/utils';
 import { ModalShell } from './modals';
 import { Button } from '@/components/ui/Button';
-import type { Job } from '@/lib/types';
+import type { JobSeparation } from '@/lib/types';
 import { SearchClearButton } from '@/components/ui/SearchClearButton';
 import { WithExample, WithUnit } from '@/components/ui/FieldAffix';
 
@@ -25,6 +27,11 @@ const inputCls = cn(
   'focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)] transition-all',
 );
 
+// What /api/stock/lookup returns per Job Separation row.
+type OrderHit = Pick<JobSeparation,
+  'id' | 'sr_no' | 'party' | 'po_no' | 'pm_code' | 'material_name' | 'quantity' |
+  'linked_job_id' | 'linked_job_card_number'>;
+
 type Props = {
   onClose: () => void;
   onAdded: () => void;
@@ -34,8 +41,8 @@ export default function ManualStockModal({ onClose, onAdded }: Props) {
   const titleId = useId();
 
   const [jobQuery,   setJobQuery]   = useState('');
-  const [jobResults, setJobResults] = useState<Job[]>([]);
-  const [pickedJob,  setPickedJob]  = useState<Job | null>(null);
+  const [jobResults, setJobResults] = useState<OrderHit[]>([]);
+  const [pickedJob,  setPickedJob]  = useState<OrderHit | null>(null);
   const [searching,  setSearching]  = useState(false);
 
   const [qty,      setQty]      = useState<number | ''>('');
@@ -46,7 +53,8 @@ export default function ManualStockModal({ onClose, onAdded }: Props) {
   const [remark,   setRemark]   = useState('');
   const [saving,   setSaving]   = useState(false);
 
-  // Job lookup. Skipped once a job is picked — the list would just be noise.
+  // Order lookup in Job Separation. Skipped once one is picked — the list
+  // would just be noise.
   useEffect(() => {
     if (pickedJob || jobQuery.trim().length < 2) {
       setJobResults([]);
@@ -56,9 +64,9 @@ export default function ManualStockModal({ onClose, onAdded }: Props) {
     const timer = setTimeout(async () => {
       setSearching(true);
       try {
-        const res  = await fetch(`/api/jobs?search=${encodeURIComponent(jobQuery.trim())}`);
+        const res  = await fetch(`/api/stock/lookup?q=${encodeURIComponent(jobQuery.trim())}`);
         const data = await res.json();
-        if (!cancelled && res.ok) setJobResults((data.jobs ?? []).slice(0, 6));
+        if (!cancelled && res.ok) setJobResults(data.separations ?? []);
       } catch {
         // Non-fatal: the free-text fields below still work.
       } finally {
@@ -68,10 +76,10 @@ export default function ManualStockModal({ onClose, onAdded }: Props) {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [jobQuery, pickedJob]);
 
-  function pickJob(job: Job) {
+  function pickJob(job: OrderHit) {
     setPickedJob(job);
     setParty(job.party);
-    setJobName(job.job_name ?? '');
+    setJobName(job.material_name ?? '');
     setPmCode(job.pm_code ?? '');
     setJobResults([]);
   }
@@ -92,7 +100,7 @@ export default function ManualStockModal({ onClose, onAdded }: Props) {
       return;
     }
     if (!pickedJob && !party.trim()) {
-      toast.error('Pick a job, or type the party name');
+      toast.error('Pick the order, or type the party name');
       return;
     }
 
@@ -102,9 +110,9 @@ export default function ManualStockModal({ onClose, onAdded }: Props) {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          job_id:   pickedJob?.id ?? null,
+          separation_id: pickedJob?.id ?? null,
           qty,
-          // Ignored by the server when job_id is set — it snapshots the job.
+          // Ignored by the server when separation_id is set — it snapshots the row.
           party:    party.trim(),
           job_name: jobName.trim(),
           pm_code:  pmCode.trim(),
@@ -151,18 +159,16 @@ export default function ManualStockModal({ onClose, onAdded }: Props) {
         <div className="px-5 py-4 overflow-y-auto space-y-4">
           {/* Job picker */}
           <div>
-            <StockLabel>Job</StockLabel>
+            <StockLabel>Order (from Job Separation)</StockLabel>
             {pickedJob ? (
               <div className="flex items-start justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
                 <div className="min-w-0">
-                  <p className="font-mono text-xs font-semibold text-emerald-900">
-                    {formatJobCardNumber(pickedJob.job_card_number) ?? pickedJob.po_number}
-                  </p>
+                  <OrderLine hit={pickedJob} />
                   <p className="text-sm font-medium text-emerald-900 mt-0.5 break-words">
                     {pickedJob.party}
                   </p>
-                  {pickedJob.job_name && (
-                    <p className="text-xs text-emerald-800 mt-0.5 break-words">{pickedJob.job_name}</p>
+                  {pickedJob.material_name && (
+                    <p className="text-xs text-emerald-800 mt-0.5 break-words">{pickedJob.material_name}</p>
                   )}
                 </div>
                 <button
@@ -182,8 +188,8 @@ export default function ManualStockModal({ onClose, onAdded }: Props) {
                 <input
                   value={jobQuery}
                   onChange={(e) => setJobQuery(e.target.value)}
-                  placeholder="Search card no, PO, party or job name"
-                  aria-label="Search for a job"
+                  placeholder="Search PO, PM code, party, material or Sr. No."
+                  aria-label="Search Job Separation for the order"
                   autoComplete="off"
                   className={cn(inputCls, 'pl-9 pr-11')}
                 />
@@ -197,11 +203,9 @@ export default function ManualStockModal({ onClose, onAdded }: Props) {
                         onClick={() => pickJob(job)}
                         className="w-full text-left px-3 py-2 hover:bg-black/[0.04] transition-colors border-b border-black/[0.06] last:border-0"
                       >
-                        <span className="block font-mono text-xs font-semibold text-[var(--glass-ink)]">
-                          {formatJobCardNumber(job.job_card_number) ?? job.po_number}
-                        </span>
+                        <OrderLine hit={job} />
                         <span className="block text-xs text-[var(--glass-muted)] truncate">
-                          {job.party}{job.job_name ? ` · ${job.job_name}` : ''}
+                          {job.party}{job.material_name ? ` · ${job.material_name}` : ''}
                         </span>
                       </button>
                     ))}
@@ -306,6 +310,20 @@ export default function ManualStockModal({ onClose, onAdded }: Props) {
         </div>
       </form>
     </ModalShell>
+  );
+}
+
+/** "PO 4500012345 · PM 1500002656 · AUG26-12" — whatever the row has. */
+function OrderLine({ hit }: { hit: OrderHit }) {
+  const parts = [
+    hit.po_no   ? `PO ${hit.po_no}`   : null,
+    hit.pm_code ? `PM ${hit.pm_code}` : null,
+    formatJobCardNumber(hit.linked_job_card_number) ?? hit.sr_no,
+  ].filter(Boolean);
+  return (
+    <span className="block font-mono text-xs font-semibold text-[var(--glass-ink)] break-words">
+      {parts.join(' · ')}
+    </span>
   );
 }
 

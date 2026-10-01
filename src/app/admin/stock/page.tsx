@@ -2,13 +2,15 @@
 // Label stock — printed labels physically on the shelf. Inside /admin, so it
 // inherits the light theme and the layout's auth check.
 //
-// Readable by every department: anyone may need to know whether labels for a
-// job already exist before printing more. Only Dispatch and Admin can move
-// stock (add, correct, mark dispatched) — see canDeptManageStock.
+// Two department features (migration 071): stock_view to see this page,
+// stock_edit to change the shelf (add, correct, dispatch out, delete).
+// Admin holds both. A department without either is sent back to the
+// dashboard — there is no reason to advertise a page it can't open.
 
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
-import { getDeptPermissions, canDeptManageStock } from '@/lib/constants/departments';
+import { redirect } from 'next/navigation';
+import { getDeptPermissions, canDeptManageStock, canDeptViewStock } from '@/lib/constants/departments';
 import LabelStockManager from '@/components/admin/LabelStockManager';
 
 export const dynamic = 'force-dynamic';
@@ -21,7 +23,10 @@ export const metadata = {
 export default async function LabelStockPage() {
   const supabase = await createServerSupabaseClient();
   const user = await getClaimsUser(supabase);
-  const perms = await getDeptPermissions(user?.user_metadata?.department);
+  if (!user) redirect('/login');
+
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!canDeptViewStock(perms)) redirect('/admin');
 
   return (
     <div className="space-y-4">
@@ -34,7 +39,10 @@ export default async function LabelStockPage() {
         </p>
       </div>
 
-      <LabelStockManager canManage={canDeptManageStock(perms)} />
+      <LabelStockManager
+        canManage={canDeptManageStock(perms)}
+        canClearHistory={Boolean(perms?.isSuperAdmin)}
+      />
     </div>
   );
 }

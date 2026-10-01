@@ -1,6 +1,6 @@
 // src/app/api/stock/route.ts
 // ============================================================
-// GET  /api/stock  — live label stock (any authenticated user)
+// GET  /api/stock  — live label stock (stock_view or stock_edit)
 // POST /api/stock  — manual stock entry (Dispatch or Admin)
 // ============================================================
 
@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getDeptPermissions, canDeptManageStock } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageStock, canDeptViewStock } from '@/lib/constants/departments';
 import { orContains } from '@/lib/search';
 
 // ── GET ───────────────────────────────────────────────────────
@@ -17,6 +17,11 @@ export async function GET(request: NextRequest) {
 
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const perms = await getDeptPermissions(user.user_metadata?.department);
+  if (!canDeptViewStock(perms)) {
+    return NextResponse.json({ error: 'Your department cannot see label stock' }, { status: 403 });
+  }
 
   const { searchParams } = new URL(request.url);
   const search = searchParams.get('search')?.trim();
@@ -71,9 +76,10 @@ export async function POST(request: NextRequest) {
 
   const admin = createAdminClient();
 
-  // A manual entry may name a job or stand alone (stock found with no
-  // traceable job). When a job is named, its identity is snapshotted from
-  // the database rather than trusted from the client.
+  // A manual entry may name its order — a Job Separation row (the usual
+  // path), or a job — or stand alone (stock found with no traceable order).
+  // When an order is named, its identity is snapshotted from the database
+  // rather than trusted from the client.
   let jobSnapshot: Record<string, unknown> = {
     job_id:          null,
     job_card_number: null,
@@ -83,7 +89,25 @@ export async function POST(request: NextRequest) {
     job_name:        typeof body.job_name === 'string' ? body.job_name.trim() || null : null,
   };
 
-  if (body.job_id) {
+  if (body.separation_id) {
+    const { data: sep, error: sepErr } = await admin
+      .from('job_separations')
+      .select('party, po_no, pm_code, material_name, linked_job_id, linked_job_card_number')
+      .eq('id', body.separation_id)
+      .single();
+
+    if (sepErr || !sep) {
+      return NextResponse.json({ error: 'Job Separation entry not found' }, { status: 404 });
+    }
+    jobSnapshot = {
+      job_id:          sep.linked_job_id,
+      job_card_number: sep.linked_job_card_number,
+      po_number:       sep.po_no,
+      pm_code:         sep.pm_code,
+      party:           sep.party,
+      job_name:        sep.material_name,
+    };
+  } else if (body.job_id) {
     const { data: job, error: jobErr } = await admin
       .from('jobs')
       .select('id, job_card_number, po_number, pm_code, party, job_name')
