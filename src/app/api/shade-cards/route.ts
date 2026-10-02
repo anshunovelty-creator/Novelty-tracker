@@ -150,9 +150,9 @@ export async function POST(request: NextRequest) {
 
   const name = actorName(user);
 
-  // status is deliberately not taken from the request: a new card always
-  // starts at "Pending Approval" and is advanced through the status control,
-  // so creating a card can never double as approving one.
+  // A new card defaults to "Pending Approval"; the form may set another
+  // selectable status when the party has already responded. The insert
+  // trigger records whichever it is as the first status-history entry.
   const { data, error } = await supabase
     .from('shade_cards')
     .insert({
@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
       received_back_date: optionalDate(body.received_back_date),
       qnap_path:          optionalText(body.qnap_path),
       notes:              optionalText(body.notes),
-      status:             'Pending Approval',
+      status:             isSelectableStatus(body.status) ? body.status : 'Pending Approval',
       version:            1,
       is_current:         true,
       created_by:         user.id,

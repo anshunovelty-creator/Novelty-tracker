@@ -7,9 +7,9 @@
 // current values: a revision is nearly always a small correction to the card
 // that came back from the party, not a blank re-entry.
 //
-// `status` is absent by design. Approval moves through the status control on
-// the card itself, so adding or editing a card can never double as approving
-// one — the rule the source app enforced in its server actions.
+// Approval status is part of the form too, so a card that comes back already
+// approved can be entered in one pass. The same departments may change it
+// either way, and the DB trigger records every change in the status trail.
 
 import React, { useState, useEffect, useId, useRef } from 'react';
 import Link from 'next/link';
@@ -18,7 +18,12 @@ import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { ModalShell } from './modals';
-import { MAKING_STATUSES, SHADE_CARD_STATUS_COLORS } from '@/lib/constants/shadeCards';
+import {
+  MAKING_STATUSES,
+  SHADE_CARD_STATUSES,
+  SHADE_CARD_STATUS_COLORS,
+  type ShadeCardStatus,
+} from '@/lib/constants/shadeCards';
 import type { Party, ShadeCard } from '@/lib/types';
 
 // Matches the shared field style used by every other modal and form in the
@@ -81,7 +86,7 @@ type Props = {
 const COPY: Record<ShadeCardModalMode, { title: string; blurb: string; save: string; done: string }> = {
   create: {
     title: 'Add shade card',
-    blurb: 'A new card starts as Pending Approval — set the approval status from the card itself once the party responds.',
+    blurb: 'A new card normally starts as Pending Approval — change the status here if the party has already responded.',
     save:  'Add card',
     done:  'Shade card added',
   },
@@ -93,7 +98,7 @@ const COPY: Record<ShadeCardModalMode, { title: string; blurb: string; save: str
   },
   revise: {
     title: 'Revise shade card',
-    blurb: 'Creates the next version and retires this one. The approval status carries over; the old version stays readable in the lineage.',
+    blurb: 'Creates the next version and retires this one. The approval status carries over unless you change it; the old version stays readable in the lineage.',
     save:  'Create revision',
     done:  'Revision created',
   },
@@ -108,6 +113,7 @@ export default function AddShadeCardModal({ mode, card, onClose, onSaved }: Prop
   const [pmCode,           setPmCode]           = useState(card?.pm_code ?? '');
   const [shadeCardNumber,  setShadeCardNumber]  = useState(card?.shade_card_number ?? '');
   const [docketNumber,     setDocketNumber]     = useState(card?.docket_number ?? '');
+  const [status,           setStatus]           = useState<ShadeCardStatus>(card?.status ?? 'Pending Approval');
   const [makingStatus,     setMakingStatus]     = useState(card?.making_status ?? 'Pending');
   const [preparedDate,     setPreparedDate]     = useState(card?.prepared_date ?? '');
   const [approvalDate,     setApprovalDate]     = useState(card?.approval_date ?? '');
@@ -121,6 +127,13 @@ export default function AddShadeCardModal({ mode, card, onClose, onSaved }: Prop
   // ignored — the API rejects the downgrade either way, and a disabled field
   // explains that up front instead of at save time.
   const makingLocked = card?.making_status === 'Already Made';
+
+  // Imported cards can carry a status that is no longer offered (Revision
+  // Requested, Expired). Keep it in the list so opening the form doesn't
+  // silently swap it for the first option; the API leaves it untouched.
+  const statusOptions = SHADE_CARD_STATUSES.includes(status)
+    ? SHADE_CARD_STATUSES
+    : [status, ...SHADE_CARD_STATUSES];
 
   // ── Party typeahead ─────────────────────────────────────────
   // Suggests from the same master list Job Separation uses, so a party is
@@ -258,6 +271,7 @@ export default function AddShadeCardModal({ mode, card, onClose, onSaved }: Prop
         pm_code:            pmCode.trim(),
         shade_card_number:  shadeCardNumber.trim(),
         docket_number:      docketNumber.trim(),
+        status,
         making_status:      makingStatus,
         prepared_date:      preparedDate,
         approval_date:      approvalDate,
@@ -410,20 +424,37 @@ export default function AddShadeCardModal({ mode, card, onClose, onSaved }: Prop
 
           {dupes && <DuplicateCallout hit={dupes} />}
 
-          {/* Production status — independent of the party's approval below */}
-          <div>
-            <label htmlFor="sc-making" className={labelCls}>Card made?</label>
-            <select
-              id="sc-making" className={inputCls} value={makingStatus} disabled={makingLocked}
-              onChange={(e) => setMakingStatus(e.target.value as ShadeCard['making_status'])}
-            >
-              {MAKING_STATUSES.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-            {makingLocked && (
-              <p className="text-[11px] text-[var(--glass-muted)] mt-1">
-                Already made — this can&apos;t be moved back to pending.
-              </p>
-            )}
+          {/* Status — the party's approval, and whether the physical card exists.
+              Independent of each other: a card can be approved before it is made. */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="sc-status" className={labelCls}>Status</label>
+              <select
+                id="sc-status" className={inputCls} value={status}
+                onChange={(e) => setStatus(e.target.value as ShadeCardStatus)}
+              >
+                {statusOptions.map((s) => (
+                  <option key={s} value={s}>
+                    {SHADE_CARD_STATUSES.includes(s) ? s : `${s} (retired)`}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="sc-making" className={labelCls}>Card made?</label>
+              <select
+                id="sc-making" className={inputCls} value={makingStatus} disabled={makingLocked}
+                onChange={(e) => setMakingStatus(e.target.value as ShadeCard['making_status'])}
+              >
+                {MAKING_STATUSES.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+              {makingLocked && (
+                <p className="text-[11px] text-[var(--glass-muted)] mt-1">
+                  Already made — this can&apos;t be moved back to pending.
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Approval timeline — in the order these dates actually happen */}

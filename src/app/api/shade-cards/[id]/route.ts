@@ -151,6 +151,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       ? 'Already Made'
       : (isMakingStatus(body.making_status) ? body.making_status : 'Pending');
     patch = { ...fields, making_status };
+    // Status rides along with the form. Only a selectable value is applied, so
+    // a card still on a retired status keeps it unless someone picks a new one.
+    // The DB trigger logs the change, same as the 'status' action.
+    if (isSelectableStatus(body.status)) patch.status = body.status;
 
   } else {
     return NextResponse.json(
@@ -200,14 +204,14 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const name = actorName(user);
 
-  // The revision inherits the approval status: revising a card does not
-  // re-open an approval that the party already gave.
+  // The revision inherits the approval status unless the form picked another:
+  // revising a card does not re-open an approval that the party already gave.
   const { data: newRow, error: insertErr } = await supabase
     .from('shade_cards')
     .insert({
       ...fields,
       making_status:   isMakingStatus(body.making_status) ? body.making_status : 'Pending',
-      status:          oldRow.status,
+      status:          isSelectableStatus(body.status) ? body.status : oldRow.status,
       version:         (oldRow.version ?? 1) + 1,
       is_current:      true,
       supersedes_id:   id,
