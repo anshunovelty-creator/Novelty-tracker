@@ -15,6 +15,7 @@ import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-quer
 import { Search, Plus, Pencil, Copy, Ban, SplitSquareHorizontal, ArrowUp, ArrowDown, Users, FilePlus2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatQty, formatNumericDate, formatJobCardNumber } from '@/lib/utils';
+import { compareValues, type SortDir, type SortKind } from '@/lib/sort';
 import { Button } from '@/components/ui/Button';
 import { csvDate, csvTimestamp, type CsvColumn } from '@/lib/export/csv';
 import type { JobSeparation, AddJobFormData, Job } from '@/lib/types';
@@ -109,7 +110,6 @@ type SortField =
   | 'sr_no' | 'party' | 'po_no' | 'po_date' | 'pm_code' | 'material_name'
   | 'quantity' | 'unit' | 'job_status' | 'rate' | 'order_value' | 'jc_status'
   | 'aw_send_to' | 'created_at';
-type SortDir = 'asc' | 'desc';
 
 // Which single SortField each table header sorts by. Merged headers (PO No /
 // Date, PM Code / Material, Qty / Rate) stay one plain clickable label —
@@ -130,33 +130,20 @@ const COLUMN_SORT_FIELDS: Partial<Record<typeof JOB_SEPARATION_COLUMNS[number], 
   'AW SENT to U1':        'aw_send_to',
 };
 
-const SORT_FIELD_KIND: Record<SortField, 'text' | 'number' | 'date'> = {
-  sr_no: 'text', party: 'text', po_no: 'text', po_date: 'date', pm_code: 'text',
+// Sr. No is 'AUG26-12' (PO month + per-month sequence), so it sorts by
+// calendar month then sequence — DEC26 before JAN27 — not alphabetically.
+// compareValues keeps nulls last in either direction.
+const SORT_FIELD_KIND: Record<SortField, SortKind> = {
+  sr_no: 'month-code', party: 'text', po_no: 'text', po_date: 'date', pm_code: 'text',
   material_name: 'text', quantity: 'number', unit: 'text', job_status: 'text',
   rate: 'number', order_value: 'number', jc_status: 'text', aw_send_to: 'text',
   created_at: 'date',
 };
 
-// Ascending comparator. Nulls always sort to the end regardless of
-// direction — same rule delivery_date sorting uses in sortJobs (utils.ts):
-// "not set" reads as "furthest away," in either direction.
-function compareRows(a: JobSeparation, b: JobSeparation, field: SortField): number {
-  const av = a[field];
-  const bv = b[field];
-  if (av === null && bv === null) return 0;
-  if (av === null) return 1;
-  if (bv === null) return -1;
-
-  const kind = SORT_FIELD_KIND[field];
-  if (kind === 'number') return (av as number) - (bv as number);
-  if (kind === 'date') return new Date(av as string).getTime() - new Date(bv as string).getTime();
-  return (av as string).localeCompare(bv as string, undefined, { numeric: true, sensitivity: 'base' });
-}
-
 function sortRows(rows: JobSeparation[], field: SortField, dir: SortDir): JobSeparation[] {
   const sorted = [...rows];
   sorted.sort((a, b) => {
-    const diff = compareRows(a, b, field);
+    const diff = compareValues(a[field], b[field], SORT_FIELD_KIND[field]);
     return dir === 'asc' ? diff : -diff;
   });
   return sorted;

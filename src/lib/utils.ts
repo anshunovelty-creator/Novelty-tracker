@@ -9,6 +9,7 @@ import { format, differenceInDays } from 'date-fns';
 import { getPrerequisite } from './constants/stages';
 import type { Stage } from './constants/stages';
 import type { JobType, Job } from './types';
+import { parseMonthCode } from './sort';
 
 // ── Class name merging ────────────────────────────────────────
 
@@ -26,24 +27,6 @@ export function cn(...inputs: ClassValue[]) {
  */
 export function formatJobCardNumber(value: string | null): string | null {
   return value ? value.toUpperCase() : null;
-}
-
-const CARD_MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-
-/**
- * Job card numbers reset their sequence every month ('aug26-1' .. 'aug26-40',
- * then 'sep26-1'), so sorting the raw string gives wrong order both across
- * months (alphabetical 'aug' > 'jul' happens to work, but 'dec' < 'jan' does
- * not) and within a month once the sequence passes 9 ('aug26-10' < 'aug26-2'
- * as a string). Parse into a chronological period + numeric sequence instead.
- */
-function parseJobCardNumber(value: string | null): { period: number; seq: number } | null {
-  if (!value) return null;
-  const match = value.match(/^([a-z]{3})(\d{2})-(\d+)$/i);
-  if (!match) return null;
-  const monthIndex = CARD_MONTHS.indexOf(match[1].toLowerCase());
-  if (monthIndex === -1) return null;
-  return { period: Number(match[2]) * 12 + monthIndex, seq: Number(match[3]) };
 }
 
 export type JobSortOption =
@@ -78,8 +61,8 @@ export function sortJobs(jobs: Job[], sortBy: JobSortOption): Job[] {
     case 'card_asc':
     case 'card_desc':
       sorted.sort((a, b) => {
-        const pa = parseJobCardNumber(a.job_card_number);
-        const pb = parseJobCardNumber(b.job_card_number);
+        const pa = parseMonthCode(a.job_card_number);
+        const pb = parseMonthCode(b.job_card_number);
         if (!pa && !pb) return 0;
         if (!pa) return 1;
         if (!pb) return -1;
