@@ -28,7 +28,7 @@ const config: Config = {
       // ── Brand colors from spec ──────────────────────────────
       colors: {
         brand: {
-          bg:              '#F5F7F4', // warm near-white page bg
+          bg:              '#F4F7F5', // mint-grey page ground
           surface:         '#FFFFFF', // cards
           border:          '#E4EAE6', // dividers (greenish)
           ink:             '#0C2A20', // primary text (dark green-black)
@@ -36,20 +36,27 @@ const config: Config = {
           primary:         '#10553F', // brand fills / actions (green-700, the seed)
           'primary-hover': '#0C4232', // button/link hover
           header:          '#10553F', // header/nav bg (was near-black)
-          muted:           '#6A7A72', // secondary text (green-gray)
-          success:         '#1B7A4E',
-          warning:         '#C2740C',
-          danger:          '#C0392B',
+          muted:           '#5A6B62', // THE secondary text colour — 5.6:1 on white
+          success:         '#065F46',
+          warning:         '#92400E',
+          danger:          '#B91C1C',
           hold:            '#5B6B63',
           pending:         '#94A39B',
+          // Control Room surfaces (DESIGN.md frontmatter)
+          'surface-alt':   '#F5F9F7', // zebra rows, search wells, footers
+          'surface-hover': '#EAF3EE', // hovered row / menu item
+          sunken:          '#EEF2EF', // progress & segmented tracks
+          'line-soft':     '#EEF2EF', // row dividers inside a card
+          faint:           '#94A39B', // icons, placeholders, disabled — never body text
+          mint:            '#7CF0BE', // accent on dark grounds only
           // dark-glass theme (light text on the mesh):
           'glass-ink':     '#EAFFF5', // primary text on glass (AA on mesh)
           'glass-muted':   '#9FBCB0', // secondary text on glass (AA on mesh)
           'glass-line':    'rgba(255,255,255,0.14)',
           // legacy semantic names still referenced in code:
-          green:           '#1B7A4E',
-          amber:           '#C2740C',
-          red:             '#C0392B',
+          green:           '#065F46',
+          amber:           '#92400E',
+          red:             '#B91C1C',
         },
         green: {
           50:  '#F0F6F3', 100: '#DCEDE5', 200: '#B9DBCB', 300: '#8AC2A9',
@@ -60,8 +67,11 @@ const config: Config = {
 
       // ── Typography ──────────────────────────────────────────
       fontFamily: {
-        sans:  ['DM Sans', 'system-ui', 'sans-serif'],
-        mono:  ['Trispace', 'ui-monospace', 'monospace'],
+        // next/font registers the faces under hashed family names and exposes
+        // them only through these variables (see app/layout.tsx) — a literal
+        // 'DM Sans' here never matches and silently falls back to system-ui.
+        sans:  ['var(--font-dm-sans)', 'system-ui', 'sans-serif'],
+        mono:  ['var(--font-trispace)', 'ui-monospace', 'monospace'],
       },
 
       // ── Animations ──────────────────────────────────────────

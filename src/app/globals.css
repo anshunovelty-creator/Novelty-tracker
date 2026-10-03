@@ -5,7 +5,7 @@
 
 /* ── CSS custom properties (mirror tailwind.config.ts brand tokens) ── */
 :root {
-  --color-bg:            #F5F7F4;
+  --color-bg:            #F4F7F5;
   --color-surface:       #FFFFFF;
   --color-border:        #E4EAE6;
   --color-ink:           #0C2A20;
@@ -13,16 +13,16 @@
   --color-primary:       #10553F;
   --color-primary-hover: #0C4232;
   --color-header:        #10553F;
-  --color-muted:         #6A7A72;
-  --color-success:       #1B7A4E;
-  --color-warning:       #C2740C;
-  --color-danger:        #C0392B;
+  --color-muted:         #5A6B62;
+  --color-success:       #065F46;
+  --color-warning:       #92400E;
+  --color-danger:        #B91C1C;
   --color-hold:          #5B6B63;
   --color-pending:       #94A39B;
   /* legacy aliases (mirror brand.green/amber/red) */
-  --color-green:         #1B7A4E;
-  --color-amber:         #C2740C;
-  --color-red:           #C0392B;
+  --color-green:         #065F46;
+  --color-amber:         #92400E;
+  --color-red:           #B91C1C;
 
   --font-sans: var(--font-dm-sans), system-ui, sans-serif;
   --font-mono: var(--font-trispace), ui-monospace, monospace;
@@ -326,12 +326,9 @@ select:disabled {
   /* Press Green ring on white — the mint bloom is invisible on light. */
   --focus-ring:       #10553F;
   --focus-bloom:      0 0 0 4px rgba(16, 85, 63, 0.16);
-  /* Soft, breathing mint wash — atmosphere without shouting */
-  background:
-    radial-gradient(60% 45% at 100% 0%,   #E2EFE8 0%, transparent 62%),
-    radial-gradient(52% 42% at 0% 100%,    #E7F1EB 0%, transparent 60%),
-    #F1F5F2;
-  background-attachment: fixed;
+  /* Control Room ground: flat mint-grey. Hierarchy comes from white cards
+     and their borders, not from a wash behind them. */
+  background: var(--color-bg);
 }
 
 /* Inset "white-on-dark" fills become a soft ink tint on white cards.
@@ -482,4 +479,14 @@ select:disabled {
 }
 @media (prefers-reduced-motion: reduce) {
   .field-example { transition: none; }
+}
+
+/* ── Stage menu (StageSelect) — a short rise-in; nothing moves for reduced motion ── */
+@keyframes stage-menu-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+.stage-menu-in { animation: stage-menu-in 120ms ease-out; transform-origin: top left; }
+@media (prefers-reduced-motion: reduce) {
+  .stage-menu-in { animation: none; }
 }

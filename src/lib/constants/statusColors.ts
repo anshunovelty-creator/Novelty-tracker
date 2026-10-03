@@ -14,24 +14,35 @@ type ColorConfig = {
   border?: string;
 };
 
-export const STATUS_COLORS: Record<Stage, ColorConfig> = {
-  'PO Received':             { bg: 'bg-slate-100',   text: 'text-slate-700',   border: 'border border-slate-200' },
-  'Artwork Pending':         { bg: 'bg-purple-100',  text: 'text-purple-700',  border: 'border border-purple-200' },
-  'Plate Status':            { bg: 'bg-indigo-100',  text: 'text-indigo-700',  border: 'border border-indigo-200' },
-  'Job Card Done':           { bg: 'bg-sky-100',     text: 'text-sky-700',     border: 'border border-sky-200' },
-  'Sample Printing':         { bg: 'bg-amber-100',   text: 'text-amber-800',   border: 'border border-amber-200' },
-  'Shade Card Sent':         { bg: 'bg-orange-100',  text: 'text-orange-700',  border: 'border border-orange-200' },
-  'Shade Card Approved':     { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border border-emerald-200' },
-  'In Printing':             { bg: 'bg-emerald-100', text: 'text-emerald-800', border: 'border border-emerald-300' },
-  'Slitting':                { bg: 'bg-sky-100',     text: 'text-sky-700',     border: 'border border-sky-200' },
-  'Quality Check':           { bg: 'bg-cyan-100',    text: 'text-cyan-800',    border: 'border border-cyan-200' },
-  'Packing':                 { bg: 'bg-purple-100',  text: 'text-purple-700',  border: 'border border-purple-200' },
-  'Ready to Dispatch':       { bg: 'bg-yellow-100',  text: 'text-yellow-800',  border: 'border border-yellow-300' },
-  'Partial Dispatch':        { bg: 'bg-amber-100',   text: 'text-amber-800',   border: 'border border-amber-300' },
-  'Dispatched':              { bg: 'bg-emerald-600', text: 'text-white',       border: 'border border-emerald-600' },
-  'On Hold':                 { bg: 'bg-amber-100',   text: 'text-amber-800',   border: 'border border-amber-300' },
-  'PO Closed':               { bg: 'bg-emerald-100', text: 'text-emerald-800', border: 'border border-emerald-300' },
+// Control Room design system (DESIGN.md §2): a state is shown as an 8px dot
+// beside the stage name — never as a filled pastel pill. STAGE_DOT is the dot
+// colour per stage; the select/badge itself stays white with ink text.
+export const STAGE_DOT: Record<Stage, string> = {
+  'PO Received':         '#64748B',
+  'Artwork Pending':     '#9333EA',
+  'Plate Status':        '#4F46E5',
+  'Job Card Done':       '#0284C7',
+  'Sample Printing':     '#D97706',
+  'Shade Card Sent':     '#EA580C',
+  'Shade Card Approved': '#059669',
+  'In Printing':         '#059669',
+  'Slitting':            '#0284C7',
+  'Quality Check':       '#0891B2',
+  'Packing':             '#9333EA',
+  'Ready to Dispatch':   '#CA8A04',
+  'Partial Dispatch':    '#D97706',
+  'Dispatched':          '#047857',
+  'On Hold':             '#D97706',
+  'PO Closed':           '#047857',
 };
+
+// Surface of a stage control (select / badge). Neutral for every stage: the
+// colour lives only in STAGE_DOT. Kept as a per-stage record so existing
+// call sites (JobRow, JobCard) keep working unchanged.
+const NEUTRAL: ColorConfig = { bg: 'bg-white', text: 'text-[#0C2A20]', border: 'border border-[#E4EAE6]' };
+export const STATUS_COLORS: Record<Stage, ColorConfig> = Object.fromEntries(
+  (Object.keys(STAGE_DOT) as Stage[]).map((s) => [s, NEUTRAL]),
+) as Record<Stage, ColorConfig>;
 
 // Row background tints for admin panel.
 // Urgency / special status reads through the row's background tint plus its

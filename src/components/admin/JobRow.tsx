@@ -21,17 +21,17 @@ import { memo, useState } from 'react';
 import Link from 'next/link';
 import { ChevronDown, ChevronUp, PauseCircle, Pencil, Trash2, CheckCircle2 } from 'lucide-react';
 import { cn, formatJobCardNumber, formatNumericDate, formatQty } from '@/lib/utils';
-import { STATUS_COLORS, JOB_TYPE_BADGE, urgentBadgeClass, unitDigit, unitCircleClass } from '@/lib/constants/statusColors';
-import { canDeptSetStage, canDeptEditJobDetails } from '@/lib/constants/departments';
+import { JOB_TYPE_BADGE, urgentBadgeClass, unitDigit, unitCircleClass } from '@/lib/constants/statusColors';
+import { canDeptEditJobDetails } from '@/lib/constants/departments';
 import { useJobActions } from '@/hooks/useJobActions';
 import type { Job } from '@/lib/types';
 import type { DeptPermissions } from '@/lib/constants/departments';
-import type { Stage } from '@/lib/constants/stages';
 import HistoryPanel from './HistoryPanel';
 import DeliveryDateEdit from './DeliveryDateEdit';
 import JobDuplicateButton from './JobDuplicateButton';
 import { Button } from '@/components/ui/Button';
 import JobActionModals from './JobActionModals';
+import StageSelect from './StageSelect';
 
 // Loaded on first open, not with the page — it only renders when open.
 const EditJobModal = dynamic(() => import('./EditJobModal'), { ssr: false });
@@ -228,40 +228,8 @@ function JobRow({
         </td>
 
         {/* ── Status ───────────────────────────────────────────────── */}
-        <td className="px-3 py-2 align-top min-w-[150px] border-r border-white/8">
-          <label htmlFor={`row-stage-${job.id}`} className="sr-only">
-            Status for job {cardNo ?? job.po_number}
-          </label>
-          <select
-            id={`row-stage-${job.id}`}
-            value={job.status}
-            disabled={actions.submitting}
-            onChange={(e) => actions.handleStageSelect(e.target.value as Stage)}
-            className={cn(
-              'w-full px-2.5 py-1.5 rounded-lg text-xs font-medium',
-              'focus:outline-none focus:border-emerald-300/70',
-              'focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)]',
-              'transition-all cursor-pointer disabled:opacity-60',
-              STATUS_COLORS[job.status]?.bg ?? 'bg-slate-100',
-              STATUS_COLORS[job.status]?.text ?? 'text-slate-700',
-              STATUS_COLORS[job.status]?.border ?? 'border border-slate-200',
-              '[&>option]:bg-white [&>option]:text-[var(--glass-ink)]',
-            )}
-          >
-            {actions.availableStages.map((stage) => {
-              // Backward picks are Admin-only, and shown greyed for everyone
-              // else so the pipeline reads as the one-way ratchet it is.
-              const backward  = actions.isBackwardStage(stage);
-              const allowed   = canDeptSetStage(dept, stage, job.printing_method)
-                                && (!backward || dept.isSuperAdmin);
-              const completed = actions.completedSet.has(stage);
-              return (
-                <option key={stage} value={stage} disabled={!allowed}>
-                  {`${allowed ? '' : '🔒 '}${completed ? '✓ ' : ''}${stage}`}
-                </option>
-              );
-            })}
-          </select>
+        <td className="px-3 py-2 align-top min-w-[210px] border-r border-white/8">
+          <StageSelect job={job} dept={dept} actions={actions} jobLabel={cardNo ?? job.po_number} />
 
           {job.status === 'Slitting' && job.slitting_confirmed_at && (
             <p className="flex items-center gap-1 text-[11px] text-emerald-700 font-medium mt-1">

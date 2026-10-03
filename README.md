@@ -424,9 +424,11 @@ Two documents at the repo root are normative for any UI work:
 - **`PRODUCT.md`** — who this is for and the five design principles: status is
   the product; premium means precision; one vocabulary, two audiences; fast on
   the floor; states are designed.
-- **`DESIGN.md`** — the visual system. North Star "The Control Room": dark glass
-  panels over a Press Green mesh, DM Sans / DM Mono, translucent status chips,
-  translucency-first elevation. The frontmatter tokens are normative.
+- **`DESIGN.md`** — the visual system, "Control Room": a light Airy Green
+  admin and Press Green glass for `/track` and `/display`; DM Sans for words,
+  Trispace for numbers; every state shown as a stage-coloured dot beside its
+  name. The frontmatter tokens are normative, and it links the browsable
+  Control Room design system (tokens in both themes, component previews).
 
 Non-negotiables: WCAG AA contrast, 44px minimum tap targets, and a
 `prefers-reduced-motion` alternative for every animation. No generic

@@ -13,17 +13,17 @@ import React, { memo, useState } from 'react';
 import Link from 'next/link';
 import { ChevronDown, ChevronUp, PauseCircle, Pencil, Trash2, CheckCircle2 } from 'lucide-react';
 import { cn, formatAdminDate, formatJobCardNumber, formatQty, getDeliveryCountdown } from '@/lib/utils';
-import { STATUS_COLORS, JOB_TYPE_BADGE, urgentBadgeClass, unitDigit, unitCircleClass } from '@/lib/constants/statusColors';
-import { canDeptSetStage, canDeptEditJobDetails } from '@/lib/constants/departments';
+import { JOB_TYPE_BADGE, urgentBadgeClass, unitDigit, unitCircleClass } from '@/lib/constants/statusColors';
+import { canDeptEditJobDetails } from '@/lib/constants/departments';
 import { useJobActions } from '@/hooks/useJobActions';
 import type { Job } from '@/lib/types';
 import type { DeptPermissions } from '@/lib/constants/departments';
-import type { Stage } from '@/lib/constants/stages';
 import HistoryPanel from './HistoryPanel';
 import DeliveryDateEdit from './DeliveryDateEdit';
 import JobDuplicateButton from './JobDuplicateButton';
 import { Button } from '@/components/ui/Button';
 import JobActionModals from './JobActionModals';
+import StageSelect from './StageSelect';
 
 // Loaded on first open, not with the page — it only renders when open.
 const EditJobModal = dynamic(() => import('./EditJobModal'), { ssr: false });
@@ -52,7 +52,6 @@ function JobCard({
   const actions   = useJobActions({ job, dept, onJobUpdated, onJobDeleted });
   const countdown = getDeliveryCountdown(job.delivery_date);
   const [editing, setEditing] = useState(false);
-  const statusColor = STATUS_COLORS[job.status];
 
   return (
     <article
@@ -199,39 +198,13 @@ function JobCard({
 
       {/* ── The action: change stage ─────────────────────────── */}
       <div className="px-4 pb-3">
-        <label htmlFor={`stage-${job.id}`} className="sr-only">
-          Status for job {job.po_number}
-        </label>
-        <select
-          id={`stage-${job.id}`}
-          value={job.status}
-          disabled={actions.submitting}
-          onChange={(e) => actions.handleStageSelect(e.target.value as Stage)}
-          className={cn(
-            'w-full min-h-[48px] px-3 rounded-xl text-sm font-semibold cursor-pointer',
-            'appearance-none text-center transition-all disabled:opacity-60',
-            'focus:outline-none focus:border-emerald-400',
-            'focus:shadow-[0_0_0_4px_rgba(16,85,63,0.20)]',
-            statusColor?.bg ?? 'bg-slate-100',
-            statusColor?.text ?? 'text-slate-700',
-            statusColor?.border ?? 'border border-slate-200',
-            '[&>option]:bg-white [&>option]:text-[var(--glass-ink)] [&>option]:font-normal',
-          )}
-        >
-          {actions.availableStages.map((stage) => {
-            // Backward picks are Admin-only, and shown greyed for everyone
-            // else so the pipeline reads as the one-way ratchet it is.
-            const backward  = actions.isBackwardStage(stage);
-            const allowed   = canDeptSetStage(dept, stage, job.printing_method)
-                              && (!backward || dept.isSuperAdmin);
-            const completed = actions.completedSet.has(stage);
-            return (
-              <option key={stage} value={stage} disabled={!allowed}>
-                {`${allowed ? '' : '🔒 '}${completed ? '✓ ' : ''}${stage}`}
-              </option>
-            );
-          })}
-        </select>
+        <StageSelect
+          job={job}
+          dept={dept}
+          actions={actions}
+          jobLabel={formatJobCardNumber(job.job_card_number) ?? job.po_number}
+          variant="card"
+        />
         <p className="text-[11px] text-[var(--glass-muted)] text-center mt-1.5 font-mono">
           {actions.submitting
             ? 'Saving…'

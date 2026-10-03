@@ -1,230 +1,130 @@
 ---
-name: Label Print Tracker
-description: Deep-green glass control room for a label printing production pipeline
+name: Control Room
+description: Design system of the Label Print Tracker — light "Airy Green" admin, Press Green glass for /track and the wall display
+source: https://claude.ai/artifact/9Sgz8tFCoZhfxhqU15khuK (Control Room design system — the browsable reference)
+updated: 2026-10-03
 colors:
-  press-green: "#10553F"
-  press-green-deep: "#0C4232"
-  mesh-teal: "#0F4A37"
-  press-ink: "#0A1F18"
-  mesh-glow-emerald: "rgba(46,200,140,0.55)"
-  mesh-glow-teal: "rgba(20,120,90,0.60)"
-  mesh-core: "rgba(12,66,50,0.90)"
-  scrim: "rgba(0,0,0,0.45)"
-  glass-ink: "#EAFFF5"
-  glass-muted: "#9FBCB0"
-  glass-bg: "#FFFFFF12"
-  glass-bg-strong: "#FFFFFF1F"
-  glass-border: "#FFFFFF24"
-  success: "#1B7A4E"
-  warning: "#C2740C"
-  danger: "#C0392B"
+  brand: "#10553F"            # Press Green: header, the one primary button, selected states, progress fills
+  brand-deep: "#0C4232"       # hover / pressed
+  mint: "#7CF0BE"             # accent on dark grounds only (live dots, toast icon, notes badge)
+  on-brand: "#FFFFFF"
+  bg: "#F4F7F5"               # admin page ground   (dark: #0A1F18 + mesh)
+  surface: "#FFFFFF"          # cards, tables, menus (dark: rgba(255,255,255,.07) glass)
+  surface-alt: "#F5F9F7"      # zebra rows, search wells, footers
+  surface-hover: "#EAF3EE"    # hovered row / menu item
+  surface-sunken: "#EEF2EF"   # progress & segmented tracks
+  line: "#E4EAE6"             # card, input, button borders
+  line-soft: "#EEF2EF"        # row dividers
+  ink: "#0C2A20"              # primary text   (dark: #EAFFF5)
+  ink-muted: "#5A6B62"        # THE secondary text colour, 5.6:1 on white (dark: #9FBCB0)
+  ink-faint: "#94A39B"        # icons, placeholders, disabled ONLY — fails 4.5:1
+  danger: "#B91C1C"
+  danger-soft: "#FEF2F2"
+  warning: "#92400E"
+  warning-soft: "#FFFBEB"
+  success: "#065F46"
+  success-soft: "#ECFDF5"
+  unit-1: "#DB2777"
+  unit-2: "#047857"
+  scrim: "rgba(10,31,24,0.45)"
+stage-dots:                   # the ONLY use of these colours: Status dots and progress ticks
+  PO Received: "#64748B"
+  Artwork Pending: "#9333EA"
+  Plate Status: "#4F46E5"
+  Job Card Done: "#0284C7"
+  Sample Printing: "#D97706"
+  Shade Card Sent: "#EA580C"
+  Shade Card Approved: "#059669"
+  In Printing: "#059669"
+  Slitting: "#0284C7"
+  Quality Check: "#0891B2"
+  Packing: "#9333EA"
+  Ready to Dispatch: "#CA8A04"
+  Partial Dispatch: "#D97706"
+  Dispatched: "#047857"
+  PO Closed: "#047857"
+  On Hold: "#D97706"
 typography:
-  headline:
-    fontFamily: "DM Sans, system-ui, sans-serif"
-    fontSize: "1.25rem"
-    fontWeight: 600
-    lineHeight: 1.3
-  title:
-    fontFamily: "DM Sans, system-ui, sans-serif"
-    fontSize: "1rem"
-    fontWeight: 600
-    lineHeight: 1.4
-  body:
-    fontFamily: "DM Sans, system-ui, sans-serif"
-    fontSize: "0.875rem"
-    fontWeight: 400
-    lineHeight: 1.5
-  label:
-    fontFamily: "DM Sans, system-ui, sans-serif"
-    fontSize: "0.625rem"
-    fontWeight: 500
-    letterSpacing: "0.025em"
-  data:
-    fontFamily: "Trispace, ui-monospace, monospace"
-    fontSize: "0.75rem"
-    fontWeight: 400
-rounded:
-  sm: "4px"
-  md: "8px"
-  lg: "12px"
-  xl: "16px"
-  full: "9999px"
-spacing:
-  xs: "4px"
-  sm: "8px"
-  md: "12px"
-  lg: "16px"
-  xl: "20px"
-components:
-  button-primary:
-    backgroundColor: "{colors.press-green}"
-    textColor: "#FFFFFF"
-    rounded: "{rounded.md}"
-    padding: "6px 12px"
-  button-primary-hover:
-    backgroundColor: "{colors.press-green-deep}"
-    textColor: "#FFFFFF"
-  button-ghost:
-    backgroundColor: "#FFFFFF00"
-    textColor: "{colors.glass-muted}"
-    rounded: "{rounded.md}"
-    padding: "6px 12px"
-  button-ghost-hover:
-    backgroundColor: "#FFFFFF1A"
-    textColor: "{colors.glass-ink}"
-  badge-status:
-    backgroundColor: "#34D39926"
-    textColor: "#A7F3D0"
-    rounded: "{rounded.full}"
-    padding: "2px 8px"
-  input-field:
-    backgroundColor: "{colors.glass-bg}"
-    textColor: "{colors.glass-ink}"
-    rounded: "{rounded.lg}"
-    padding: "20px 14px 8px"
-  card-glass:
-    backgroundColor: "{colors.glass-bg}"
-    rounded: "{rounded.xl}"
-    padding: "20px"
+  sans: "DM Sans, system-ui, sans-serif"      # everything you read
+  mono: "Trispace, ui-monospace, monospace"    # everything you count or copy; tabular-nums
+  page-title: { size: 30px, line: 36px, weight: 600, tracking: -0.025em }
+  title:      { size: 18px, line: 24px, weight: 600 }
+  heading:    { size: 16px, line: 22px, weight: 600 }
+  body:       { size: 14px, line: 21px, weight: 400 }
+  small:      { size: 13px, line: 19px, weight: 400 }   # second line of a row, in ink-muted
+  caption:    { size: 12px, line: 16px, weight: 500 }   # table headers, sentence case, ink-muted
+  eyebrow:    { size: 11px, line: 14px, weight: 600, tracking: 0.06em, uppercase: true }  # list group labels only
+  data:       { family: mono, size: 13px, weight: 500 }
+  data-strong:{ family: mono, size: 18px, weight: 600 }
+  kpi:        { family: mono, size: 30px, weight: 600 }
+spacing: { 1: 4px, 2: 8px, 3: 12px, 4: 16px, 5: 20px, 6: 24px, 8: 32px, 9: 36px, target: 44px, page-max: 1240px, header: 56px }
+rounded: { sm: 6px, md: 10px, lg: 14px, xl: 16px, 2xl: 20px, pill: 9999px }
+shadow:
+  card: "0 1px 2px rgba(12,42,32,0.04)"
+  raised: "0 2px 8px rgba(12,42,32,0.08)"
+  pop: "0 18px 40px rgba(12,42,32,0.16)"      # menus, toasts, dialogs, drawers only
+  focus: "0 0 0 4px rgba(16,85,63,0.18)"
 ---
 
-# Design System: Label Print Tracker
+# Control Room
 
-## 1. Overview
+**Status is the product.** Every screen first answers: what state is this job in, and what happens next? Stage, lateness and the next action win over chrome.
 
-**Creative North Star: "The Control Room"**
+The browsable version of this file — tokens in both themes, live component previews, usage notes — is the **Control Room** design system artifact linked in the frontmatter. This file is the copy that lives with the code. If the two disagree, change both in the same PR.
 
-A calm, glass-walled control room overlooking the factory floor: every job visible, nothing shouting. The entire interface lives on a single deep-green atmosphere, the Press Green mesh, a slowly drifting gradient of emerald and teal over near-black Press Ink (#0A1F18). Content sits on frosted glass panels that let the atmosphere show through. Depth is built by translucency, not shadow; hierarchy is built by contrast and type, not decoration. The system is premium the way precision machinery is premium: tight tolerances, consistent vocabulary, and controls that respond instantly when touched.
+## 1. Two themes, one vocabulary
 
-The system explicitly rejects the generic admin template (rows of identical stat cards, default-blue buttons, off-the-shelf dashboard grammar) and consumer-app flashiness (gradients for fun, marketing-style motion in a work tool). Every surface, glow, and animation must serve legibility or state; if an effect costs either, the effect loses.
+| Theme | Where | Ground |
+|---|---|---|
+| **Airy Green** (light) | all of `/admin`, phones on the floor | `bg` #F4F7F5, white cards |
+| **Press Green glass** (dark) | `/track`, `/display`, the sign-in brand panel | Press Ink #0A1F18 + emerald/teal mesh, 7% glass panels |
 
-**Key Characteristics:**
-- Two themes, split by audience: the **admin panel** runs the **"Airy Green" light theme** (§2.5) — white cards on a pale mint wash, dark ink text — chosen for maximum legibility and speed on the factory floor. The public **/track portal** keeps the dark Press Green mesh + glass as its client-facing brand statement.
-- Frosted glass surfaces (7–12% white + 14px blur) as the only container material
-- Tactile, confident controls: focus lifts, emerald glows, instant hover feedback
-- Trispace with tabular numerals for every number, timestamp, and code
-- Status is always a tinted translucent chip; color means state, never decoration
-- The `/track` footer carries the portal's one signature piece of motion: the Delivery Scene (§5), a line-art truck carrying labels from the press to the client's dock
+Same stage names, same Status dots, same numbers in both. Never mix the two on one screen.
 
-## 2. Colors: The Press Green Palette
+## 2. Colour rules
 
-A single deep-green identity carried by atmosphere, with translucent whites doing the structural work and small doses of spectral tint marking state.
+- `brand` fills only: the 56px header, ONE primary button per region, selected states, progress fills.
+- Text uses exactly two colours: `ink` and `ink-muted`. `ink-faint` is never used for words someone must read.
+- Colour means state. Stage colours appear only as an 8px dot beside the stage name and as progress ticks. **No filled status pills, no tinted rows, no left-border stripes** — all retired.
+- Lateness lives on the date text: `danger` "3 days late", `warning` "in 2 days".
+- `*-soft` fills only for banners/callouts: shelf stock (`success-soft`), offline and on hold (`warning-soft`), refusals (`danger-soft`).
+- `unit-1` / `unit-2`: the printing-unit circle with a white digit.
 
-### Primary
-- **Press Green** (#10553F): the brand action color. Solid fills on primary buttons and key CTAs only. Its darker press, **Deep Press** (#0C4232), is the hover/active shade.
-- **Mesh Teal** (#0F4A37) and **Press Ink** (#0A1F18): the two poles of the page-background gradient mesh (`.mesh-bg`). These are atmosphere, never component fills. The mesh's three radial glow stops — **Mesh Glow Emerald** (`rgba(46,200,140,0.55)`), **Mesh Glow Teal** (`rgba(20,120,90,0.60)`), **Mesh Core** (`rgba(12,66,50,0.90)`) — and the modal **Scrim** (`rgba(0,0,0,0.45)`) are defined as CSS tokens in `globals.css`; also atmosphere, never component fills.
+## 3. Type
 
-### Neutral
-- **Glass Ink** (#EAFFF5): primary text on glass and mesh. A faint mint cast keeps it in the green family while passing AA on every surface.
-- **Glass Muted** (#9FBCB0): secondary text, ghost-button labels, metadata. AA against Press Ink; never use for body-length prose.
-- **Glass surfaces**: white at 7% (#FFFFFF12) for panels, 12% (#FFFFFF1F) for emphasized panels, 14% (#FFFFFF24) for the 1px borders that edge every glass surface.
+DM Sans for words, Trispace (tabular numerals) for every job card, PO, PM code, quantity, date and time. One `page-title` per page; cards use `heading`; dialogs `title`. Table headers are `caption`, sentence case — no uppercase headers. `eyebrow` uppercase only for group labels inside lists and menus (TODAY, JOBS, ACTIONS). Quantities use Indian grouping (1,20,000).
 
-### Semantic
-- **Success** (#1B7A4E), **Warning** (#C2740C), **Danger** (#C0392B): reserved for state. In the dark glass context these appear as translucent chips: `color-400` at 15–18% background with `color-200` text (e.g. `bg-emerald-400/15 text-emerald-200`), giving every production stage a consistent tinted-glass badge.
+## 4. Layout
 
-### Named Rules
-**The Atmosphere Rule.** The mesh is the only place saturated green appears at full strength. Components take Press Green solid fills only for primary actions; everything else is translucent white over the atmosphere.
+- Header 56px · content max 1240px · 24px side gutter · 36px top padding.
+- Page anatomy: section nav (if the group has siblings) → page title + one-line purpose + actions right → optional summary strip → the main card.
+- `gap`, not margins. Radii: buttons/inputs `md` 10px · stage select/menus/toasts `lg` 14px · cards/tables `xl` 16px · dialogs `2xl` 20px.
+- Depth from borders; `shadow.pop` only for things that float.
+- Every tap target ≥ 44px. Phones get cards, not tables, and a bottom bar.
 
-**The State-Only Spectrum Rule.** Sky, amber, purple, orange, red, and emerald tints exist solely to encode job state (stages, urgency, QC). Never use a spectral tint decoratively; a color a user cannot read as a status is prohibited.
+## 5. Components (class prefix `cr-` in the design system's `bundle.css`)
 
-### 2.5 Admin "Airy Green" Light Theme
+| Component | Rule |
+|---|---|
+| **Button** | primary (one per region) · secondary (white, `line` border) · ghost · hold (warning-soft, for Put on hold). 44px; 56px for the single floor action on a phone. Label says what happens. |
+| **Status** | dot + stage name, the only way to show a state. Non-stage states use three generic dots: ok / wait / bad. |
+| **Tag** | facts that don't change: Repeat, Extra, v3. Grey `radius-sm`. "P1" in tables is plain red mono text beside the job card. |
+| **Stage select** | dot, name, step count ("7/11", only the stages this job type uses), chevron, 14 ticks (skipped = pale green, held = amber). Menu: NOW, the one NEXT stage the API allows (green), the next two locked "After <stage>", then Put on hold…. Optimistic update + Toast with Undo; a refusal snaps back and says who can do it. |
+| **Table** | card-wrapped; tabs + search in the card's top bar; zebra `surface-alt`; hover `surface-hover`; mono right-aligned numbers; first column the identifier. |
+| **Navigation** | Header groups: Jobs · Production · Stock · Dispatch · BOM · Follow-ups · Reports, plus Ctrl K search, notes, settings. **Section nav** pills switch sibling *pages*. **Tabs** switch *views* of one list. **Segmented** picks one *setting*. Never swap them. |
+| **Field** | label above, never inside. Codes/numbers/dates in mono. Focus = brand border + focus ring. Errors say how to fix. |
+| **Feedback** | Toast (past tense + Undo), Banner (lasting condition), Progress (with the numbers), Skeleton (no spinners), Empty state (why + next step). |
+| **Dialog** | only the facts an action needs: Add/Edit job, hold reason, QC remarks, dispatch details, split dispatch. Title names the job; the action repeats the title's verb. Bottom sheet on phones. |
+| **Glass** | `/track` and `/display` only; two layers deep at most; the delivery truck is the one decorative animation. |
 
-The admin panel renders in a light theme, scoped in CSS under `.admin-light` (the admin shell root) so the `/track` portal's dark glass is untouched. It reuses the same green brand and the same status vocabulary — only the surface flips from translucent-dark to solid-light.
+## 6. Voice
 
-- **Page wash:** a soft mint atmosphere — `#F1F5F2` base with two faint radial tints (`#E2EFE8`, `#E7F1EB`). Calm, not white-clinical.
-- **Cards:** solid white (`#FFFFFF`) with a 1px green-tinted border (`#E4EAE6`) and a soft ambient lift (`0 2px 8px rgba(12,42,32,0.05)`). Emphasis/hover surfaces take a faint mint tint (`#F4F8F5`). This replaces the glass ladder: hierarchy climbs white → mint-tint → shadow, not translucency.
-- **Text:** Ink `#0C2A20` primary, Muted `#5A6B62` secondary (both AA on white). The `--glass-ink` / `--glass-muted` tokens are re-pointed to these under `.admin-light`.
-- **Header & primary actions:** unchanged — solid Press Green (`#10553F`) header and buttons with white text carry the brand into the light theme.
-- **Status chips (light):** solid pastel — `color-100` fill + `color-200` border + `color-700/800` text (e.g. In Printing = `emerald-100 / emerald-300 / emerald-800`; Dispatched = solid `emerald-600` on white). Defined in `statusColors.ts`. This is the light counterpart to the dark tinted-glass chip; color still means state, never decoration.
-- **Row urgency tints (light):** `color-50` row backgrounds (`amber-50` on-hold, `red-50`/`orange-50`/`yellow-50` urgency, `sky-50` QC). No left-stripe borders.
+Short, specific, the floor's own words: job card, PO, PM code, party, rack, plates, slitting, shade card. Buttons: "Save QC and move to Packing", "Make job for 29,000". Toasts: "OCT26-14 moved to Packing". Errors: "Only Dispatch can move a job to Packing." No "Oops", no apologies. Customer copy on `/track` is warmer: "Your labels are in final quality check."
 
-The State-Only Spectrum Rule and the Mono Number Rule apply identically in both themes.
+## 7. States are designed
 
-## 3. Typography
+Loading (skeleton shaped like the content), empty (why + next step), offline (changes queued on the device, banner), on hold (amber ticks + reason), refused (server said no → row snaps back, toast names who can). WCAG 2.1 AA everywhere; every animation has a `prefers-reduced-motion` fallback.
 
-**Body/UI Font:** DM Sans (with system-ui fallback)
-**Data Font:** Trispace (with ui-monospace fallback), always `tabular-nums` — chosen for its plain-oval zero (no dot/slash), which stays legible in dense numeric columns
+## 8. Don'ts
 
-**Character:** One geometric-humanist sans carries the entire UI; the mono is its technical counterpart for anything a user might compare, count, or copy. The pairing reads precise and workmanlike, never showy.
-
-### Hierarchy
-- **Headline** (600, 1.25rem, 1.3): page titles and modal titles.
-- **Title** (600, 1rem, 1.4): panel and card headings, job names.
-- **Body** (400, 0.875rem, 1.5): the workhorse size for table cells, forms, and descriptions. Cap prose at 65–75ch.
-- **Label** (500, 10–11px, 0.025em tracking, uppercase): floating field labels and micro-metadata. This is the only uppercase in the system.
-- **Data** (Trispace, 0.75rem): PO numbers, quantities, dates, countdowns, department codes. If it's a number, it's mono.
-
-### Named Rules
-**The Mono Number Rule.** Every numeric value renders in Trispace with tabular numerals, everywhere, with no exceptions. Columns of quantities must align digit-for-digit.
-
-## 4. Elevation
-
-Depth is conveyed by translucency, not shadow. The glass ladder does the structural work: mesh atmosphere at the bottom, 7% white panels above it, 12% white for emphasized or interactive-hover surfaces, and a 1px 14% white border giving every pane its edge. Shadows exist only as ambient support, a soft, distant `0 8px 30px rgba(0,0,0,0.18)` under floating panels and modals, and as the emerald focus bloom (`0 0 0 4px rgba(124,240,190,0.22)`) that answers user input.
-
-### Shadow Vocabulary
-- **Ambient float** (`box-shadow: 0 8px 30px rgba(0,0,0,0.18)`): floating cards, modals, and popovers only. Never on in-flow panels.
-- **Focus bloom** (`box-shadow: 0 0 0 4px rgba(124,240,190,0.22), 0 10px 26px rgba(0,0,0,0.25)`): focused inputs and controls. This is feedback, not decoration.
-
-### Named Rules
-**The Glass Ladder Rule.** Hierarchy climbs the translucency ladder (0% → 7% → 12% white). If a surface needs to feel higher, make it lighter, not shadowed.
-
-## 5. Components
-
-Controls are tactile and confident: they lift, glow, and answer immediately. Minimum tap target is 44px on every interactive element; touch is a primary input.
-
-### Buttons
-- **Shape:** softly rounded (8px); compact paddings (`px-3 py-1.5` at text-xs is the standard density).
-- **Primary:** solid Press Green (#10553F) with white text; hover deepens to Deep Press (#0C4232) or 90% opacity. One primary action per view region.
-- **Ghost:** transparent with 1px 10% white border and Glass Muted text; hover fills 10% white and brightens text to Glass Ink.
-- **Tinted action:** for state-adjacent actions (approve, dispatch), a translucent chip-style button (`bg-emerald-400/15 border-emerald-300/30 text-emerald-200`, hover deepens to /25).
-- **States:** `disabled:opacity-40`, active press feedback, focus bloom on keyboard focus.
-
-### Chips / Status Badges
-- **Style:** full-radius pill, translucent tint background (color-400 at 15–18%) with the matching color-200 text; `text-xs px-2 py-0.5` at standard density.
-- **State:** the chip IS the state; one chip per job row, colored strictly by the stage map in `statusColors.ts`.
-
-### Cards / Containers
-- **Corner Style:** 12px (`rounded-xl`) for panels, 16px (`rounded-2xl`) for feature cards and modals.
-- **Background:** `.glass` (7% white + 14px backdrop blur); `.glass-strong` (12%) for emphasis.
-- **Border:** always 1px at 14% white; a glass pane without its edge reads as a smudge.
-- **Shadow Strategy:** none in-flow; ambient float only when the card floats (see Elevation).
-- **Internal Padding:** 12–20px, denser in tables, looser in feature cards.
-
-### Inputs / Fields
-- **Style:** glass surface (7% white, 12px radius) with a floating label that starts as placeholder-position text (white/60) and collapses to a 10px uppercase emerald label on focus or fill.
-- **Focus:** border shifts to emerald-300/70, surface lightens to 14% white, focus bloom appears, and the field lifts 2px (`focus:-translate-y-0.5`, suppressed under reduced motion).
-- **Error / Disabled:** danger-tinted border + message below the field; disabled at 40% opacity.
-
-### Navigation
-- **Style:** slim 56px sticky header on solid Press Green (#10553F) with the logo left and identity/session right; department name in Trispace at white/75. Mobile keeps the same bar; content scrolls beneath.
-
-### Live Status Dot (signature)
-A 1.5px-radius dot pulsing via `pulse-ring` (scale 1 → 1.4, 1.5s), used exclusively to mark genuinely live/in-progress state (active stage, auto-refresh). One pulsing dot per section, maximum; it stops under reduced motion.
-
-### Skeleton (loading)
-Shimmering glass bars (7% → 20% white sweep, 1.4s) shaped to match the final layout. Spinners in content areas are prohibited.
-
-### Delivery Scene (track signature)
-The `/track` portal's footer is a full-width scene: the press (sawtooth-roof silhouette, left — solar panels on every roof slope under a sun whose light streams down onto them, and an EV charger by the loading door), a dashed road along the bottom edge, and the client's receiving dock (right). A line-art electric box truck — Glass Ink strokes, 10–14% white fills, a Press Green band on the cargo side with the company's short name (`BRANDING.shortName`) in Trispace below it and an EV livery above it (charged battery glyph, "100% ELECTRIC", "CHARGED ON OUR SOLAR ROOF"), a driver behind the windscreen and a bolt badge on the cab door — drives left to right and unloads three label rolls onto the dock platform. The solar array glows softly (a slow opacity pulse) as dashed sunlight flows from the sun onto each panel, and the building carries one mint Trispace caption — "SOLAR · EV FLEET" — so the sustainability story is legible even at footer scale. The only accent these cues use is the existing `#7CF0BE` mint. Everything is drawn in the glass vocabulary: no colour beyond the palette, the only spectral tint is the amber hazard lamp that lights when a job is On Hold.
-
-- **Landing page:** an ambient loop (~35s) — the portal's brand statement: the truck pulls up beside the press with its rear to the EV charger; a cable connects and current flows while the battery bars on the livery fill and label rolls come out of the loading door into the cargo box; it unplugs, cruises to the dock, unloads, and drives on. The mono readout above the scene narrates the phase ("Charging · loading at the press", "En route · your dock", "Delivered").
-- **Job page:** the road from the press charger to the dock is the job's progress bar. A fresh PO sits plugged in at the charger; each completed pipeline stage moves the truck further along the road and lights the battery bars on its livery; Dispatched / PO Closed parks it at the dock and unloads; On Hold stops it where it is with hazards on. A Trispace readout above the scene names the stage and percent, so the scene is a status instrument, not decoration.
-- **Reduced motion:** no travel — the truck renders parked at its final position (labels already on the dock for the loop and delivered states).
-- **Scope:** this is the single sanctioned piece of ambient motion in the system. It lives only in the `/track` footer; nothing else inherits the licence.
-
-## 6. Do's and Don'ts
-
-### Do:
-- **Do** render every screen over the Press Green mesh with glass panels; the atmosphere is the brand.
-- **Do** give every glass surface its 1px 14% white border and every number Trispace tabular figures.
-- **Do** answer every interaction within 200ms of visual feedback: hover fills, focus blooms, press states, optimistic chip updates.
-- **Do** design loading (skeleton), empty, error, on-hold, and overdue states as first-class layouts; unhappy paths are where trust is won.
-- **Do** keep 44px minimum tap targets and `prefers-reduced-motion` alternatives on all animation, including the mesh drift, shimmer, and field lift.
-
-### Don't:
-- **Don't** build "generic admin template" surfaces: no rows of identical stat cards, no default-blue buttons, no off-the-shelf dashboard grammar (PRODUCT.md anti-reference, verbatim).
-- **Don't** be "consumer-app flashy": no gradients for fun, no confetti, no marketing-style motion inside the work tool (PRODUCT.md anti-reference, verbatim). The one sanctioned exception is the `/track` footer Delivery Scene (§5); it is scoped to that footer and does not extend the licence elsewhere.
-- **Don't** use spectral color decoratively; if a tint doesn't encode job state, it doesn't ship.
-- **Don't** add new thick left-stripe urgency borders (`border-l-4`). The existing row stripes are legacy; new urgency treatments use the row's background tint plus its badge. Phase stripes out on touch.
-- **Don't** stack glass on glass on glass. Two translucency levels deep, maximum; a third layer must be solid (e.g. option lists on #0A1F18).
-- **Don't** drop text below AA: Glass Muted (#9FBCB0) is the floor for secondary text and never carries body-length prose.
+No generic admin template (rows of identical stat cards, default-blue buttons). No gradients, emoji or decorative motion inside the work tool. No new grey, radius, shadow or button style that isn't in this file first.
