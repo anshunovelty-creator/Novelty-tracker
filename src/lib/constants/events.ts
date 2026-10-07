@@ -30,3 +30,16 @@ export type JobsFilterDetail = {
   status?: string;
   urgent?: boolean;
 };
+
+/**
+ * The header's Notes button (and the phone tab bar's) asks the NotesFeed
+ * panel, mounted in the admin layout, to open. No detail.
+ */
+export const NOTES_OPEN_EVENT = 'tracker:notes-open';
+
+/**
+ * NotesFeed announces its unread count after every poll so the header can
+ * badge its Notes button without polling the feed a second time.
+ * detail: number.
+ */
+export const NOTES_UNREAD_EVENT = 'tracker:notes-unread';

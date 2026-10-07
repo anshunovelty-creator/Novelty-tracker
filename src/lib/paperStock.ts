@@ -137,3 +137,43 @@ export function formatMeters(value: number | null | undefined): string {
   if (value === null || value === undefined) return '—';
   return value.toLocaleString('en-IN', { maximumFractionDigits: 2 });
 }
+
+// ── What the rack is worth ─────────────────────────────────────────
+
+export type StockValue = {
+  /** ₹ across every priced roll: metres left × width (m) × the material's ₹/m². */
+  total:              number;
+  /** ₹ per stock line (stockKey), so a filtered view can add up what it shows. */
+  by_line:            Record<string, number>;
+  /** ₹ per roll id. Rolls of an unpriced material are absent. */
+  by_roll:            Record<string, number>;
+  /** Metres on rolls whose material has no rate yet — left out of the total. */
+  unpriced_meters:    number;
+  unpriced_materials: string[];
+};
+
+/**
+ * The value of live stock, priced the same way a BOM costing row is
+ * (materialExpense in lib/bom.ts). A material with no rate (0) is not
+ * guessed at: its metres are counted separately so the page can say so.
+ */
+export function stockValue(rolls: readonly PaperRoll[], ratePerSqm: ReadonlyMap<string, number>): StockValue {
+  const out: StockValue = { total: 0, by_line: {}, by_roll: {}, unpriced_meters: 0, unpriced_materials: [] };
+  for (const roll of rolls) {
+    if (!(roll.remaining_meter > 0)) continue;
+    const rate = ratePerSqm.get(roll.material_id) ?? 0;
+    if (!(rate > 0) || !(roll.width_mm > 0)) {
+      out.unpriced_meters = Math.round((out.unpriced_meters + roll.remaining_meter) * 100) / 100;
+      if (!out.unpriced_materials.includes(roll.material_name)) out.unpriced_materials.push(roll.material_name);
+      continue;
+    }
+    const v = roll.remaining_meter * (roll.width_mm / 1000) * rate;
+    const key = stockKey(roll.material_id, roll.width_mm);
+    // Unrounded, so lines added up for a filtered view match the total to the paisa.
+    out.by_line[key] = (out.by_line[key] ?? 0) + v;
+    out.by_roll[roll.id] = v;
+    out.total += v;
+  }
+  out.total = Math.round(out.total * 100) / 100;
+  return out;
+}

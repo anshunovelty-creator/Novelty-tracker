@@ -12,15 +12,16 @@
 import { redirect } from 'next/navigation';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
-import { getDeptPermissions, canDeptUseBOM, canDeptDecideBOM, canDeptManagePaperStock } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptUseBOM, canDeptDecideBOM, canDeptManagePaperStock, canDeptSeeMoneyTotals } from '@/lib/constants/departments';
 import BomTabs from '@/components/admin/BomTabs';
+import { deptKeyOf } from '@/lib/identity';
 
 export default async function BomPage() {
   const supabase = await createServerSupabaseClient();
   const user = await getClaimsUser(supabase);
   if (!user) redirect('/login');
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!canDeptUseBOM(perms)) redirect('/admin');
 
   const canDecide = canDeptDecideBOM(perms);
@@ -28,14 +29,14 @@ export default async function BomPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-[var(--glass-ink)]">Bill of Material</h1>
+        <h1 className="text-[30px] font-semibold leading-9 tracking-[-0.025em] text-brand-ink">Bill of Material</h1>
         <p className="text-sm text-[var(--glass-muted)] mt-1">
           {canDecide
             ? 'Order value against material cost for every job, and the material requests Production sends you.'
             : 'Pick the material, enter its width and running metres, use paper from stock when it’s there, and send Admin a request when it isn’t.'}
         </p>
       </div>
-      <BomTabs canDecide={canDecide} canManageStock={canDeptManagePaperStock(perms)} />
+      <BomTabs canDecide={canDecide} canManageStock={canDeptManagePaperStock(perms)} canSeeTotals={canDeptSeeMoneyTotals(perms)} />
     </div>
   );
 }

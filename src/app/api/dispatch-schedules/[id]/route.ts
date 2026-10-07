@@ -14,6 +14,7 @@ import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions } from '@/lib/constants/departments';
 import { toMonthKey } from '@/lib/utils';
+import { deptKeyOf } from '@/lib/identity';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -28,7 +29,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   // force-dispatching without a production run skips normal validation, so
   // it stays a bare super-admin-only override, not an independently
   // grantable feature.
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms?.isSuperAdmin) {
     return NextResponse.json(
       { error: 'Only Admin can override-dispatch a release — advance its production run instead' },
@@ -77,7 +78,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const now = new Date().toISOString();
 
-  // Update schedule row
+  // Claim the release: only a schedule not yet dispatched moves, so two
+  // people pressing Dispatch on it at once can't both count it.
   const { data: updatedSchedule, error: updateError } = await admin
     .from('dispatch_schedules')
     .update({
@@ -86,29 +88,45 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       status:      'Dispatched',
     })
     .eq('id', id)
+    .neq('status', 'Dispatched')
     .select()
-    .single();
+    .maybeSingle();
 
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
+  if (!updatedSchedule) {
+    return NextResponse.json({ error: 'This release is already dispatched' }, { status: 409 });
+  }
 
-  // Update parent job's totals (both fields move together — see stage route)
+  // Add to the job's running totals in one statement (add_job_dispatched,
+  // migration 073) — no read-add-write, so a dispatch recorded at the same
+  // moment can't be lost, and the database refuses going past the order.
+  // Refused: put the release back as it was, so nothing half-counts.
+  const { data: totals, error: addError } = await admin
+    .rpc('add_job_dispatched', { p_job_id: schedule.job_id, p_qty: actual_qty })
+    .single<{ dispatched_qty: number; total_qty_dispatched: number; label_qty: number | null }>();
+
+  if (addError || !totals) {
+    await admin
+      .from('dispatch_schedules')
+      .update({ actual_qty: schedule.actual_qty, actual_date: schedule.actual_date, status: schedule.status })
+      .eq('id', id);
+    const over = addError?.message.includes('OVER_DISPATCH');
+    return NextResponse.json(
+      { error: over ? `That would dispatch more than the job's order — ${actual_qty} is too many` : (addError?.message ?? 'Could not update the job') },
+      { status: over ? 409 : 500 },
+    );
+  }
+
   const { data: job } = await admin
     .from('jobs')
-    .select('dispatched_qty, total_qty_dispatched, label_qty, delivery_date')
+    .select('label_qty, delivery_date')
     .eq('id', schedule.job_id)
     .single();
 
   if (job) {
-    const newDispatchedQty = (job.dispatched_qty ?? 0) + actual_qty;
-    await admin
-      .from('jobs')
-      .update({
-        dispatched_qty:       newDispatchedQty,
-        total_qty_dispatched: (job.total_qty_dispatched ?? 0) + actual_qty,
-      })
-      .eq('id', schedule.job_id);
+    const newDispatchedQty = totals.dispatched_qty;
 
     // Write status log entry
     await admin.from('job_status_logs').insert({

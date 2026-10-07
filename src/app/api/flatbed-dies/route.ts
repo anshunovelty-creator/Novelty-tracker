@@ -15,6 +15,7 @@ import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptManageDiesPlates } from '@/lib/constants/departments';
 import { containsPattern, orMatch } from '@/lib/search';
+import { deptKeyOf } from '@/lib/identity';
 
 // Optional free text: blank means "not recorded", not an empty string.
 function text(value: unknown): string | null {
@@ -55,6 +56,8 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const search = searchParams.get('search')?.trim();
   const field  = searchParams.get('field')?.trim();
+  // ±mm on length and width — the "near enough" size search (0 = exact).
+  const tol    = Math.min(5, Math.max(0, Math.trunc(Number(searchParams.get('tol')) || 0)));
 
   let query = supabase
     .from('flatbed_dies')
@@ -70,12 +73,12 @@ export async function GET(request: NextRequest) {
     } else if (config) {
       // Sizes match on the whole millimetre: "87" finds 87 and 87.5, not 187 or 870.
       query = config.type === 'size'
-        ? query.or(orMatch([], [config.column], search))
+        ? query.or(orMatch([], [config.column], search, tol))
         : query.ilike(config.column, containsPattern(search));
     } else {
       // "All fields" — shape, corner and location match loosely; length and
       // width match on the whole millimetre, as above.
-      query = query.or(orMatch(['shape', 'corner', 'location'], ['length', 'width'], search));
+      query = query.or(orMatch(['shape', 'corner', 'location'], ['length', 'width'], search, tol));
     }
   }
 
@@ -92,7 +95,7 @@ export async function POST(request: NextRequest) {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
 
   if (!canDeptManageDiesPlates(perms)) {

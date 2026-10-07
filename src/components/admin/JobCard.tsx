@@ -223,7 +223,7 @@ function JobCard({
             block
             icon={CheckCircle2}
             busy={actions.submitting}
-            onClick={actions.confirmSlitting}
+            onClick={actions.openSlitting}
             className="mt-2"
           >
             Mark Slitting Complete

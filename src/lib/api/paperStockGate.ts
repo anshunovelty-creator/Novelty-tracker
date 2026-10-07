@@ -10,6 +10,7 @@ import { getClaimsUser } from '@/lib/supabase/claims';
 import {
   getDeptPermissions, canDeptUseBOM, canDeptManagePaperStock, type DeptPermissions,
 } from '@/lib/constants/departments';
+import { deptKeyOf } from '@/lib/identity';
 
 type Gate =
   | { error: NextResponse }
@@ -20,7 +21,7 @@ export async function requirePaperStock(level: 'use' | 'manage'): Promise<Gate> 
   const user = await getClaimsUser(supabase);
   if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms || !canDeptUseBOM(perms)) {
     return { error: NextResponse.json({ error: 'Bill of Material access required' }, { status: 403 }) };
   }

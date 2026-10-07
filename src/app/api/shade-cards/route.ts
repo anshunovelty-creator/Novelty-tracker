@@ -9,6 +9,7 @@
 // second convention for one section would be the only one of its kind.
 
 import { NextRequest, NextResponse } from 'next/server';
+import { allPages } from '@/lib/api/allPages';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions, canDeptManageShadeCards } from '@/lib/constants/departments';
@@ -19,6 +20,10 @@ import {
   isSelectableStatus,
   isMakingStatus,
 } from '@/lib/constants/shadeCards';
+import { deptKeyOf } from '@/lib/identity';
+
+/** Most cards one CSV export returns. */
+const EXPORT_MAX = 10_000;
 
 /** Columns the list may be ordered by — same reasoning as SEARCH_FIELDS. */
 const SORTABLE = new Set([
@@ -45,13 +50,11 @@ function optionalDate(value: unknown): string | null {
   return Number.isNaN(Date.parse(s)) ? null : s;
 }
 
-/** Best available display name for the signed-in user. This app stores only
- *  `department` in user_metadata, so the email is normally what we have —
- *  full_name is read first in case an account carries one. */
-function actorName(user: { email?: string; user_metadata?: Record<string, unknown> }): string {
-  const meta = user.user_metadata ?? {};
-  const full = typeof meta.full_name === 'string' ? meta.full_name.trim() : '';
-  return full || user.email || 'Unknown';
+/** Who made the change, for the card's "Updated by". The login's email —
+ *  never a name from user_metadata, which the user can rewrite themself and
+ *  would let them sign someone else's name to a change (migration 076). */
+function actorName(user: { email?: string }): string {
+  return user.email || 'Unknown';
 }
 
 // ── GET ───────────────────────────────────────────────────────
@@ -88,33 +91,48 @@ export async function GET(request: NextRequest) {
 
   // Superseded rows are history: the list only ever shows the live version of
   // each card. The older versions stay reachable from the card's own page.
-  let query = supabase
-    .from('shade_cards')
-    .select('*', { count: 'exact' })
-    .eq('is_current', true);
+  // Built fresh per request so the export below can page through it.
+  const filtered = (countRows: boolean) => {
+    let query = supabase
+      .from('shade_cards')
+      .select('*', countRows ? { count: 'exact' } : undefined)
+      .eq('is_current', true);
 
-  const clean = sanitizeSearch(search);
-  if (clean) {
-    // searchColumnFor resolves against a fixed list, so the column can never
-    // be a raw string from the query string — an unknown ?field= widens to
-    // the multi-column search rather than erroring or matching nothing.
-    const column = searchColumnFor(field);
-    if (column) {
-      query = query.ilike(column, `%${clean}%`);
-    } else {
-      query = query.or(SHADE_CARD_SEARCH_COLUMNS.map((f) => `${f}.ilike.%${clean}%`).join(','));
+    const clean = sanitizeSearch(search);
+    if (clean) {
+      // searchColumnFor resolves against a fixed list, so the column can never
+      // be a raw string from the query string — an unknown ?field= widens to
+      // the multi-column search rather than erroring or matching nothing.
+      const column = searchColumnFor(field);
+      if (column) {
+        query = query.ilike(column, `%${clean}%`);
+      } else {
+        query = query.or(SHADE_CARD_SEARCH_COLUMNS.map((f) => `${f}.ilike.%${clean}%`).join(','));
+      }
+    }
+    // Validated against the same lists the UI offers, so an unknown value
+    // narrows to nothing rather than being passed through to Postgres.
+    if (status && isSelectableStatus(status)) query = query.eq('status', status);
+    if (making && isMakingStatus(making))     query = query.eq('making_status', making);
+    if (from) query = query.gte('prepared_date', from);
+    if (to)   query = query.lte('prepared_date', to);
+    if (createdFrom) query = query.gte('created_at', createdFrom);
+    return query.order(sort, { ascending, nullsFirst: false });
+  };
+
+  // ?export=1 — every card matching the filters, not one screen's page, for
+  // the CSV download. Same filters and order; id last so paging never skips
+  // or repeats a card. Capped well above today's ~3,000 cards.
+  if (searchParams.get('export') === '1') {
+    try {
+      const cards = await allPages((lo, hi) => filtered(false).order('id', { ascending: true }).range(lo, hi));
+      return NextResponse.json({ cards: cards.slice(0, EXPORT_MAX), truncated: cards.length > EXPORT_MAX });
+    } catch (err) {
+      return NextResponse.json({ error: (err as Error).message }, { status: 500 });
     }
   }
-  // Validated against the same lists the UI offers, so an unknown value
-  // narrows to nothing rather than being passed through to Postgres.
-  if (status && isSelectableStatus(status)) query = query.eq('status', status);
-  if (making && isMakingStatus(making))     query = query.eq('making_status', making);
-  if (from) query = query.gte('prepared_date', from);
-  if (to)   query = query.lte('prepared_date', to);
-  if (createdFrom) query = query.gte('created_at', createdFrom);
 
-  const { data, error, count } = await query
-    .order(sort, { ascending, nullsFirst: false })
+  const { data, error, count } = await filtered(true)
     .range(offset, offset + SHADE_CARD_PAGE_SIZE - 1);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -134,7 +152,7 @@ export async function POST(request: NextRequest) {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
   if (!canDeptManageShadeCards(perms)) {
     return NextResponse.json({ error: 'Your department cannot add shade cards' }, { status: 403 });

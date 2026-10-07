@@ -8,9 +8,12 @@
 
 import dynamic from 'next/dynamic';
 import { useState, useEffect, useMemo } from 'react';
+import { useUrlSearch } from '@/hooks/useUrlSearch';
+import SizeToleranceToggle, { canUseTolerance, SIZE_TOLERANCE_MM } from './SizeToleranceToggle';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { Search, Plus, Pencil, Trash2, Scissors, ArrowUp, ArrowDown } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { StateChip } from '@/components/ui/StateChip';
 import { cn, formatNumericDate } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { csvDate, csvTimestamp, type CsvColumn } from '@/lib/export/csv';
@@ -88,10 +91,17 @@ function sortDies(dies: Die[], field: SortField, dir: SortDir): Die[] {
   return sorted;
 }
 
-const STATUS_BADGE: Record<DieStatus, string> = {
-  'IN USE': 'bg-emerald-100 text-emerald-800 border border-emerald-200',
-  'EXTRA':  'bg-amber-100 text-amber-800 border border-amber-200',
-  'DAMAGE': 'bg-red-100 text-red-700 border border-red-200',
+// A die's state as a dot + its name (StateChip). The stored values are
+// upper case; the screen says them in sentence case.
+const STATUS_DOT: Record<DieStatus, string> = {
+  'IN USE': '#059669',
+  'EXTRA':  '#D97706',
+  'DAMAGE': '#B91C1C',
+};
+const STATUS_LABEL: Record<DieStatus, string> = {
+  'IN USE': 'In use',
+  'EXTRA':  'Extra',
+  'DAMAGE': 'Damaged',
 };
 
 // Mirrors DIE_SEARCH_FIELDS in src/app/api/dies/route.ts — the value sent
@@ -145,7 +155,9 @@ function buildDieExportColumns(srNoMap: Map<string, number>): CsvColumn<Die>[] {
 
 export default function DiesManager({ canManage }: { canManage: boolean }) {
   const [search,      setSearch]      = useState('');
+  useUrlSearch(setSearch);
   const [searchField, setSearchField] = useState('all');
+  const [nearSize,    setNearSize]    = useState(false);
   const [sortField,   setSortField]   = useState<SortField>('created_at');
   const [sortDir,     setSortDir]     = useState<SortDir>('asc');
   const [adding,      setAdding]      = useState(false);
@@ -172,13 +184,16 @@ export default function DiesManager({ canManage }: { canManage: boolean }) {
     return () => clearTimeout(timer);
   }, [search]);
 
+  const tolerance = nearSize && canUseTolerance(debouncedSearch, searchField) ? SIZE_TOLERANCE_MM : 0;
+
   const diesQuery = useQuery({
-    queryKey: ['dies', debouncedSearch, searchField],
+    queryKey: ['dies', debouncedSearch, searchField, tolerance],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (debouncedSearch) {
         params.set('search', debouncedSearch);
         if (searchField !== 'all') params.set('field', searchField);
+        if (tolerance) params.set('tol', String(tolerance));
       }
       const res  = await fetch(`/api/dies?${params.toString()}`);
       const data = await res.json();
@@ -279,7 +294,7 @@ export default function DiesManager({ canManage }: { canManage: boolean }) {
             onChange={(e) => setSearch(e.target.value)}
             placeholder={DIE_SEARCH_FIELDS.find((f) => f.value === searchField)?.placeholder}
             aria-label="Search dies"
-            title="Search (Ctrl+K)"
+            title="Search this page (/)"
             data-global-search
             className={cn(
               'w-full min-h-11 pl-9 pr-11 rounded-xl text-sm',
@@ -290,6 +305,8 @@ export default function DiesManager({ canManage }: { canManage: boolean }) {
           />
           <SearchClearButton value={search} onClear={() => setSearch('')} />
         </div>
+
+        <SizeToleranceToggle on={nearSize} onChange={setNearSize} enabled={canUseTolerance(search, searchField)} />
 
         <CsvExportButton rows={dies} columns={exportColumns} filename="dies" />
 
@@ -364,9 +381,7 @@ export default function DiesManager({ canManage }: { canManage: boolean }) {
                   <div className="min-w-0 flex-1">
                     {/* Identity: status, serial, corner style, job name */}
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className={cn('text-[11px] font-medium px-1.5 py-0.5 rounded', STATUS_BADGE[die.status])}>
-                        {die.status}
-                      </span>
+                      <StateChip label={STATUS_LABEL[die.status] ?? die.status} dot={STATUS_DOT[die.status]} className="text-xs" />
                       {die.serial_no && (
                         <span className="font-mono text-xs font-semibold text-[var(--glass-ink)]">
                           {die.serial_no.toUpperCase()}
@@ -504,9 +519,7 @@ export default function DiesManager({ canManage }: { canManage: boolean }) {
                           {srNoMap.get(die.id) ?? '—'}
                         </td>
                         <td className="px-3 py-1.5 whitespace-nowrap">
-                          <span className={cn('text-[11px] font-medium px-1.5 py-0.5 rounded', STATUS_BADGE[die.status])}>
-                            {die.status}
-                          </span>
+                          <StateChip label={STATUS_LABEL[die.status] ?? die.status} dot={STATUS_DOT[die.status]} className="text-xs" />
                         </td>
                         <td className="px-3 py-1.5 font-mono text-xs font-semibold text-[var(--glass-ink)] whitespace-nowrap">
                           {die.serial_no ? die.serial_no.toUpperCase() : '—'}

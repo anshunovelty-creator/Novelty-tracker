@@ -6,6 +6,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptManageNotificationRecipients } from '@/lib/constants/departments';
+import { deptKeyOf } from '@/lib/identity';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -16,7 +17,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!canDeptManageNotificationRecipients(perms)) {
     return NextResponse.json({ error: 'Only Admin can manage dispatch alert recipients' }, { status: 403 });
   }

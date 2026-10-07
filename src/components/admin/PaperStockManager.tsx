@@ -13,12 +13,13 @@
 // BOM access reads.
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
+import { formatInr } from '@/lib/bom';
 import { useQuery } from '@tanstack/react-query';
 import { Plus, Search, ChevronRight, Pencil, Trash2, Boxes } from 'lucide-react';
 import { useFitToViewport } from '@/hooks/useFitToViewport';
 import toast from 'react-hot-toast';
 import { cn, formatNumericDate } from '@/lib/utils';
-import { summariseStock, groupStockByMaterial, describeRolls, formatMeters, type StockLine, type MaterialGroup } from '@/lib/paperStock';
+import { summariseStock, groupStockByMaterial, describeRolls, formatMeters, type StockLine, type MaterialGroup, type StockValue } from '@/lib/paperStock';
 import type { BomMaterial, PaperRoll, PaperStockMovement, PaperStockMovementKind } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { SkeletonRows } from '@/components/ui/Skeleton';
@@ -30,12 +31,19 @@ const EMPTY_ROLLS: PaperRoll[] = [];
 const EMPTY_MATERIALS: BomMaterial[] = [];
 
 const COLUMNS = ['', 'Material / width', 'Rolls', 'In stock (m)', 'Location', 'Last received'] as const;
+/** With "See money totals": the ₹ worth of each material and width, after the metres. */
+const COLUMNS_WITH_VALUE = ['', 'Material / width', 'Rolls', 'In stock (m)', 'Value (₹)', 'Location', 'Last received'] as const;
 
 const KIND_LABEL: Record<PaperStockMovementKind, string> = {
   receive: 'Received', issue: 'Issued', return: 'Returned', adjust: 'Adjusted',
 };
 
-export default function PaperStockManager({ canManage }: { canManage: boolean }) {
+/**
+ * canSeeTotals — the department's "See money totals" feature: shows what the
+ * rack is worth. The value comes from its own endpoint, which refuses
+ * departments without the feature, so it is never sent to them at all.
+ */
+export default function PaperStockManager({ canManage, canSeeTotals }: { canManage: boolean; canSeeTotals: boolean }) {
   // The table scrolls, not the page — see useFitToViewport.
   const fitRef = useFitToViewport<HTMLDivElement>();
   const [search,   setSearch]   = useState('');
@@ -48,6 +56,19 @@ export default function PaperStockManager({ canManage }: { canManage: boolean })
 
   const stockQuery = usePaperStock();
   const rolls = stockQuery.data ?? EMPTY_ROLLS;
+
+  // Under ['paper-stock'], so receiving, issuing or adjusting a roll refreshes it.
+  const valueQuery = useQuery({
+    queryKey: ['paper-stock', 'value'],
+    queryFn: async () => {
+      const res  = await fetch('/api/paper-stock/value');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Failed to value stock');
+      return data.value as StockValue;
+    },
+    enabled: canSeeTotals,
+    refetchInterval: 60_000,
+  });
 
   useEffect(() => {
     if (stockQuery.error) toast.error((stockQuery.error as Error).message);
@@ -108,6 +129,25 @@ export default function PaperStockManager({ canManage }: { canManage: boolean })
     [visible],
   );
 
+  // ₹ of what's shown: every line when unfiltered, only the matching widths
+  // when a search narrows the list.
+  const stockWorth = useMemo(() => {
+    const v = valueQuery.data;
+    if (!v) return null;
+    let total = 0;
+    for (const g of visible) for (const l of g.lines) total += v.by_line[l.key] ?? 0;
+    return { total, unpriced: v.unpriced_meters, unpricedNames: v.unpriced_materials };
+  }, [valueQuery.data, visible]);
+
+  const value = valueQuery.data ?? null;
+  const columns = canSeeTotals ? COLUMNS_WITH_VALUE : COLUMNS;
+  /** ₹ of the given lines, or null when none of them is priced. */
+  const worthOf = (keys: string[]) => {
+    if (!value) return null;
+    const priced = keys.filter((k) => k in value.by_line);
+    return priced.length ? priced.reduce((t, k) => t + value.by_line[k], 0) : null;
+  };
+
   const toggle = (setter: typeof setOpenMaterials, key: string) =>
     setter((prev) => {
       const next = new Set(prev);
@@ -141,6 +181,25 @@ export default function PaperStockManager({ canManage }: { canManage: boolean })
           {' · '}<strong className="text-[var(--glass-ink)]">{totals.widths}</strong> {totals.widths === 1 ? 'width' : 'widths'}
           {' · '}<strong className="text-[var(--glass-ink)]">{totals.rolls}</strong> {totals.rolls === 1 ? 'roll' : 'rolls'}
           {' · '}<strong className="font-mono text-[var(--glass-ink)]">{formatMeters(totals.meters)} m</strong> in stock
+          {stockWorth && (
+            <>
+              {' · worth '}
+              <strong
+                className="font-mono text-[var(--glass-ink)]"
+                title="Metres left × width × the material’s ₹/m² rate (BOM → Materials)"
+              >
+                ₹{formatInr(stockWorth.total)}
+              </strong>
+              {stockWorth.unpriced > 0 && (
+                <span
+                  className="ml-1.5 text-xs text-amber-800"
+                  title={`No ₹/m² rate yet: ${stockWorth.unpricedNames.join(', ')}`}
+                >
+                  (<span className="font-mono">{formatMeters(stockWorth.unpriced)}</span> m without a rate not counted)
+                </span>
+              )}
+            </>
+          )}
         </p>
       )}
 
@@ -163,13 +222,14 @@ export default function PaperStockManager({ canManage }: { canManage: boolean })
           </p>
         </div>
       ) : (
-        <div className="rounded-xl glass overflow-hidden">
+        <div className="flex flex-wrap items-start gap-4">
+        <div className="min-w-0 flex-[999_1_640px] rounded-xl glass overflow-hidden">
           <div ref={fitRef} className="table-scroll-wrapper relative max-h-[70vh] overflow-y-auto">
             <table className="w-full min-w-[760px] border-collapse text-sm">
               <thead>
                 <tr>
-                  {COLUMNS.map((col, i) => (
-                    <th key={i} scope="col" className={cn(headerClass, col === 'In stock (m)' && 'text-right', i === 0 && 'w-10')}>
+                  {columns.map((col, i) => (
+                    <th key={i} scope="col" className={cn(headerClass, (col === 'In stock (m)' || col === 'Value (₹)') && 'text-right', i === 0 && 'w-10')}>
                       {col}
                     </th>
                   ))}
@@ -199,6 +259,7 @@ export default function PaperStockManager({ canManage }: { canManage: boolean })
                           <span className="text-[var(--glass-muted)]"> · {group.lines.length} {group.lines.length === 1 ? 'width' : 'widths'}</span>
                         </td>
                         <td className={cn(cellClass, 'font-mono font-semibold text-right text-[var(--glass-ink)]')}>{formatMeters(group.meters)}</td>
+                        {canSeeTotals && <ValueCell value={worthOf(group.lines.map((l) => l.key))} loading={valueQuery.isLoading} strong />}
                         <td className={cn(cellClass, 'text-[var(--glass-muted)]')}>{group.locations.join(', ') || '—'}</td>
                         <td className={cn(cellClass, 'font-mono text-[var(--glass-muted)]')}>{formatNumericDate(group.last_received)}</td>
                         {canManage && (
@@ -235,6 +296,7 @@ export default function PaperStockManager({ canManage }: { canManage: boolean })
                               </td>
                               <td className={cn(cellClass, 'text-[var(--glass-ink)]')}>{describeRolls(line)}</td>
                               <td className={cn(cellClass, 'font-mono text-right text-[var(--glass-ink)]')}>{formatMeters(line.meters)}</td>
+                              {canSeeTotals && <ValueCell value={worthOf([line.key])} loading={valueQuery.isLoading} />}
                               <td className={cn(cellClass, 'text-[var(--glass-muted)]')}>{line.locations.join(', ') || '—'}</td>
                               <td className={cn(cellClass, 'font-mono text-[var(--glass-muted)]')}>{formatNumericDate(line.last_received)}</td>
                               {canManage && <td />}
@@ -243,8 +305,8 @@ export default function PaperStockManager({ canManage }: { canManage: boolean })
                             {/* Level 3 — the rolls and their ledger */}
                             {widthOpen && (
                               <tr className="border-b border-white/8 bg-[var(--glass-bg)]">
-                                <td colSpan={COLUMNS.length + (canManage ? 1 : 0)} className="py-3 pr-4 pl-12">
-                                  <StockLineDetail line={line} canManage={canManage} onAdjust={setAdjusting} />
+                                <td colSpan={columns.length + (canManage ? 1 : 0)} className="py-3 pr-4 pl-12">
+                                  <StockLineDetail line={line} canManage={canManage} onAdjust={setAdjusting} rollValue={value?.by_roll ?? null} />
                                 </td>
                               </tr>
                             )}
@@ -258,11 +320,25 @@ export default function PaperStockManager({ canManage }: { canManage: boolean })
             </table>
           </div>
         </div>
+        <ActivityFeed />
+        </div>
       )}
 
       {adding && <ReceiveRollsModal materials={materials} prefill={adding} onClose={() => setAdding(null)} />}
       {adjusting && <AdjustRollModal roll={adjusting} onClose={() => setAdjusting(null)} />}
     </div>
+  );
+}
+
+/** One ₹ cell; "—" with a hint when the material has no rate yet. */
+function ValueCell({ value, loading, strong = false }: { value: number | null; loading: boolean; strong?: boolean }) {
+  return (
+    <td
+      className={cn(cellClass, 'font-mono text-right', strong ? 'font-semibold text-[var(--glass-ink)]' : 'text-[var(--glass-ink)]')}
+      title={value === null && !loading ? 'No ₹/m² rate for this material yet (BOM → Materials)' : undefined}
+    >
+      {loading ? '…' : value === null ? <span className="text-[var(--glass-muted)]">—</span> : formatInr(Math.round(value))}
+    </td>
   );
 }
 
@@ -283,9 +359,11 @@ function ExpandButton({ open, label, onToggle }: { open: boolean; label: string;
 // ── One expanded line: its rolls, then its ledger ─────────────────
 
 function StockLineDetail({
-  line, canManage, onAdjust,
+  line, canManage, onAdjust, rollValue,
 }: {
   line: StockLine; canManage: boolean; onAdjust: (roll: PaperRoll) => void;
+  /** ₹ per roll id — null when the department doesn't see money totals. */
+  rollValue: Record<string, number> | null;
 }) {
   const refresh = useRefreshStock();
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -338,6 +416,11 @@ function StockLineDetail({
                 <div className="flex-1 min-w-[140px]">
                   <p className="font-mono text-sm text-[var(--glass-ink)]">
                     {formatMeters(roll.remaining_meter)} <span className="text-[var(--glass-muted)]">/ {formatMeters(roll.initial_meter)} m</span>
+                    {rollValue && (
+                      roll.id in rollValue
+                        ? <span className="ml-2 font-semibold" title="Metres left × width × the material’s ₹/m² rate">₹{formatInr(rollValue[roll.id])}</span>
+                        : <span className="ml-2 text-xs text-amber-800" title="This material has no ₹/m² rate yet (BOM → Materials)">no rate</span>
+                    )}
                   </p>
                   <div className="mt-1 h-1.5 rounded-full bg-black/[0.06] overflow-hidden" aria-hidden="true">
                     <div className={cn('h-full rounded-full', pct === 100 ? 'bg-emerald-500' : 'bg-amber-500')} style={{ width: `${pct}%` }} />
@@ -413,3 +496,55 @@ const headerClass =
   'whitespace-nowrap bg-[var(--glass-bg-strong)] backdrop-blur-[14px] border-b border-white/12';
 
 const cellClass = 'px-3 py-2 align-middle whitespace-nowrap';
+
+// ── Store-wide activity ───────────────────────────────────────────
+// The last twenty movements across every roll: what went out to which job,
+// what came back, what was received. The per-line ledger stays in each row.
+// Capped at the stock table's own height (70vh) and scrolls inside itself,
+// so a long feed never stretches the page.
+
+function ActivityFeed() {
+  const query = useQuery({
+    queryKey: ['paper-stock', 'movements', 'recent'],
+    queryFn: async () => {
+      const res  = await fetch('/api/paper-stock/movements?recent=1');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Failed to load activity');
+      return (data.movements ?? []) as PaperStockMovement[];
+    },
+  });
+  const list = query.data ?? [];
+  const SIGN: Record<PaperStockMovementKind, string> = { issue: '↑', return: '↓', receive: '+', adjust: '±' };
+
+  return (
+    <section aria-labelledby="paper-activity" className="flex max-h-[70vh] min-w-0 flex-[1_1_300px] flex-col gap-3 rounded-xl border border-brand-border bg-white p-4 shadow-[0_2px_8px_rgba(12,42,32,0.04)]">
+      <h3 id="paper-activity" className="text-base font-semibold text-brand-ink">Activity</h3>
+      {query.isLoading ? (
+        <div className="space-y-2" aria-hidden="true">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-10 rounded-lg bg-brand-sunken" />)}</div>
+      ) : list.length === 0 ? (
+        <p className="text-sm text-brand-muted">Nothing issued, returned or received yet.</p>
+      ) : (
+        <ul className="-mr-2 flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain pr-2" tabIndex={0} aria-label="Recent stock movements">
+          {list.map((m) => (
+            <li key={m.id} className="flex gap-3 border-t border-brand-line-soft py-2.5 first:border-t-0">
+              <span aria-hidden="true" className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg font-mono text-sm font-semibold', m.kind === 'issue' ? 'bg-amber-50 text-brand-warning' : m.kind === 'adjust' ? 'bg-brand-sunken text-brand-muted' : 'bg-emerald-50 text-brand-success')}>
+                {SIGN[m.kind]}
+              </span>
+              <div className="min-w-0 flex-1 text-sm">
+                <p className="text-brand-ink">
+                  <span className="font-mono font-semibold">{formatMeters(Math.abs(m.meters))} m</span>{' '}
+                  <span className="text-brand-muted">{KIND_LABEL[m.kind].toLowerCase()}</span>
+                  {m.material_name && <> · {m.material_name}{m.width_mm ? ` ${m.width_mm} mm` : ''}</>}
+                  {m.job_label && <> → <span className="font-mono text-xs">{m.job_label}</span></>}
+                </p>
+                <p className="text-xs text-brand-muted">
+                  {m.created_by ? `${m.created_by.split('@')[0]} · ` : ''}<span className="font-mono">{formatNumericDate(m.created_at)}</span>
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}

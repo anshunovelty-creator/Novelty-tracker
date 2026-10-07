@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/Button';
 import { ModalShell } from './modals';
 import { useDepartments } from '@/hooks/useReferenceData';
 import { WithExample } from '@/components/ui/FieldAffix';
+import { normalizeUsername, suggestUsername, usernameProblem, USERNAME_MAX } from '@/lib/username';
 
 type DepartmentOption = { key: string; display_name: string };
 
@@ -42,6 +43,7 @@ type Props = {
 export default function AddMemberModal({ onClose, onAdded }: Props) {
   const titleId = useId();
 
+  const [username,    setUsername]    = useState('');
   const [email,       setEmail]       = useState('');
   const [department,  setDepartment]  = useState('');
   const [password,    setPassword]    = useState('');
@@ -70,6 +72,9 @@ export default function AddMemberModal({ onClose, onAdded }: Props) {
     e.preventDefault();
 
     if (!email.trim())    { toast.error('Enter the new member’s email'); return; }
+    const handle = normalizeUsername(username);
+    const bad = handle ? usernameProblem(handle) : null;
+    if (bad)              { toast.error(bad); return; }
     if (!department)      { toast.error('Choose a department'); return; }
     if (password.length < 8) {
       toast.error('Password must be at least 8 characters');
@@ -81,7 +86,7 @@ export default function AddMemberModal({ onClose, onAdded }: Props) {
       const res = await fetch('/api/team', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), department, password }),
+        body: JSON.stringify({ username: handle || undefined, email: email.trim(), department, password }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -120,6 +125,25 @@ export default function AddMemberModal({ onClose, onAdded }: Props) {
         </div>
 
         <div className="px-5 py-4 overflow-y-auto space-y-4">
+          <div>
+            <MemberLabel>Username</MemberLabel>
+            <WithExample example="ravi">
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/\s/g, ''))}
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                maxLength={USERNAME_MAX + 1}
+                className={inputCls}
+              />
+            </WithExample>
+            <p className="mt-1 text-xs text-[var(--glass-muted)]">
+              Shown top-right for them, and how others tag them: @{normalizeUsername(username) || (email.includes('@') ? suggestUsername(email) : 'ravi')}.
+              {!username.trim() && email.includes('@') ? ' Left blank, it comes from the email — with a number added if that one is taken.' : ''}
+            </p>
+          </div>
+
           <div>
             <MemberLabel required>Email</MemberLabel>
             <WithExample example="name@yourcompany.com">

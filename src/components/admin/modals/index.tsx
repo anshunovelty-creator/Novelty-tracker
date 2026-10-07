@@ -7,11 +7,19 @@
 
 import React, { useState, useEffect, useRef, useId, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle } from 'lucide-react';
-import { cn, formatQty } from '@/lib/utils';
+import { cn, formatJobCardNumber, formatQty } from '@/lib/utils';
+import { deliveryWords, istToday } from '@/lib/jobViews';
+import { STAGE_DOT } from '@/lib/constants/statusColors';
+import { StateChip } from '@/components/ui/StateChip';
+import {
+  HOLD_REASONS, QC_RESULTS, holdRemark, qcRemark,
+  type HoldReason, type QCResult, type PartialDispatchInput, type FullDispatchInput,
+} from '@/lib/stageDialogs';
+
+export { partialDispatchPayload, fullDispatchPayload } from '@/lib/stageDialogs';
 import { buttonClass } from '@/components/ui/Button';
 import { WithExample, WithUnit } from '@/components/ui/FieldAffix';
-import type { Stage } from '@/lib/constants/stages';
+import { PIPELINE_STAGES, stageIndex, type Stage } from '@/lib/constants/stages';
 import type { Job } from '@/lib/types';
 
 // Shared glass input style for all modal text fields
@@ -308,6 +316,184 @@ export function PromptModal({
   );
 }
 
+// ── Stage dialogs, Control Room grammar ───────────────────────
+// Every dialog that moves a job reads the same way: a caption naming the
+// stage and who sets it, the job card in the title, the numbers that matter
+// in a facts row, the one or two answers needed, then a plain sentence saying
+// what will happen. White body, soft footer, 44px controls.
+
+const dBtn = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-[10px] border px-4 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50';
+const dPrimary = cn(dBtn, 'border-transparent bg-brand-primary text-white hover:bg-brand-primary-hover');
+const dQuiet   = cn(dBtn, 'border-transparent bg-transparent font-medium text-brand-muted hover:bg-brand-surface-hover hover:text-brand-ink');
+const dHold    = cn(dBtn, 'border-[#D97706] bg-[#FFFBEB] text-[#92400E] hover:bg-[#FEF3C7]');
+const dDanger  = cn(dBtn, 'border-transparent bg-[#B91C1C] text-white hover:bg-[#991B1B]');
+
+const dField = cn(
+  'w-full min-h-11 rounded-[10px] border border-brand-border bg-white px-3 text-[15px] text-brand-ink',
+  'placeholder:text-brand-faint focus:border-brand-primary focus:outline-none focus:shadow-[0_0_0_4px_rgba(16,85,63,0.18)]',
+);
+const dArea = cn(dField, 'resize-none py-2.5 text-sm leading-relaxed');
+
+/** "OCT26-14", or the PO number for a job without a card. */
+function jobRef(job?: Job | null): string | null {
+  if (!job) return null;
+  return formatJobCardNumber(job.job_card_number) ?? job.po_number;
+}
+
+function Ref({ job }: { job?: Job | null }) {
+  const ref = jobRef(job);
+  return ref ? <span className="font-mono">{ref}</span> : <>this job</>;
+}
+
+function StageDialog({
+  titleId, cap, title, sub, onClose, children, footer,
+}: {
+  titleId: string;
+  cap:     string;
+  title:   React.ReactNode;
+  sub?:    React.ReactNode;
+  onClose: () => void;
+  children?: React.ReactNode;
+  footer:  React.ReactNode;
+}) {
+  return (
+    <ModalShell titleId={titleId} onClose={onClose}>
+      <div className="flex flex-col text-brand-ink">
+        <div className="flex flex-col gap-1 border-b border-brand-line-soft bg-white px-6 py-5">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-brand-muted">{cap}</span>
+          <h2 id={titleId} className="text-lg font-semibold leading-snug">{title}</h2>
+          {sub && <p className="text-[13px] leading-relaxed text-brand-muted">{sub}</p>}
+        </div>
+        {children && <div className="flex flex-col gap-4 bg-white px-6 py-5">{children}</div>}
+        <div className="flex flex-wrap justify-end gap-2 border-t border-brand-line-soft px-6 py-3.5">{footer}</div>
+      </div>
+    </ModalShell>
+  );
+}
+
+function Facts({ items }: { items: [string, React.ReactNode, ('bad' | undefined)?][] }) {
+  return (
+    <dl className="grid grid-cols-3 gap-px overflow-hidden rounded-xl border border-brand-line-soft bg-brand-line-soft">
+      {items.map(([k, v, tone]) => (
+        <div key={k} className="flex min-w-0 flex-col gap-0.5 bg-white px-3 py-2.5">
+          <dt className="text-xs text-brand-muted">{k}</dt>
+          <dd className={cn('truncate font-mono text-base font-semibold', tone === 'bad' && 'text-brand-danger')}>{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function Note({ tone, children }: { tone: 'ok' | 'warn' | 'bad'; children: React.ReactNode }) {
+  return (
+    <p
+      role={tone === 'ok' ? undefined : 'note'}
+      className={cn(
+        'rounded-xl px-3.5 py-3 text-[13px] leading-relaxed',
+        tone === 'ok' && 'bg-[#ECFDF5] text-[#065F46]',
+        tone === 'warn' && 'bg-[#FFFBEB] text-[#92400E]',
+        tone === 'bad' && 'bg-[#FEF2F2] text-[#B91C1C]',
+      )}
+    >
+      {children}
+    </p>
+  );
+}
+
+function Move({ from, to }: { from: Stage; to: Stage }) {
+  return (
+    <p className="flex flex-wrap items-center gap-2.5 text-[13px]">
+      <StateChip label={from} dot={STAGE_DOT[from]} />
+      <span aria-hidden="true" className="text-brand-muted">→</span>
+      <span className="sr-only">to</span>
+      <StateChip label={to} dot={STAGE_DOT[to]} />
+    </p>
+  );
+}
+
+function Field({ label, htmlFor, hint, children }: { label: React.ReactNode; htmlFor: string; hint?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={htmlFor} className="text-xs font-medium text-brand-muted">{label}</label>
+      {children}
+      {hint && <p className="text-xs text-brand-muted">{hint}</p>}
+    </div>
+  );
+}
+
+/** A row of mutually exclusive answers — a radiogroup with arrow-key movement. */
+function Choice<T extends string>({
+  label, options, value, onChange, stretch = false,
+}: {
+  label:    string;
+  options:  readonly T[];
+  value:    T | null;
+  onChange: (v: T) => void;
+  stretch?: boolean;
+}) {
+  const groupId = useId();
+  function onKey(e: React.KeyboardEvent<HTMLButtonElement>, i: number) {
+    const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const next = (i + step + options.length) % options.length;
+    onChange(options[next]);
+    (e.currentTarget.parentElement?.children[next] as HTMLElement | undefined)?.focus();
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span id={groupId} className="text-xs font-medium text-brand-muted">{label}</span>
+      <div role="radiogroup" aria-labelledby={groupId} className="flex flex-wrap gap-2">
+        {options.map((o, i) => {
+          const on = o === value;
+          return (
+            <button
+              key={o}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              tabIndex={on || (value === null && i === 0) ? 0 : -1}
+              onClick={() => onChange(o)}
+              onKeyDown={(e) => onKey(e, i)}
+              className={cn(
+                'min-h-11 rounded-[10px] px-3 text-[13px] text-brand-ink transition-colors',
+                stretch && 'flex-1',
+                on ? 'border-2 border-brand-primary bg-[#F4F8F5] font-semibold' : 'border border-brand-border bg-white font-medium hover:bg-brand-surface-alt',
+              )}
+            >
+              {o}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Whole labels only; '' while empty. Commas are fine to type. */
+function parseQty(raw: string): number | '' {
+  const n = Number(raw.replace(/[,\s]/g, ''));
+  return raw.trim() === '' || !Number.isFinite(n) ? '' : Math.floor(n);
+}
+
+function QtyInput({ id, value, onChange, placeholder, autoFocus }: {
+  id: string; value: number | ''; onChange: (v: number | '') => void; placeholder?: string; autoFocus?: boolean;
+}) {
+  return (
+    <input
+      id={id}
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      autoFocus={autoFocus}
+      placeholder={placeholder}
+      value={value === '' ? '' : value.toLocaleString('en-IN')}
+      onChange={(e) => onChange(parseQty(e.target.value))}
+      className={cn(dField, 'font-mono')}
+    />
+  );
+}
+
 // ── 1. Sequential Warning Modal ───────────────────────────────
 // Non-admin: hard block — sequential order is enforced.
 // Admin: may skip, but must give a justification remark (saved as an
@@ -327,68 +513,48 @@ export function SequentialWarningModal({
   onOverride:   (overrideRemark: string) => void;
 }) {
   const [remark, setRemark] = useState('');
-  const titleId = useId();
+  const titleId  = useId();
   const reasonId = useId();
 
   return (
-    <ModalShell titleId={titleId} onClose={onCancel}>
-      <div className="p-6">
-        <div className="flex items-start gap-3 mb-4">
-          <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-amber-200" aria-hidden="true" />
-          <div>
-            <h3 id={titleId} className="font-semibold text-[var(--glass-ink)] text-base">
-              Stage Not Yet Completed
-            </h3>
-            <p className="text-sm text-[var(--glass-muted)] mt-1">
-              You&apos;re moving to <strong className="text-[var(--glass-ink)]">{targetStage}</strong>, but
-              the previous stage <strong className="text-[var(--glass-ink)]">{missingStage}</strong> hasn&apos;t
-              been marked complete yet.
-            </p>
-          </div>
-        </div>
-
-        {isAdmin ? (
-          <>
-            <label htmlFor={reasonId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
-              Reason for skipping *
-            </label>
-            <WithExample example="Stage was completed offline — updating system to match">
-                <textarea
-                id={reasonId}
-                value={remark}
-                onChange={(e) => setRemark(e.target.value)}
-                rows={2}
-                className={cn(inputCls, 'resize-none')}
-              />
-            </WithExample>
-            <div className="flex gap-3 justify-end mt-4">
-              <button onClick={onCancel} className={btnCancel}>
-                Cancel
-              </button>
-              <button
-                onClick={() => remark.trim() && onOverride(remark.trim())}
-                disabled={!remark.trim()}
-                className={btnCaution}
-              >
-                Skip &amp; Continue
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="text-xs text-amber-200 bg-amber-400/10 border border-amber-300/25 rounded-lg px-3 py-2">
-              Stages must be completed in order. Complete{' '}
-              <strong>{missingStage}</strong> first, or ask Admin to skip it.
-            </p>
-            <div className="flex justify-end mt-4">
-              <button onClick={onCancel} className={btnPrimary}>
-                OK
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </ModalShell>
+    <StageDialog
+      titleId={titleId}
+      cap={isAdmin ? 'Out of order · Admin' : 'Out of order'}
+      title={<>{missingStage} isn&rsquo;t done yet</>}
+      sub={<>You&rsquo;re moving to {targetStage}, but {missingStage} hasn&rsquo;t been marked complete.</>}
+      onClose={onCancel}
+      footer={isAdmin ? (
+        <>
+          <button type="button" onClick={onCancel} className={dQuiet}>Cancel</button>
+          <button
+            type="button"
+            onClick={() => remark.trim() && onOverride(remark.trim())}
+            disabled={!remark.trim()}
+            className={dHold}
+          >
+            Skip {missingStage}
+          </button>
+        </>
+      ) : (
+        <button type="button" onClick={onCancel} className={dPrimary}>OK</button>
+      )}
+    >
+      <Move from={missingStage} to={targetStage} />
+      {isAdmin ? (
+        <Field label="Reason for skipping (required)" htmlFor={reasonId} hint="Saved as an internal note on the job.">
+          <textarea
+            id={reasonId}
+            rows={2}
+            value={remark}
+            onChange={(e) => setRemark(e.target.value)}
+            placeholder="Stage was completed offline — updating to match"
+            className={dArea}
+          />
+        </Field>
+      ) : (
+        <Note tone="warn">Stages go in order. Finish {missingStage} first, or ask Admin to skip it.</Note>
+      )}
+    </StageDialog>
   );
 }
 
@@ -398,170 +564,281 @@ export function SequentialWarningModal({
 // only record of why a job that had reached a later stage no longer has.
 
 export function RevertStageModal({
+  job,
   currentStage,
   targetStage,
+  completedStages = [],
   onCancel,
   onConfirm,
 }: {
-  currentStage: Stage;
-  targetStage:  Stage;
-  onCancel:     () => void;
-  onConfirm:    (revertRemark: string) => void;
+  job?:             Job | null;
+  currentStage:     Stage;
+  targetStage:      Stage;
+  /** Stages the job has a completion stamp for — the ones after the target get cleared. */
+  completedStages?: Stage[];
+  onCancel:         () => void;
+  onConfirm:        (revertRemark: string) => void;
 }) {
   const [remark, setRemark] = useState('');
   const titleId  = useId();
   const reasonId = useId();
 
+  const cleared = Array.from(new Set([...completedStages, currentStage]))
+    .filter((s) => PIPELINE_STAGES.includes(s) && stageIndex(s) > stageIndex(targetStage))
+    .sort((a, b) => stageIndex(b) - stageIndex(a));
+
   return (
-    <ModalShell titleId={titleId} onClose={onCancel}>
-      <div className="p-6">
-        <div className="flex items-start gap-3 mb-4">
-          <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-amber-200" aria-hidden="true" />
-          <div>
-            <h3 id={titleId} className="font-semibold text-[var(--glass-ink)] text-base">
-              Move this job backwards?
-            </h3>
-            <p className="text-sm text-[var(--glass-muted)] mt-1">
-              This takes the job from <strong className="text-[var(--glass-ink)]">{currentStage}</strong> back
-              to <strong className="text-[var(--glass-ink)]">{targetStage}</strong>.
-            </p>
-          </div>
-        </div>
-
-        <ul className="text-xs text-amber-200 bg-amber-400/10 border border-amber-300/25 rounded-lg px-3 py-2 mb-4 space-y-1 list-disc list-inside">
-          <li>Every stage after {targetStage} will be marked incomplete again.</li>
-          <li>The client tracking portal will show the job back at this stage.</li>
-        </ul>
-
-        <label htmlFor={reasonId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
-          Reason for reverting *
-        </label>
-        <WithExample example="Stage was marked by mistake — job is still at artwork">
-            <textarea
-            id={reasonId}
-            value={remark}
-            onChange={(e) => setRemark(e.target.value)}
-            rows={2}
-            className={cn(inputCls, 'resize-none')}
-          />
-        </WithExample>
-
-        <div className="flex gap-3 justify-end mt-4">
-          <button onClick={onCancel} className={btnCancel}>
-            Cancel
-          </button>
+    <StageDialog
+      titleId={titleId}
+      cap="Admin only"
+      title={<>Move <Ref job={job} /> back to {targetStage}?</>}
+      sub={<>Stages normally only go forward. Going back clears {cleared.length === 1 ? 'the stage' : <><span className="font-mono">{cleared.length}</span> stages</>} after it.</>}
+      onClose={onCancel}
+      footer={
+        <>
+          <button type="button" onClick={onCancel} className={dQuiet}>Keep {currentStage}</button>
           <button
+            type="button"
             onClick={() => remark.trim() && onConfirm(remark.trim())}
             disabled={!remark.trim()}
-            className={btnCaution}
+            className={dDanger}
           >
-            Revert to {targetStage}
+            Move back
           </button>
-        </div>
-      </div>
-    </ModalShell>
+        </>
+      }
+    >
+      <Note tone="warn">
+        {cleared.length > 0 && <>{listWords(cleared)} {cleared.length === 1 ? 'is' : 'are'} marked incomplete again. </>}
+        The tracking page shows the job back at {targetStage}. The change is logged under your department.
+      </Note>
+      <Move from={currentStage} to={targetStage} />
+      <Field label="Reason (required)" htmlFor={reasonId}>
+        <textarea
+          id={reasonId}
+          rows={2}
+          value={remark}
+          onChange={(e) => setRemark(e.target.value)}
+          placeholder="Stage was marked by mistake — job is still at artwork"
+          className={dArea}
+        />
+      </Field>
+    </StageDialog>
   );
 }
 
+function listWords(items: string[]): string {
+  if (items.length <= 1) return items.join('');
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
 // ── 2. On Hold Modal ──────────────────────────────────────────
+// A reason chip covers the common cases in one tap; the note says the rest.
+// Both land in halt_remark, which the party sees on /track.
 
 export function OnHoldModal({
+  job,
   onCancel,
   onConfirm,
 }: {
+  job?:      Job | null;
   onCancel:  () => void;
   onConfirm: (remark: string) => void;
 }) {
-  const [remark, setRemark] = useState('');
+  const [reason, setReason] = useState<HoldReason | null>(null);
+  const [note, setNote]     = useState('');
   const titleId = useId();
-  const reasonId = useId();
+  const noteId  = useId();
+
+  const remark   = holdRemark(reason, note);
+  const needNote = reason === null || reason === 'Other';
 
   return (
-    <ModalShell titleId={titleId} onClose={onCancel}>
-      <div className="p-6">
-        <h3 id={titleId} className="font-semibold text-[var(--glass-ink)] text-base mb-1">
-          Place Order On Hold
-        </h3>
-        <p className="text-xs text-amber-200 bg-amber-400/10 border border-amber-300/25 rounded-lg px-3 py-2 mb-4">
-          This reason will be visible to the client on the tracking portal.
-        </p>
-
-        <label htmlFor={reasonId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
-          Halt Reason *
-        </label>
-        <WithExample example="Awaiting shade card approval from client">
-            <textarea
-            id={reasonId}
-            value={remark}
-            onChange={(e) => setRemark(e.target.value)}
-            rows={3}
-            className={cn(inputCls, 'resize-none')}
-          />
-        </WithExample>
-
-        <div className="flex gap-3 justify-end mt-4">
-          <button onClick={onCancel} className={btnCancel}>
-            Cancel
+    <StageDialog
+      titleId={titleId}
+      cap="On Hold · any department"
+      title={<>Put <Ref job={job} /> on hold</>}
+      sub="The floor stops work on it. It shows amber everywhere until someone resumes it."
+      onClose={onCancel}
+      footer={
+        <>
+          <button type="button" onClick={onCancel} className={dQuiet}>Cancel</button>
+          <button type="button" onClick={() => remark && onConfirm(remark)} disabled={!remark} className={dHold}>
+            Put on hold
           </button>
-          <button
-            onClick={() => remark.trim() && onConfirm(remark.trim())}
-            disabled={!remark.trim()}
-            className={btnCaution}
-          >
-            Mark On Hold
-          </button>
-        </div>
-      </div>
-    </ModalShell>
+        </>
+      }
+    >
+      <Choice label="Why" options={HOLD_REASONS} value={reason} onChange={setReason} />
+      <Field
+        label={needNote ? 'Note for the floor (required)' : 'Note for the floor'}
+        htmlFor={noteId}
+        hint="The reason and note show on the party’s tracking page."
+      >
+        <textarea
+          id={noteId}
+          rows={3}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Party asked to hold till the new barcode is approved. Expected Tuesday."
+          className={dArea}
+        />
+      </Field>
+      {job && job.status !== 'On Hold' && <Move from={job.status as Stage} to="On Hold" />}
+    </StageDialog>
   );
 }
 
 // ── 3. QC Modal ───────────────────────────────────────────────
+// Opens when a job moves into Quality Check. Three outcomes: a clean pass,
+// a pass with some rolls held back for re-check (the roll numbers go into
+// the remark), or a rejected batch — which stops the job on hold instead.
 
 export function QCModal({
+  job,
+  onCancel,
+  onConfirm,
+  onReject,
+}: {
+  job?:      Job | null;
+  onCancel:  () => void;
+  onConfirm: (remark: string) => void;
+  /** Present when this department may put the job on hold. */
+  onReject?: (remark: string) => void;
+}) {
+  const options = onReject ? QC_RESULTS : QC_RESULTS.slice(0, 2);
+  const [result, setResult]   = useState<QCResult>('All rolls pass');
+  const [rolls, setRolls]     = useState('');
+  const [remarks, setRemarks] = useState('');
+  const titleId  = useId();
+  const rollsId  = useId();
+  const remarkId = useId();
+
+  const valid =
+    result === 'All rolls pass' ||
+    (result === 'Pass with rolls held' && rolls.trim() !== '') ||
+    (result === 'Reject batch' && remarks.trim() !== '');
+  const remark = qcRemark(result, rolls, remarks);
+
+  return (
+    <StageDialog
+      titleId={titleId}
+      cap="Quality Check · QC"
+      title={<>Record QC on <Ref job={job} /></>}
+      sub="Packing unlocks once QC is saved. Dispatch sees the remark on the job."
+      onClose={onCancel}
+      footer={
+        <>
+          <button type="button" onClick={onCancel} className={dQuiet}>Cancel</button>
+          {result === 'Reject batch' ? (
+            <button type="button" onClick={() => valid && onReject?.(remark)} disabled={!valid} className={dHold}>
+              Reject and put on hold
+            </button>
+          ) : (
+            <button type="button" onClick={() => valid && onConfirm(remark)} disabled={!valid} className={dPrimary}>
+              Save QC
+            </button>
+          )}
+        </>
+      }
+    >
+      <Choice label="Result" options={options} value={result} onChange={setResult} stretch />
+      {result === 'Pass with rolls held' && (
+        <Field label="Rolls held (required)" htmlFor={rollsId}>
+          <input
+            id={rollsId}
+            value={rolls}
+            onChange={(e) => setRolls(e.target.value)}
+            placeholder="3, 4"
+            autoComplete="off"
+            className={cn(dField, 'font-mono')}
+          />
+        </Field>
+      )}
+      <Field
+        label={result === 'Reject batch' ? 'What’s wrong (required)' : result === 'All rolls pass' ? 'Remarks (optional)' : 'Remarks'}
+        htmlFor={remarkId}
+        hint={result === 'Reject batch'
+          ? 'The job goes On Hold with this reason. The party sees it on the tracking page.'
+          : 'Any remark shows on the party’s tracking page. Leave blank for a clean pass.'}
+      >
+        <textarea
+          id={remarkId}
+          rows={3}
+          value={remarks}
+          onChange={(e) => setRemarks(e.target.value)}
+          placeholder={result === 'Reject batch' ? 'Shade off master on every roll' : 'Minor colour variation within range'}
+          className={dArea}
+        />
+      </Field>
+    </StageDialog>
+  );
+}
+
+// ── 3b. Confirm Slitting Modal ────────────────────────────────
+// Postpress confirms the rolls are slit before QC may start. The roll count
+// isn't a column — when given, it is written to the job's internal notes.
+
+export function ConfirmSlittingModal({
+  job,
+  busy = false,
   onCancel,
   onConfirm,
 }: {
+  job:       Job;
+  busy?:     boolean;
   onCancel:  () => void;
-  onConfirm: (remark: string) => void;
+  onConfirm: (rollsSlit: number | null) => void;
 }) {
-  const [remark, setRemark] = useState('');
+  const [rolls, setRolls]     = useState<number | ''>('');
+  const [checked, setChecked] = useState(false);
   const titleId = useId();
-  const remarkId = useId();
+  const rollsId = useId();
+  const checkId = useId();
+
+  const ordered = job.label_qty ?? 0;
+  const perRoll = typeof rolls === 'number' && rolls > 0 && ordered > 0 ? Math.round(ordered / rolls) : null;
 
   return (
-    <ModalShell titleId={titleId} onClose={onCancel}>
-      <div className="p-6">
-        <h3 id={titleId} className="font-semibold text-[var(--glass-ink)] text-base mb-1">
-          Quality Check
-        </h3>
-        <p className="text-xs text-sky-200 bg-sky-400/10 border border-sky-300/25 rounded-lg px-3 py-2 mb-4">
-          Leave blank for a clean pass. If filled, the remark will be visible to the client.
-        </p>
-
-        <label htmlFor={remarkId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
-          QC Remark (optional)
-        </label>
-        <WithExample example="Minor colour variation within acceptable range">
-            <textarea
-            id={remarkId}
-            value={remark}
-            onChange={(e) => setRemark(e.target.value)}
-            rows={3}
-            className={cn(inputCls, 'resize-none')}
-          />
-        </WithExample>
-
-        <div className="flex gap-3 justify-end mt-4">
-          <button onClick={onCancel} className={btnCancel}>
-            Cancel
+    <StageDialog
+      titleId={titleId}
+      cap="Slitting · Postpress"
+      title={<>Confirm slitting on <Ref job={job} /></>}
+      sub="Quality Check stays locked until slitting is confirmed."
+      onClose={onCancel}
+      footer={
+        <>
+          <button type="button" onClick={onCancel} className={dQuiet}>Cancel</button>
+          <button
+            type="button"
+            onClick={() => checked && onConfirm(typeof rolls === 'number' && rolls > 0 ? rolls : null)}
+            disabled={!checked || busy}
+            className={dPrimary}
+          >
+            {busy ? 'Saving…' : 'Confirm slitting'}
           </button>
-          <button onClick={() => onConfirm(remark.trim())} className={btnPrimary}>
-            Save QC
-          </button>
-        </div>
-      </div>
-    </ModalShell>
+        </>
+      }
+    >
+      <Facts items={[
+        ['Ordered', formatQty(ordered)],
+        ['Rolls', typeof rolls === 'number' && rolls > 0 ? rolls.toLocaleString('en-IN') : '—'],
+        ['Per roll', perRoll ? `~${formatQty(perRoll)}` : '—'],
+      ]} />
+      <Field label="Rolls slit" htmlFor={rollsId} hint="Optional. Saved to the job’s internal notes.">
+        <QtyInput id={rollsId} value={rolls} onChange={setRolls} placeholder="20" />
+      </Field>
+      <label htmlFor={checkId} className="flex min-h-11 cursor-pointer items-center gap-3 text-sm">
+        <input
+          id={checkId}
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => setChecked(e.target.checked)}
+          className="h-[22px] w-[22px] shrink-0 accent-brand-primary"
+        />
+        Cores and winding checked against the job card
+      </label>
+    </StageDialog>
   );
 }
 
@@ -569,94 +846,86 @@ export function QCModal({
 // COMPLETELY SEPARATE from Full Dispatch — different trigger, different modal, different button.
 
 export function PartialDispatchModal({
+  job,
   remaining,
   onCancel,
   onConfirm,
 }: {
+  job?:      Job | null;
   remaining: number;
   onCancel:  () => void;
-  onConfirm: (qty: number, stockRemaining: number) => void;
+  onConfirm: (input: PartialDispatchInput) => void;
 }) {
-  const [qty, setQty] = useState<number | ''>('');
-  const titleId = useId();
-  const qtyId = useId();
-  const stockId = useId();
+  const [qty, setQty]             = useState<number | ''>('');
+  const [stockLeft, setStockLeft] = useState<number | ''>('');
+  const [rack, setRack]           = useState('');
+  const [vehicle, setVehicle]     = useState('');
+  const titleId   = useId();
+  const qtyId     = useId();
+  const stockId   = useId();
+  const rackId    = useId();
+  const vehicleId = useId();
 
-  const isValid = typeof qty === 'number' && qty > 0 && qty <= remaining;
+  const ordered  = job?.label_qty ?? remaining;
+  const sentSoFar = Math.max(ordered - remaining, 0);
+  const isValid  = typeof qty === 'number' && qty > 0 && qty <= remaining;
+  const tooMany  = typeof qty === 'number' && qty > remaining;
 
-  // What is physically left on the shelf after this dispatch. Pre-filled from
-  // the order balance, but editable: the press may have run short, so the
+  // What is physically left on the shelf after this dispatch. Defaults to the
+  // order balance, but editable: the press may have run short, so the
   // arithmetic answer is a starting point, not the truth.
   const computedLeft = isValid ? remaining - (qty as number) : remaining;
-  const [stockLeft, setStockLeft] = useState<number | ''>('');
-  const effectiveStockLeft = stockLeft === '' ? computedLeft : stockLeft;
+  const left = stockLeft === '' ? computedLeft : stockLeft;
 
   return (
-    <ModalShell titleId={titleId} onClose={onCancel}>
-      <div className="p-6">
-        <h3 id={titleId} className="font-semibold text-[var(--glass-ink)] text-base mb-1">
-          Partial Dispatch
-        </h3>
-        <p className="text-sm text-[var(--glass-muted)] mb-4">
-          Remaining: <strong className="text-[var(--glass-ink)] font-mono">{formatQty(remaining)}</strong> labels
-        </p>
-
-        <label htmlFor={qtyId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
-          Quantity to dispatch now *
-        </label>
-        <WithUnit unit="labels">
-            <input
-            id={qtyId}
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={remaining}
-            value={qty}
-            onChange={(e) => setQty(e.target.value ? Number(e.target.value) : '')}
-            className={cn(inputCls, 'font-mono')}
-          />
-        </WithUnit>
-        {typeof qty === 'number' && qty > remaining && (
-          <p className="text-xs text-red-300 mt-1">Cannot exceed remaining quantity.</p>
-        )}
-
-        {/* The balance stays on the shelf — record it so it can be found later */}
-        <label htmlFor={stockId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mt-4 mb-1.5">
-          Labels left in stock
-        </label>
-        <WithUnit unit="labels">
-            <input
-            id={stockId}
-            type="number"
-            inputMode="numeric"
-            min={0}
-            value={stockLeft}
-            onChange={(e) => setStockLeft(e.target.value ? Number(e.target.value) : '')}
-            className={cn(inputCls, 'font-mono')}
-          />
-        </WithUnit>
-        <p className="text-xs text-[var(--glass-muted)] mt-1.5">
-          Defaults to{' '}
-          <strong className="text-[var(--glass-ink)] font-mono">{formatQty(computedLeft)}</strong>
-          {' '}— the order balance. Correct it if the shelf says otherwise.
-          {' '}This goes to Label Stock.
-        </p>
-
-        <div className="flex gap-3 justify-end mt-4">
-          <button onClick={onCancel} className={btnCancel}>
-            Cancel
-          </button>
-          {/* NOTE: Only ONE button — Save Partial Dispatch. No full dispatch button here. */}
+    <StageDialog
+      titleId={titleId}
+      cap="Partial Dispatch · Dispatch"
+      title={<>Send part of <Ref job={job} /></>}
+      sub={job ? `${job.party} · ${job.job_name}` : undefined}
+      onClose={onCancel}
+      footer={
+        <>
+          <button type="button" onClick={onCancel} className={dQuiet}>Cancel</button>
+          {/* Only ONE action here — never a full-dispatch button. */}
           <button
-            onClick={() => isValid && onConfirm(qty as number, effectiveStockLeft as number)}
+            type="button"
+            onClick={() => isValid && onConfirm({ qty: qty as number, stockLeft: left, rack: rack.trim(), vehicle: vehicle.trim() })}
             disabled={!isValid}
-            className={btnCaution}
+            className={dPrimary}
           >
-            Save Partial Dispatch
+            {isValid ? `Dispatch ${formatQty(qty as number)}` : 'Dispatch'}
           </button>
-        </div>
+        </>
+      }
+    >
+      <Facts items={[
+        ['Ordered', formatQty(ordered)],
+        ['Sent so far', formatQty(sentSoFar)],
+        ['Remaining', formatQty(remaining)],
+      ]} />
+      <Field label="Sending now (labels)" htmlFor={qtyId}>
+        <QtyInput id={qtyId} value={qty} onChange={setQty} />
+      </Field>
+      {tooMany && <Note tone="bad">Only <b className="font-mono">{formatQty(remaining)}</b> remain on this order.</Note>}
+      {isValid && (
+        left > 0
+          ? <Note tone="ok"><b className="font-mono">{formatQty(left)}</b> go to Label stock as <b>Remaining</b> — promised to this order.</Note>
+          : <Note tone="ok">Nothing is left on the shelf for this order.</Note>
+      )}
+      <Field label="Left on the shelf (labels)" htmlFor={stockId} hint="Defaults to the order balance. Correct it if the shelf says otherwise.">
+        <QtyInput id={stockId} value={stockLeft} onChange={setStockLeft} placeholder={computedLeft.toLocaleString('en-IN')} />
+      </Field>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label="Rack" htmlFor={rackId}>
+          <input id={rackId} value={rack} onChange={(e) => setRack(e.target.value)} placeholder="A-02" autoComplete="off" className={cn(dField, 'font-mono')} />
+        </Field>
+        <Field label="Vehicle no" htmlFor={vehicleId}>
+          <input id={vehicleId} value={vehicle} onChange={(e) => setVehicle(e.target.value.toUpperCase())} placeholder="GJ 16 AX 4471" autoComplete="off" className={cn(dField, 'font-mono')} />
+        </Field>
       </div>
-    </ModalShell>
+      {vehicle.trim() && <p className="-mt-2 text-xs text-brand-muted">The vehicle number goes into the party&rsquo;s dispatch email.</p>}
+    </StageDialog>
   );
 }
 
@@ -664,108 +933,87 @@ export function PartialDispatchModal({
 // COMPLETELY SEPARATE from Partial Dispatch. No qty input. No partial button.
 
 export function FullDispatchModal({
+  job,
   remaining,
   onCancel,
   onConfirm,
 }: {
+  job?:      Job | null;
   remaining: number;
   onCancel:  () => void;
-  onConfirm: (extraQty: number, location: string, remark: string) => void;
+  onConfirm: (input: FullDispatchInput) => void;
 }) {
-  const titleId  = useId();
-  const extraId  = useId();
-  const locId    = useId();
-  const remarkId = useId();
+  const titleId   = useId();
+  const extraId   = useId();
+  const locId     = useId();
+  const vehicleId = useId();
+  const remarkId  = useId();
 
   // Surplus printed beyond the order. Blank means none — the question is asked
   // every time, but answering it is never a tax on the common case.
   const [extraQty, setExtraQty] = useState<number | ''>('');
   const [location, setLocation] = useState('');
-  const [remark,   setRemark]   = useState('');
+  const [vehicle, setVehicle]   = useState('');
+  const [remark, setRemark]     = useState('');
 
   const hasExtra = typeof extraQty === 'number' && extraQty > 0;
+  const ordered  = job?.label_qty ?? remaining;
+  const sent     = Math.max(ordered - remaining, 0);
+  const due      = job?.delivery_date ? deliveryWords(job, istToday()) : null;
+  const dueLine  = !due?.text ? null : due.tone === 'late' ? `${due.text[0].toUpperCase()}${due.text.slice(1)}.` : `Due ${due.text}.`;
 
   return (
-    <ModalShell titleId={titleId} onClose={onCancel}>
-      <div className="p-6">
-        <h3 id={titleId} className="font-semibold text-[var(--glass-ink)] text-base mb-1">
-          Confirm Full Dispatch
-        </h3>
-        <p className="text-sm text-[var(--glass-muted)] mb-5">
-          Mark all remaining{' '}
-          <strong className="text-[var(--glass-ink)] font-mono">{formatQty(remaining)}</strong>{' '}
-          labels as fully dispatched? Anything held in stock for this job clears out.
-        </p>
-
-        {/* Over-runs are found now or never — once the job closes, nobody
-            remembers why a pile of labels is on the shelf. */}
-        <div className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-4">
-          <label htmlFor={extraId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
-            Any extra labels printed?
-          </label>
-          <WithUnit unit="labels">
-              <input
-              id={extraId}
-              type="number"
-              inputMode="numeric"
-              min={0}
-              value={extraQty}
-              onChange={(e) => setExtraQty(e.target.value ? Number(e.target.value) : '')}
-              className={cn(inputCls, 'font-mono')}
-            />
-          </WithUnit>
-          <p className="text-xs text-[var(--glass-muted)] mt-1.5">Leave empty if none.</p>
-
-          {hasExtra && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-              <div>
-                <label htmlFor={locId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
-                  Location
-                </label>
-                <WithExample example="Rack B2">
-                    <input
-                    id={locId}
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    className={inputCls}
-                  />
-                </WithExample>
-              </div>
-              <div>
-                <label htmlFor={remarkId} className="block text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1.5">
-                  Remark
-                </label>
-                <input
-                  id={remarkId}
-                  value={remark}
-                  onChange={(e) => setRemark(e.target.value)}
-                  className={inputCls}
-                />
-              </div>
-            </div>
-          )}
-
-          <p className="text-xs text-[var(--glass-muted)] mt-2">
-            {hasExtra
-              ? `${formatQty(extraQty as number)} labels will be added to Label Stock.`
-              : 'Blank or 0 adds nothing to stock.'}
-          </p>
-        </div>
-
-        <div className="flex gap-3 justify-end mt-5">
-          <button onClick={onCancel} className={btnCancel}>
-            Cancel
-          </button>
-          {/* NOTE: Only ONE button — Confirm Full Dispatch. No partial input here. */}
+    <StageDialog
+      titleId={titleId}
+      cap="Dispatched · Dispatch"
+      title={<>Dispatch <Ref job={job} /></>}
+      sub={job ? `${job.party} · ${job.job_name}` : 'Marks the whole order as sent.'}
+      onClose={onCancel}
+      footer={
+        <>
+          <button type="button" onClick={onCancel} className={dQuiet}>Cancel</button>
+          {/* Only ONE action here — never a partial quantity. */}
           <button
-            onClick={() => onConfirm(hasExtra ? (extraQty as number) : 0, location, remark)}
-            className={btnPrimary}
+            type="button"
+            onClick={() => onConfirm({ extraQty: hasExtra ? (extraQty as number) : 0, location: location.trim(), remark: remark.trim(), vehicle: vehicle.trim() })}
+            className={dPrimary}
           >
-            Confirm Full Dispatch
+            Mark dispatched
           </button>
-        </div>
+        </>
+      }
+    >
+      <Facts items={[
+        ['Ordered', formatQty(ordered)],
+        ['Sent before', formatQty(sent)],
+        ['Sending', formatQty(remaining)],
+      ]} />
+      {/* Over-runs are found now or never — once the job closes, nobody
+          remembers why a pile of labels is on the shelf. */}
+      <Field label="Extra labels left over" htmlFor={extraId}>
+        <QtyInput id={extraId} value={extraQty} onChange={setExtraQty} placeholder="None" />
+      </Field>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label="Extra to rack" htmlFor={locId}>
+          <input id={locId} value={location} onChange={(e) => setLocation(e.target.value)} disabled={!hasExtra} placeholder={hasExtra ? 'C-07' : '—'} autoComplete="off" className={cn(dField, 'font-mono disabled:bg-brand-surface-alt')} />
+        </Field>
+        <Field label="Vehicle no" htmlFor={vehicleId}>
+          <input id={vehicleId} value={vehicle} onChange={(e) => setVehicle(e.target.value.toUpperCase())} placeholder="GJ 16 AX 4471" autoComplete="off" className={cn(dField, 'font-mono')} />
+        </Field>
       </div>
-    </ModalShell>
+      {hasExtra && (
+        <Field label="Note on the extra" htmlFor={remarkId}>
+          <input id={remarkId} value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="Setup over-run, QC passed" className={dField} />
+        </Field>
+      )}
+      <Note tone={due?.tone === 'late' ? 'warn' : 'ok'}>
+        {hasExtra
+          ? <><b className="font-mono">{formatQty(extraQty as number)}</b> go to Label stock as <b>Extra</b>. </>
+          : 'Nothing extra goes to stock. '}
+        {dueLine && <>{dueLine} </>}
+        The party&rsquo;s email waits in Dispatch emails{vehicle.trim() ? ' with the vehicle number' : ''}.
+      </Note>
+    </StageDialog>
   );
 }
 
@@ -908,45 +1156,37 @@ export function ClosePOModal({
   onCancel:  () => void;
   onConfirm: () => void;
 }) {
-  const titleId = useId();
+  const titleId   = useId();
+  const remaining = job.remaining_qty ?? Math.max((job.label_qty ?? 0) - (job.dispatched_qty ?? 0), 0);
+  const ref       = jobRef(job);
+
   return (
-    <ModalShell titleId={titleId} onClose={onCancel}>
-      <div className="p-6">
-        <h3 id={titleId} className="font-semibold text-[var(--glass-ink)] text-base mb-4">
-          Close PO &amp; Archive
-        </h3>
-
-        {/* Job summary */}
-        <div className="bg-white/[0.06] border border-white/10 rounded-lg p-4 space-y-2 mb-4 font-mono text-sm">
-          <div className="flex justify-between">
-            <span className="text-[var(--glass-muted)]">Total Ordered</span>
-            <span className="text-[var(--glass-ink)]">{formatQty(job.label_qty)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-[var(--glass-muted)]">Dispatched</span>
-            <span className="text-emerald-200">{formatQty(job.dispatched_qty)}</span>
-          </div>
-          <div className="flex justify-between border-t border-white/10 pt-2">
-            <span className="text-[var(--glass-muted)]">Remaining</span>
-            <span className={job.remaining_qty ? 'text-amber-200' : 'text-emerald-200'}>
-              {formatQty(job.remaining_qty ?? 0)}
-            </span>
-          </div>
-        </div>
-
-        <p className="text-xs text-amber-200 bg-amber-400/10 border border-amber-300/25 rounded-lg px-3 py-2 mb-4">
-          This job will be archived. Clients can still track it by PO number. This action cannot be undone from the UI.
-        </p>
-
-        <div className="flex gap-3 justify-end">
-          <button onClick={onCancel} className={btnCancel}>
-            Cancel
-          </button>
-          <button onClick={onConfirm} className={btnPrimary}>
-            Close PO &amp; Archive
-          </button>
-        </div>
-      </div>
-    </ModalShell>
+    <StageDialog
+      titleId={titleId}
+      cap="PO Closed · Admin only"
+      title={<>Close PO <span className="font-mono">{job.po_number}</span>?</>}
+      sub={<>{job.party} · {job.job_name}{ref && ref !== job.po_number && <> · job <span className="font-mono">{ref}</span></>}. A closed PO leaves every list except reports. The party can still track it by PO number.</>}
+      onClose={onCancel}
+      footer={
+        <>
+          <button type="button" onClick={onCancel} className={dQuiet}>Cancel</button>
+          <button type="button" onClick={onConfirm} className={dPrimary}>Close PO</button>
+        </>
+      }
+    >
+      <Facts items={[
+        ['Ordered', formatQty(job.label_qty)],
+        ['Dispatched', formatQty(job.dispatched_qty)],
+        ['Remaining', formatQty(remaining), remaining > 0 ? 'bad' : undefined],
+      ]} />
+      {remaining > 0 ? (
+        <Note tone="bad">
+          <b><span className="font-mono">{formatQty(remaining)}</span> labels were never sent.</b>{' '}
+          Any balance in Label stock as Remaining stays there after the PO closes, so it can still be used.
+        </Note>
+      ) : (
+        <Note tone="ok">Everything ordered has been sent.</Note>
+      )}
+    </StageDialog>
   );
 }

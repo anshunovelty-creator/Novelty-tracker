@@ -19,6 +19,7 @@ import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptUseBOM } from '@/lib/constants/departments';
 import { materialExpense, BOM_JOB_SUMMARY_SELECT } from '@/lib/bom';
+import { deptKeyOf } from '@/lib/identity';
 
 const STATUSES = ['pending', 'ordered', 'declined', 'cancelled'] as const;
 
@@ -33,7 +34,7 @@ async function requireBomAccess() {
     return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) } as const;
   }
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!canDeptUseBOM(perms)) {
     return {
       error: NextResponse.json({ error: 'Bill of Material access required' }, { status: 403 }),

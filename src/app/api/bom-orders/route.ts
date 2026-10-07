@@ -17,6 +17,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptUseBOM, canDeptDecideBOM } from '@/lib/constants/departments';
 import { BOM_JOB_SUMMARY_SELECT } from '@/lib/bom';
 import { positive, rpcError } from '@/lib/api/paperStockGate';
+import { deptKeyOf } from '@/lib/identity';
 
 const STATUSES = ['ordered', 'received', 'cancelled'] as const;
 
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!canDeptUseBOM(perms)) {
     return NextResponse.json({ error: 'Bill of Material access required' }, { status: 403 });
   }
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms || !canDeptDecideBOM(perms)) {
     return NextResponse.json({ error: 'Only Admin can place a material order' }, { status: 403 });
   }

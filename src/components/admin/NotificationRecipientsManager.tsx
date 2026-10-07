@@ -55,8 +55,8 @@ export default function NotificationRecipientsManager() {
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
         {!loading && (
-          <p className="text-sm text-[var(--glass-muted)]">
-            <strong className="text-[var(--glass-ink)]">{recipients.length}</strong>
+          <p className="text-sm text-brand-muted">
+            <strong className="text-brand-ink">{recipients.length}</strong>
             {' '}{recipients.length === 1 ? 'recipient' : 'recipients'}
           </p>
         )}
@@ -75,23 +75,23 @@ export default function NotificationRecipientsManager() {
       {loading ? (
         <div className="space-y-2" aria-hidden="true">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-16 rounded-xl bg-black/[0.04]" />
+            <div key={i} className="h-16 rounded-xl bg-brand-sunken" />
           ))}
         </div>
       ) : recipients.length === 0 ? (
-        <div className="flex flex-col items-center justify-center text-center rounded-xl border border-black/[0.08] bg-white px-4 py-12">
-          <Bell className="w-6 h-6 text-[var(--glass-muted)]" aria-hidden="true" />
-          <p className="text-sm font-medium text-[var(--glass-ink)] mt-3">No recipients yet.</p>
-          <p className="text-xs text-[var(--glass-muted)] mt-1">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-brand-border bg-white px-4 py-12 text-center">
+          <Bell className="w-6 h-6 text-brand-muted" aria-hidden="true" />
+          <p className="text-sm font-medium text-brand-ink mt-3">No recipients yet.</p>
+          <p className="text-xs text-brand-muted mt-1">
             Nobody gets the internal dispatch alert until you add an address.
           </p>
         </div>
       ) : (
-        <ul className="space-y-2">
+        <ul className="divide-y divide-brand-border overflow-hidden rounded-2xl border border-brand-border bg-white shadow-[0_2px_8px_rgba(12,42,32,0.04)]">
           {recipients.map((recipient) => (
             <li
               key={recipient.id}
-              className="rounded-xl border border-black/[0.08] bg-white p-4 flex flex-col sm:flex-row sm:items-center gap-3"
+              className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:px-5"
             >
               <div className="min-w-0 flex-1">
                 {recipient.label && (
@@ -99,10 +99,10 @@ export default function NotificationRecipientsManager() {
                     {recipient.label}
                   </span>
                 )}
-                <p className="text-sm font-semibold text-[var(--glass-ink)] mt-1.5 break-words">
+                <p className="text-[15px] font-semibold text-brand-ink mt-1.5 break-words">
                   {recipient.email}
                 </p>
-                <p className="text-xs text-[var(--glass-muted)] mt-1">
+                <p className="text-xs text-brand-muted mt-1">
                   Added <span className="font-mono">{formatAdminDate(recipient.created_at)}</span>
                 </p>
               </div>

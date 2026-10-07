@@ -21,6 +21,7 @@ import PendingDispatchNotifications from '@/components/admin/PendingDispatchNoti
 import PartyContactsManager from '@/components/admin/PartyContactsManager';
 import NotificationRecipientsManager from '@/components/admin/NotificationRecipientsManager';
 import DispatchEmailTabs, { type DispatchTab, type DispatchTabId } from '@/components/admin/DispatchEmailTabs';
+import { deptKeyOf } from '@/lib/identity';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,7 +37,7 @@ export default async function DispatchNotificationsPage({
 }) {
   const supabase = await createServerSupabaseClient();
   const user = await getClaimsUser(supabase);
-  const perms = await getDeptPermissions(user?.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
 
   const canQueue = canDeptManageDispatchNotifications(perms);
   const canTeam  = canDeptManageNotificationRecipients(perms);
@@ -84,7 +85,7 @@ export default async function DispatchNotificationsPage({
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-[var(--glass-ink)]">Dispatch Emails</h1>
+      <h1 className="text-[30px] font-semibold leading-9 tracking-[-0.025em] text-brand-ink">Dispatch Emails</h1>
 
       <DispatchEmailTabs tabs={tabs} active={active}>
         {active === 'queue'   && <PendingDispatchNotifications />}

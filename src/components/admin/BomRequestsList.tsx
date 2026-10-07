@@ -37,8 +37,7 @@ import { PromptModal, ConfirmModal } from './modals';
 import { ReceiveRollsModal, type ReceivePrefill } from './PaperStockModals';
 import BomRequestGroups, { BomRequestFlatList, type RequestGroup } from './BomRequestGroups';
 import { PlaceOrderModal, BomOrdersList } from './BomOrders';
-
-const POLL_MS = 30_000;
+import { useRefetchOnChange } from '@/hooks/useRefetchOnChange';
 
 type Filter = 'pending' | 'ordered' | 'received' | 'closed' | 'all';
 
@@ -106,8 +105,11 @@ export default function BomRequestsList({ canDecide, canManageStock }: Props) {
       return (data.requests ?? []) as BomMaterialRequestWithJob[];
     },
     placeholderData: keepPreviousData,
-    refetchInterval: declining || receiving || deleting || ordering ? false : POLL_MS,
   });
+  // Both lists re-download only when their tables changed (checked every
+  // 30 s for a few bytes), each held while one of its own writes is open.
+  useRefetchOnChange(['bom_material_requests', 'job_separations'], [['bom-requests']],
+    { paused: Boolean(declining || receiving || deleting || ordering) });
   const all     = requestsQuery.data ?? EMPTY;
 
   // Open orders — what the Ordered tab lists and Receive works from.
@@ -120,8 +122,8 @@ export default function BomRequestsList({ canDecide, canManageStock }: Props) {
       return (data.orders ?? []) as BomMaterialOrder[];
     },
     placeholderData: keepPreviousData,
-    refetchInterval: receiving || cancelling ? false : POLL_MS,
   });
+  useRefetchOnChange(['bom_material_orders'], [['bom-orders']], { paused: Boolean(receiving || cancelling) });
   const orders = ordersQuery.data ?? EMPTY_ORDERS;
   const loading = requestsQuery.isLoading;
 

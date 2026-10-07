@@ -89,6 +89,16 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
   // Non-fatal on failure: the unit select falls back to "no units configured".
   const { data: units = NO_UNITS } = usePrintingUnits<PrintingUnit>();
 
+  // What a save would send right now — drives the outlines and the button.
+  const pending = diffJob(form, toForm(job), canEditDelivery);
+  const changedCount = Object.keys(pending).length;
+  const [why, setWhy] = useState('');
+  /** The field's input class, outlined when its value differs from the job's. */
+  const fc = (key: keyof EditForm, extra?: string) => cn(
+    inputCls, extra,
+    key in pending && '!border-brand-primary shadow-[0_0_0_3px_rgba(16,85,63,0.14)]',
+  );
+
   function set<K extends keyof EditForm>(key: K, value: EditForm[K]) {
     setForm((f) => ({ ...f, [key]: value }));
   }
@@ -99,27 +109,7 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
     if (!form.po_number.trim()) { toast.error('PO number is required'); return; }
     if (!form.party.trim())     { toast.error('Party is required');     return; }
 
-    // Diff against the original. Empty text becomes null for the nullable
-    // columns, so clearing a field actually clears it rather than storing ''.
-    const original = toForm(job);
-    const updates: Record<string, unknown> = {};
-
-    if (form.po_number.trim() !== original.po_number) updates.po_number = form.po_number.trim();
-    if (form.party.trim()     !== original.party)     updates.party     = form.party.trim();
-    if (form.pm_code.trim()   !== original.pm_code)   updates.pm_code   = form.pm_code.trim()  || null;
-    if (form.job_name.trim()  !== original.job_name)  updates.job_name  = form.job_name.trim() || null;
-    if (form.label_qty        !== original.label_qty) updates.label_qty = form.label_qty ? Number(form.label_qty) : null;
-    if (form.job_type         !== original.job_type)  updates.job_type  = form.job_type;
-    if (form.po_date          !== original.po_date)   updates.po_date   = form.po_date || null;
-    if (form.notes.trim()     !== original.notes)     updates.notes     = form.notes.trim() || null;
-    if (canEditDelivery && form.delivery_date !== original.delivery_date) {
-      updates.delivery_date = form.delivery_date || null;
-    }
-    // Only the unit is sent. PATCH /api/jobs/[id] derives printing_method
-    // from it, so the two can never drift apart.
-    if (form.printing_unit_id !== original.printing_unit_id) {
-      updates.printing_unit_id = form.printing_unit_id || null;
-    }
+    const updates = diffJob(form, toForm(job), canEditDelivery);
 
     if (Object.keys(updates).length === 0) {
       toast('Nothing changed');
@@ -140,6 +130,15 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
         return;
       }
       onSaved(data.job as Job);
+      // The reason is filed as an internal note on the job, at its current
+      // stage, so the change and why it was made sit in the job's history.
+      if (why.trim()) {
+        await fetch(`/api/jobs/${job.id}/comments`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ stage: job.status, comment: `Edited ${changeSummary(updates, job)}. Why: ${why.trim()}` }),
+        }).catch(() => toast.error('Saved, but the reason could not be added as a note'));
+      }
       toast.success('Job updated');
       onClose();
     } catch {
@@ -162,7 +161,7 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
               <span className="font-mono font-semibold">
                 {job.job_card_number?.toUpperCase() ?? job.po_number}
               </span>
-              <span className="ml-2">Card number and status are not editable here</span>
+              <span className="ml-2">Changed fields are outlined. Card number and status aren’t edited here.</span>
             </p>
           </div>
           <button
@@ -184,7 +183,7 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
                   required
                   value={form.po_number}
                   onChange={(e) => set('po_number', e.target.value)}
-                  className={cn(inputCls, 'font-mono')}
+                  className={fc('po_number', 'font-mono')}
                 />
               </WithExample>
             </FormField>
@@ -194,7 +193,7 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
                   value={form.pm_code}
                   onChange={(e) => set('pm_code', e.target.value)}
                   autoComplete="off"
-                  className={cn(inputCls, 'font-mono')}
+                  className={fc('pm_code', 'font-mono')}
                 />
               </WithExample>
             </FormField>
@@ -206,7 +205,7 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
                 required
                 value={form.party}
                 onChange={(e) => set('party', e.target.value)}
-                className={inputCls}
+                className={fc('party')}
               />
             </WithExample>
           </FormField>
@@ -215,7 +214,7 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
             <input
               value={form.job_name}
               onChange={(e) => set('job_name', e.target.value)}
-              className={inputCls}
+              className={fc('job_name')}
             />
           </FormField>
 
@@ -227,7 +226,7 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
                   min={1}
                   value={form.label_qty}
                   onChange={(e) => set('label_qty', e.target.value)}
-                  className={cn(inputCls, 'font-mono')}
+                  className={fc('label_qty', 'font-mono')}
                 />
               </WithUnit>
             </FormField>
@@ -235,7 +234,7 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
               <select
                 value={form.job_type}
                 onChange={(e) => set('job_type', e.target.value as JobType)}
-                className={inputCls}
+                className={fc('job_type')}
               >
                 {JOB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
@@ -252,7 +251,7 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
                 value={form.printing_unit_id}
                 onChange={(e) => set('printing_unit_id', e.target.value)}
                 disabled={units.length === 0}
-                className={cn(inputCls, 'disabled:opacity-60')}
+                className={fc('printing_unit_id', 'disabled:opacity-60')}
               >
                 <option value="">
                   {units.length === 0 ? 'No units configured' : 'Not assigned'}
@@ -270,7 +269,7 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
                 type="date"
                 value={form.po_date}
                 onChange={(e) => set('po_date', e.target.value)}
-                className={cn(inputCls, 'font-mono')}
+                className={fc('po_date', 'font-mono')}
               />
             </FormField>
             <FormField
@@ -282,7 +281,7 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
                 value={form.delivery_date}
                 onChange={(e) => set('delivery_date', e.target.value)}
                 disabled={!canEditDelivery}
-                className={cn(inputCls, 'font-mono disabled:opacity-60')}
+                className={fc('delivery_date', 'font-mono disabled:opacity-60')}
               />
             </FormField>
           </div>
@@ -292,10 +291,24 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
               rows={3}
               value={form.notes}
               onChange={(e) => set('notes', e.target.value)}
-              className={cn(inputCls, 'resize-none')}
+              className={fc('notes', 'resize-none')}
             />
           </FormField>
         </div>
+
+        {changedCount > 0 && (
+          <div className="shrink-0 border-t border-white/12 px-5 pt-3">
+            <FormField label="Why the change" hint="optional — added as a note on the job">
+              <textarea
+                rows={2}
+                value={why}
+                onChange={(e) => setWhy(e.target.value)}
+                placeholder="Party revised PO to 40,000 by email, 03 Oct."
+                className={cn(inputCls, 'resize-none')}
+              />
+            </FormField>
+          </div>
+        )}
 
         {/* Save sits at the bottom, always visible */}
         <div className="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-white/12 shrink-0">
@@ -308,7 +321,7 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
           </Button>
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || changedCount === 0}
             className={cn(
               'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium',
               'bg-brand-primary text-white hover:bg-brand-primary/90',
@@ -316,7 +329,7 @@ export default function EditJobModal({ job, dept, onClose, onSaved }: Props) {
             )}
           >
             <Save className="w-4 h-4" aria-hidden="true" />
-            {saving ? 'Saving…' : 'Save changes'}
+            {saving ? 'Saving…' : changedCount === 0 ? 'No changes' : `Save ${changedCount} change${changedCount === 1 ? '' : 's'}`}
           </button>
         </div>
       </form>
@@ -344,4 +357,43 @@ function FormField({
       {children}
     </label>
   );
+}
+
+// Diff against the original. Empty text becomes null for the nullable
+// columns, so clearing a field actually clears it rather than storing ''.
+// Only the unit is sent, never the method: PATCH /api/jobs/[id] derives
+// printing_method from it, so the two can never drift apart.
+function diffJob(form: EditForm, original: EditForm, canEditDelivery: boolean): Record<string, unknown> {
+  const updates: Record<string, unknown> = {};
+  if (form.po_number.trim() !== original.po_number) updates.po_number = form.po_number.trim();
+  if (form.party.trim()     !== original.party)     updates.party     = form.party.trim();
+  if (form.pm_code.trim()   !== original.pm_code)   updates.pm_code   = form.pm_code.trim()  || null;
+  if (form.job_name.trim()  !== original.job_name)  updates.job_name  = form.job_name.trim() || null;
+  if (form.label_qty        !== original.label_qty) updates.label_qty = form.label_qty ? Number(form.label_qty) : null;
+  if (form.job_type         !== original.job_type)  updates.job_type  = form.job_type;
+  if (form.po_date          !== original.po_date)   updates.po_date   = form.po_date || null;
+  if (form.notes.trim()     !== original.notes)     updates.notes     = form.notes.trim() || null;
+  if (canEditDelivery && form.delivery_date !== original.delivery_date) {
+    updates.delivery_date = form.delivery_date || null;
+  }
+  if (form.printing_unit_id !== original.printing_unit_id) {
+    updates.printing_unit_id = form.printing_unit_id || null;
+  }
+  return updates;
+}
+
+const FIELD_NAMES: Record<string, string> = {
+  po_number: 'PO number', party: 'party', pm_code: 'PM code', job_name: 'job name', label_qty: 'quantity',
+  job_type: 'job type', po_date: 'PO date', notes: 'notes', delivery_date: 'delivery date', printing_unit_id: 'printing unit',
+};
+
+/** "quantity 35,000 → 40,000, delivery date" — for the reason note. */
+function changeSummary(updates: Record<string, unknown>, job: Job): string {
+  return Object.keys(updates).map((k) => {
+    if (k === 'label_qty') {
+      const to = updates.label_qty as number | null;
+      return `quantity ${job.label_qty?.toLocaleString('en-IN') ?? '—'} → ${to?.toLocaleString('en-IN') ?? '—'}`;
+    }
+    return FIELD_NAMES[k] ?? k;
+  }).join(', ');
 }

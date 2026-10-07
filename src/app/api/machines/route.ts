@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
       .eq('is_retired', false)
       .order('created_at'),
     admin.from('machine_queue_items')
-      .select('*, jobs(po_number, job_name, party, label_qty)')
+      .select('*, jobs(po_number, job_name, party, label_qty, urgent_priority)')
       .neq('status', 'done')
       .order('position'),
     // Only jobs whose job card is done are queueable. The !inner join is the

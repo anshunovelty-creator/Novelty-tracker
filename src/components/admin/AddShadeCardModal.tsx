@@ -18,12 +18,8 @@ import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { ModalShell } from './modals';
-import {
-  MAKING_STATUSES,
-  SHADE_CARD_STATUSES,
-  SHADE_CARD_STATUS_COLORS,
-  type ShadeCardStatus,
-} from '@/lib/constants/shadeCards';
+import { MAKING_STATUSES, SHADE_CARD_STATUSES, type ShadeCardStatus, SHADE_CARD_STATUS_DOT } from '@/lib/constants/shadeCards';
+import { StateChip } from '@/components/ui/StateChip';
 import type { Party, ShadeCard } from '@/lib/types';
 
 // Matches the shared field style used by every other modal and form in the
@@ -587,12 +583,7 @@ function DuplicateCallout({ hit }: { hit: DuplicateHit }) {
             {/* Approval status only. Whether the card was physically made is
                 a detail of the existing card, not a signal about whether this
                 new one is a duplicate — and a second chip wraps every row. */}
-            <span className={cn('px-2 py-0.5 rounded-md font-medium',
-              SHADE_CARD_STATUS_COLORS[c.status]?.bg,
-              SHADE_CARD_STATUS_COLORS[c.status]?.text,
-              SHADE_CARD_STATUS_COLORS[c.status]?.border)}>
-              {c.status}
-            </span>
+            <StateChip label={c.status} dot={SHADE_CARD_STATUS_DOT[c.status]} />
           </li>
         ))}
       </ul>

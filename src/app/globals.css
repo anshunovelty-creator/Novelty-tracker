@@ -254,26 +254,14 @@ select:disabled {
 .cyc-fade { animation: cyc-fade .3s ease; }
 
 /* ── Header nav ────────────────────────────────────────────────────
-   The admin header's section strip steps down a ladder as the viewport
-   narrows — full names, short names, icons, then the hamburger — and
-   redraws the whole strip at each step rather than reflowing entry by
-   entry. In normal use there is exactly one moving part: the underline
-   sliding between entries. transform + width only — no layout, no
-   repaint storm. */
-.nav-indicator {
-  transition: transform .28s cubic-bezier(.2,.8,.3,1),
-              width     .28s cubic-bezier(.2,.8,.3,1);
-  will-change: transform, width;
+   Grouped tabs (Jobs, Production, Stock, Dispatch…) with a dropdown under
+   each group. The dropdown fades in a few pixels below its tab; nothing
+   else in the bar moves. */
+@keyframes nav-menu-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
 }
-
-/* Crossing a rung redraws the strip. Opacity only: the change happens
-   mid-resize, and animating width or height there would fight the drag
-   the user is still doing. */
-@keyframes nav-swap {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-.nav-swap { animation: nav-swap .16s ease-out both; }
+.nav-menu-in { animation: nav-menu-in .14s ease-out both; }
 
 /* Mobile section sheet dropping out of the header bar. */
 @keyframes nav-panel-in {
@@ -291,8 +279,7 @@ select:disabled {
   .loading-bar  { animation: none; width: 100%; }
   .animate-pulse { animation: none; }
   .nav-panel-in  { animation: none; }
-  .nav-swap      { animation: none; }
-  .nav-indicator { transition: none; }
+  .nav-menu-in   { animation: none; }
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -309,7 +296,7 @@ select:disabled {
      correctly on white — no per-file edits needed. */
   --glass-ink:        #0C2A20;
   --glass-muted:      #5A6B62;
-  --glass-bg:         #F4F8F5;
+  --glass-bg:         #F5F9F7;  /* surface-alt: zebra rows, wells */
   --glass-bg-strong:  #EDF3EF;
   --glass-border:     #E4EAE6;
   --select-option-bg: #FFFFFF;
@@ -425,9 +412,29 @@ select:disabled {
   border: 1px solid var(--color-border);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
-  box-shadow:
-    0 1px 2px rgba(12, 42, 32, 0.04),
-    0 2px 8px rgba(12, 42, 32, 0.05);
+  /* shadow-card: barely there — hierarchy comes from borders and contrast */
+  box-shadow: 0 1px 2px rgba(12, 42, 32, 0.04);
+}
+/* Cards and tables take the 16px card radius (radius-xl); smaller glass
+   pieces (chips, wells) keep whatever radius they ask for. */
+.admin-light .glass.rounded-xl,
+.admin-light .glass.rounded-2xl { border-radius: 16px; }
+
+/* ── Tables: one header grammar everywhere (DESIGN.md caption style) ──
+   Sentence case, 12px, medium weight, ink-muted, on the same mint as the
+   pinned Sr No column (--glass-bg-strong, #EDF3EF — owner's call,
+   2026-10-06) with a hairline under it. 30-odd tables still carry the old
+   uppercase micro-label classes; this re-points them all in one place, and
+   the selector's specificity (0,1,2) outranks their single utility classes. */
+.admin-light thead th {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-muted);
+  background-color: var(--glass-bg-strong);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 /* Emphasis / hover surfaces: faint mint tint instead of "more white" */
 .admin-light .glass-strong {
@@ -489,4 +496,16 @@ select:disabled {
 .stage-menu-in { animation: stage-menu-in 120ms ease-out; transform-origin: top left; }
 @media (prefers-reduced-motion: reduce) {
   .stage-menu-in { animation: none; }
+}
+
+/* ── Phone tab bar (AdminHeader's PhoneTabBar) ──────────────────
+   Below sm a 60px bar sits at the bottom of every admin page. The floating
+   launchers (notes, messages, prepress to-do, meter calculator — tagged
+   .admin-fab) and their panels lift by its height so it never covers them,
+   and the page gets the same room at the bottom so the last row scrolls
+   clear of it. */
+:root { --tabbar-h: calc(60px + env(safe-area-inset-bottom)); }
+@media (max-width: 639px) {
+  .admin-fab { margin-bottom: var(--tabbar-h); }
+  .admin-light > main { padding-bottom: calc(var(--tabbar-h) + 1.5rem); }
 }

@@ -33,8 +33,12 @@ export async function upsertRemainingStock(
   job: Job,
   qty: number,
   actor: string | null,
+  location?: string | null,
 ): Promise<{ error: string | null }> {
   if (qty <= 0) return clearRemainingStock(admin, job.id, actor);
+  // A rack is only written when one was given — a second partial dispatch
+  // without one keeps the rack recorded the first time.
+  const rack = location?.trim() ? { location: location.trim() } : {};
 
   const { data: existing, error: readErr } = await admin
     .from('label_stock')
@@ -49,14 +53,14 @@ export async function upsertRemainingStock(
   if (existing) {
     const { error } = await admin
       .from('label_stock')
-      .update({ qty, ...snapshot(job) })
+      .update({ qty, ...snapshot(job), ...rack })
       .eq('id', existing.id);
     return { error: error?.message ?? null };
   }
 
   const { error } = await admin
     .from('label_stock')
-    .insert({ ...snapshot(job), kind: 'Remaining', qty, created_by: actor });
+    .insert({ ...snapshot(job), kind: 'Remaining', qty, created_by: actor, ...rack });
   return { error: error?.message ?? null };
 }
 

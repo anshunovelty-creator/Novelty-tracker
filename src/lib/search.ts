@@ -24,10 +24,15 @@ export function containsPattern(q: string): string {
  * "210.5", but not "1210" or "2100". Text that isn't a number falls back to
  * matching the whole value.
  */
-export function sizePatterns(q: string): string[] {
+export function sizePatterns(q: string, tolerance = 0): string[] {
   const m = /^0*(\d+)(?:\.\d*)?$/.exec(q.trim());
   if (!m) return [escapeLike(q.trim())];
-  return [m[1], `${m[1]}.%`];
+  // ±tolerance whole millimetres: 210 with 2 is 208 … 212. A die cut 1 mm
+  // off the job's size still runs, so "near enough" is a real search.
+  const n = Number(m[1]);
+  const out: string[] = [];
+  for (let v = Math.max(0, n - tolerance); v <= n + tolerance; v++) out.push(String(v), `${v}.%`);
+  return out;
 }
 
 /** Double-quoted for `.or(...)`, so commas and parentheses inside it are
@@ -43,9 +48,9 @@ export function orContains(columns: readonly string[], q: string): string {
 
 /** Contains-match on `contains` columns and size-match (see sizePatterns)
  *  on `sizes` ones, OR'd together for one `.or(...)`. */
-export function orMatch(contains: readonly string[], sizes: readonly string[], q: string): string {
+export function orMatch(contains: readonly string[], sizes: readonly string[], q: string, tolerance = 0): string {
   const c = quote(containsPattern(q));
-  const s = sizePatterns(q).map(quote);
+  const s = sizePatterns(q, tolerance).map(quote);
   return [
     ...contains.map((col) => `${col}.ilike.${c}`),
     ...sizes.flatMap((col) => s.map((p) => `${col}.ilike.${p}`)),

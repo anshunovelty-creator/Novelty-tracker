@@ -44,6 +44,7 @@ type JoinedRow = {
     pm_code:   string | null;
     po_number: string;
     party:     string;
+    status:    string;
   } | null;
 };
 
@@ -71,7 +72,7 @@ export async function GET(request: NextRequest) {
       created_by,
       created_by_email,
       created_at,
-      jobs ( job_name, pm_code, po_number, party )
+      jobs ( job_name, pm_code, po_number, party, status )
     `)
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -111,6 +112,7 @@ export async function GET(request: NextRequest) {
       pm_code:          r.jobs!.pm_code,
       po_number:        r.jobs!.po_number,
       party:            r.jobs!.party,
+      job_status:       r.jobs!.status,
       read:             readIds.has(r.id),
     }));
 

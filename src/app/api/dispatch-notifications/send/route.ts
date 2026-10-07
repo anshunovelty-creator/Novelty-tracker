@@ -24,13 +24,14 @@ import { getDeptPermissions, canDeptManageDispatchNotifications } from '@/lib/co
 import { getConsolidatedSubject, getConsolidatedEmailHTML, getDispatchThreadKey, type DispatchItem } from '@/lib/notifications/dispatchEmailTemplate';
 import { isMailerConfigured, sendMail } from '@/lib/notifications/mailer';
 import type { PendingDispatchNotification } from '@/lib/types';
+import { deptKeyOf } from '@/lib/identity';
 
 export async function POST(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!canDeptManageDispatchNotifications(perms)) {
     return NextResponse.json({ error: 'Only Dispatch/Admin can send dispatch notifications' }, { status: 403 });
   }

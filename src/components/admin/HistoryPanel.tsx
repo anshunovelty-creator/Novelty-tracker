@@ -15,7 +15,8 @@ import StageComments from './StageComments';
 import { PrintRunModal, PromptModal } from './modals';
 import { SkeletonText } from '@/components/ui/Skeleton';
 import toast from 'react-hot-toast';
-import { useDepartments } from '@/hooks/useReferenceData';
+import { useDepartments, useTeamDirectory } from '@/hooks/useReferenceData';
+import { MentionText } from '@/components/ui/Mention';
 
 type Props = {
   jobId:               string;
@@ -34,6 +35,7 @@ export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept,
   // key -> display_name, for showing which department made a past status change —
   // that log's department may not be the viewer's own, so it can't come from `dept`.
   const { data: departments } = useDepartments();
+  const { nameOf } = useTeamDirectory();
   const deptNames = useMemo(() => {
     const map: Record<string, string> = {};
     for (const d of departments ?? []) map[d.key] = d.display_name;
@@ -167,7 +169,7 @@ export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept,
                     <div className="mt-1 space-y-1">
                       {comments.map((c) => (
                         <p key={c.id} className="text-xs text-[var(--glass-muted)] bg-white/[0.06] rounded px-2 py-1">
-                          <span className="font-medium">{c.created_by}:</span> {c.comment}
+                          <span className="font-medium" title={c.created_by_email ?? undefined}>{nameOf(c.created_by_email) || c.created_by}:</span> <MentionText text={c.comment} tagClassName="font-semibold" />
                           <span className="ml-2 opacity-50">{formatAdminDate(c.created_at)}</span>
                         </p>
                       ))}
@@ -232,16 +234,20 @@ export default function HistoryPanel({ jobId, jobType, isScheduledRelease, dept,
 // Non-scheduled multi-run jobs keep the Start Next Print Run flow —
 // their runs are simply rows without a planned date.
 
-function ReleasesSection({
+// Exported for the job detail page, which shows it as its own card
+// (variant="card"); the expanded dashboard row keeps the inline panel look.
+export function ReleasesSection({
   job,
   isScheduledRelease,
   dept,
   onChanged,
+  variant = 'panel',
 }: {
   job:                JobDetail;
   isScheduledRelease: boolean;
   dept:               DeptPermissions;
   onChanged:          () => void;
+  variant?:           'panel' | 'card';
 }) {
   const [runs,        setRuns]        = useState<PrintRun[]>([]);
   const [loaded,      setLoaded]      = useState(false);
@@ -398,12 +404,27 @@ function ReleasesSection({
     }
   }
 
+  const card = variant === 'card';
   return (
-    <div>
+    <section
+      aria-label={isScheduledRelease ? 'Scheduled releases' : 'Print runs'}
+      className={card ? 'rounded-2xl border border-brand-border bg-white p-5 shadow-[0_2px_8px_rgba(12,42,32,0.04)]' : undefined}
+    >
       <div className="flex items-center justify-between mb-3">
-        <h4 className="text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide">
-          {isScheduledRelease ? 'Releases' : 'Print Runs'}
-        </h4>
+        {card ? (
+          <div>
+            <h2 className="text-base font-semibold text-brand-ink">{isScheduledRelease ? 'Scheduled releases' : 'Print runs'}</h2>
+            <p className="mt-0.5 text-[13px] text-brand-muted">
+              {isScheduledRelease
+                ? 'The party wants this PO in drops. Planned against actually dispatched.'
+                : 'Each run moves through Printing → QC → Packing → Dispatched on its own.'}
+            </p>
+          </div>
+        ) : (
+          <h4 className="text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide">
+            {isScheduledRelease ? 'Releases' : 'Print Runs'}
+          </h4>
+        )}
         {isScheduledRelease && dept.isSuperAdmin && !showAddForm && (
           <button
             onClick={() => setShowAddForm(true)}
@@ -654,7 +675,7 @@ function ReleasesSection({
           }}
         />
       )}
-    </div>
+    </section>
   );
 }
 

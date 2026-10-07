@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PaperRoll } from './types';
 import {
+  stockValue,
   stockKey, summariseStock, groupStockByMaterial, describeRolls, formatMeters,
   stockNeed, suggestedIssue, stockShortfall, stockCoverPct, stockUsage,
 } from './paperStock';
@@ -239,5 +240,27 @@ describe('stockUsage', () => {
     expect(stockUsage(null)).toEqual({ stock_issued_m: 0, stock_out_m: 0, stock_returned_m: 0 });
     expect(stockUsage(undefined)).toEqual({ stock_issued_m: 0, stock_out_m: 0, stock_returned_m: 0 });
     expect(stockUsage([])).toEqual({ stock_issued_m: 0, stock_out_m: 0, stock_returned_m: 0 });
+  });
+});
+
+describe('stockValue', () => {
+  const r = (over: Partial<PaperRoll>): PaperRoll => ({
+    id: Math.random().toString(36), ref: 'R-1', material_id: 'm1', material_name: 'Chromo', width_mm: 100,
+    initial_meter: 2000, remaining_meter: 2000, location: null, supplier: null, note: null,
+    source_request_id: null, received_at: '2026-10-01T00:00:00Z', created_by: null, ...over,
+  });
+  it('prices metres × width × rate, per line and in total', () => {
+    const v = stockValue([r({}), r({ remaining_meter: 500 }), r({ width_mm: 250, remaining_meter: 100 })], new Map([['m1', 20]]));
+    // 2500 m × 0.1 m × ₹20 = 5000; 100 m × 0.25 m × ₹20 = 500
+    expect(v.by_line[stockKey('m1', 100)]).toBe(5000);
+    expect(v.by_line[stockKey('m1', 250)]).toBe(500);
+    expect(v.total).toBe(5500);
+    expect(Object.values(v.by_roll).sort((a, b) => a - b)).toEqual([500, 1000, 4000]);
+  });
+  it('leaves out materials with no rate and used-up rolls, and says how much', () => {
+    const v = stockValue([r({ material_id: 'm2', material_name: 'PE', remaining_meter: 300 }), r({ remaining_meter: 0 })], new Map([['m1', 20], ['m2', 0]]));
+    expect(v.total).toBe(0);
+    expect(v.unpriced_meters).toBe(300);
+    expect(v.unpriced_materials).toEqual(['PE']);
   });
 });

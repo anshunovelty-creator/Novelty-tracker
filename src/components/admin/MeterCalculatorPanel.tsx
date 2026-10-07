@@ -2,10 +2,9 @@
 // src/components/admin/MeterCalculatorPanel.tsx
 // Floating launcher + panel for the Job Separation calculators — same
 // interaction shape as PrepressTodoPanel.tsx (itself modeled on NotesFeed's
-// chat widget), stacked above all three so none of the floating widgets
-// collide: NotesFeed at bottom-5, MessagesWidget at bottom-24,
-// PrepressTodoPanel at bottom-[172px], this one at bottom-[248px] (same
-// 76px rhythm throughout).
+// chat widget), stacked above the other two so none of the floating widgets
+// collide: MessagesWidget at bottom-5, PrepressTodoPanel at bottom-24,
+// this one at bottom-[172px] (same 76px rhythm throughout).
 //
 // Four calculators behind tabs. Basic is a standard Windows-style
 // calculator (BasicCalculator.tsx). The other three are ported from the
@@ -247,7 +246,7 @@ export default function MeterCalculatorPanel() {
     minWidth: 300,
     minHeight: 260,
     anchorRight: 20,
-    anchorBottom: 172,
+    anchorBottom: 96,
     open,
   });
 
@@ -346,7 +345,7 @@ export default function MeterCalculatorPanel() {
     tabRefs.current[t]?.focus();
   }
 
-  // ── Launcher — stacked above PrepressTodoPanel's FAB (bottom-[172px])
+  // ── Launcher — stacked above PrepressTodoPanel's FAB (bottom-24)
   // so none of the floating widgets overlap. ─────────────────────────
   if (!open) {
     return (
@@ -354,7 +353,7 @@ export default function MeterCalculatorPanel() {
         onClick={handleOpen}
         aria-label="Calculator — meter, gap, rate and basic"
         className={cn(
-          'fixed bottom-[248px] right-5 z-40 h-14 w-14 rounded-full',
+          'admin-fab fixed bottom-[172px] right-5 z-40 h-14 w-14 rounded-full',
           'bg-brand-primary hover:bg-brand-primary-hover text-white',
           'shadow-lg shadow-black/20 flex items-center justify-center',
           'transition-colors focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/40',
@@ -373,7 +372,7 @@ export default function MeterCalculatorPanel() {
       style={resizeStyle}
       className={cn(
         'fixed z-50 grid grid-rows-[auto_minmax(0,1fr)]',
-        !resizable && 'bottom-[248px] right-5 w-[min(92vw,360px)] max-h-[80vh]',
+        !resizable && 'admin-fab bottom-[172px] right-5 w-[min(92vw,360px)] max-h-[80vh]',
         'bg-brand-surface border border-brand-border rounded-2xl',
         'shadow-2xl shadow-black/20 overflow-hidden',
       )}

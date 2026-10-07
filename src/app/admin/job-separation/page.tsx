@@ -9,8 +9,9 @@
 
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
-import { getDeptPermissions, canDeptManageJobSeparation, canDeptManagePrepressTodo, canDeptUseMeterCalculator, canDeptSeeJobSeparationTotal } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageJobSeparation, canDeptManagePrepressTodo, canDeptUseMeterCalculator, canDeptSeeMoneyTotals } from '@/lib/constants/departments';
 import JobSeparationManager from '@/components/admin/JobSeparationManager';
+import { deptKeyOf } from '@/lib/identity';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,13 +23,13 @@ export const metadata = {
 export default async function JobSeparationPage() {
   const supabase = await createServerSupabaseClient();
   const user = await getClaimsUser(supabase);
-  const perms = await getDeptPermissions(user?.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-[var(--glass-ink)]">Job Separation</h1>
-        <p className="text-sm text-[var(--glass-muted)] mt-0.5">
+        <h1 className="text-[30px] font-semibold leading-9 tracking-[-0.025em] text-brand-ink">Job Separation</h1>
+        <p className="mt-1.5 max-w-[72ch] text-sm text-brand-muted">
           Every PO split into job entries, live for the whole shop. Anyone can
           search the worksheet; Prepress and Admin add and correct rows.
         </p>
@@ -38,7 +39,7 @@ export default async function JobSeparationPage() {
         canManage={canDeptManageJobSeparation(perms)}
         canManageTodo={canDeptManagePrepressTodo(perms)}
         canUseMeterCalculator={canDeptUseMeterCalculator(perms)}
-        canSeeTotal={canDeptSeeJobSeparationTotal(perms)}
+        canSeeTotal={canDeptSeeMoneyTotals(perms)}
         dept={perms?.key ?? null}
       />
     </div>

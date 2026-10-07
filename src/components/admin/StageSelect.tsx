@@ -7,8 +7,9 @@
 // comes next, and what is out of reach and why.
 //
 // Layout only. Every rule — which stages a department may pick, which open a
-// modal first, backward moves being Admin-only — still lives in useJobActions;
-// a pick here just calls actions.handleStageSelect, exactly as the select did.
+// modal first, backward moves being Admin-only — still lives in useJobActions
+// (or JobDetailClient's copy of it); a pick here just calls
+// actions.handleStageSelect, exactly as the select did.
 //
 // The menu is portalled to <body> with fixed positioning: the jobs table sits
 // in a scrolling wrapper that would clip an absolutely positioned menu.
@@ -29,7 +30,9 @@ import type { JobActions } from '@/hooks/useJobActions';
 type Props = {
   job:       Job;
   dept:      DeptPermissions;
-  actions:   JobActions;
+  /** The slice of useJobActions this control needs. Job detail keeps its
+   *  own copy of the stage rules and passes the same four things. */
+  actions:   Pick<JobActions, 'availableStages' | 'completedSet' | 'submitting' | 'handleStageSelect'>;
   /** How the job is named in labels — job card number, else PO. */
   jobLabel:  string;
   variant?:  'row' | 'card';

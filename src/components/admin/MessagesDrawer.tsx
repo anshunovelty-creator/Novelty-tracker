@@ -1,8 +1,9 @@
 'use client';
 // src/components/admin/MessagesDrawer.tsx
 // ============================================================
-// Slide-out panel from the header (AdminHeader → MessagesWidget). Two
-// views: the conversation list, and a selected thread. Admin-initiated
+// Slide-out panel (MessagesWidget). Two panes from sm up: conversations on
+// the left, the open thread (or a new chat) on the right; on a phone it is
+// one pane at a time with a Back button. Admin-initiated
 // only — the "New chat" button (compose view) is hidden for anyone who
 // isn't Admin, but every participant can reply once a thread exists.
 //
@@ -14,12 +15,15 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Send, X, Tag, SquarePen, Check } from 'lucide-react';
-import { formatDistanceToNowStrict } from 'date-fns';
+import { ArrowLeft, Send, X, Tag, Plus, Check, Search } from 'lucide-react';
+import { format, formatDistanceToNowStrict, isToday, isYesterday } from 'date-fns';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
-import type { ConversationDetail, ConversationSummary, Member } from '@/lib/types';
+import type { ConversationDetail, ConversationSummary } from '@/lib/types';
+import { useTeamDirectory, type DirectoryPerson } from '@/hooks/useReferenceData';
+import { MentionText, MentionTextarea } from '@/components/ui/Mention';
+import { initials } from '@/lib/team';
 
 type Props = {
   userEmail:    string;
@@ -36,6 +40,39 @@ function relativeTime(iso: string | null): string {
   }
 }
 
+/** "11:42" today, "Yesterday", else "Tue" this week or "03 Oct". */
+function listTime(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isToday(d)) return format(d, 'HH:mm');
+  if (isYesterday(d)) return 'Yesterday';
+  return Date.now() - d.getTime() < 6 * 86_400_000 ? format(d, 'EEE') : format(d, 'dd MMM');
+}
+
+function dayHeading(iso: string): string {
+  const d = new Date(iso);
+  return isToday(d) ? 'Today' : isYesterday(d) ? 'Yesterday' : format(d, 'dd MMM yyyy');
+}
+
+const AVATAR = ['#7e22ce', '#0e7490', '#4338ca', '#047857', '#10553F', '#b45309'];
+function avatarColour(name: string) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR[h % AVATAR.length];
+}
+
+function Avatar({ name, size = 40 }: { name: string; size?: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="flex shrink-0 items-center justify-center rounded-xl font-mono text-xs font-semibold text-white"
+      style={{ width: size, height: size, background: avatarColour(name) }}
+    >
+      {initials(name)}
+    </span>
+  );
+}
+
 /** Everyone in the thread except me — what a list row/thread header shows. */
 function otherParticipants(c: { participants: { member_email: string }[] }, userEmail: string) {
   return c.participants.filter((p) => p.member_email !== userEmail).map((p) => p.member_email);
@@ -45,6 +82,7 @@ export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose }: Pro
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft,       setDraft]     = useState('');
+  const [listQuery,   setListQuery] = useState('');
   const [sending,     setSending]   = useState(false);
   const panelRef = useRef<HTMLElement>(null);
   const threadEndRef = useRef<HTMLDivElement>(null);
@@ -55,25 +93,19 @@ export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose }: Pro
   // existing thread with that exact recipient set if one exists, otherwise
   // starts a new one.
   const [composing,    setComposing]    = useState(false);
-  const [recipients,   setRecipients]   = useState<Member[]>([]);
+  const [recipients,   setRecipients]   = useState<DirectoryPerson[]>([]);
   const [toValue,      setToValue]      = useState('');
   const [activeIndex,  setActiveIndex]  = useState(0);
   const [messageText,  setMessageText]  = useState('');
   const [sendingNew,   setSendingNew]   = useState(false);
-  const messageRef = useRef<HTMLTextAreaElement>(null);
+  const messageRef = useRef<HTMLTextAreaElement | null>(null);
   const toRef = useRef<HTMLInputElement>(null);
 
-  const { data: members = [] } = useQuery({
-    queryKey: ['team', 'members'],
-    queryFn: async () => {
-      const res = await fetch('/api/team');
-      if (!res.ok) throw new Error('Failed to load team');
-      const data = await res.json();
-      return (data.members ?? []) as Member[];
-    },
-    enabled: isSuperAdmin,
-    staleTime: 5 * 60 * 1000,
-  });
+  // Everyone's username, for names in the list and thread. Starting a chat
+  // stays an Admin action, so only Admin gets people to pick from.
+  const { people, nameOf } = useTeamDirectory();
+  const members = useMemo(() => (isSuperAdmin ? people : []), [isSuperAdmin, people]);
+  const namesOf = (emails: string[]) => emails.map((e) => nameOf(e)).join(', ');
 
   const { data: conversations = [], isLoading: listLoading } = useQuery({
     queryKey: ['messages', 'conversations'],
@@ -167,7 +199,7 @@ export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose }: Pro
     if (!composing) return [];
     return members
       .filter((m) => m.email !== userEmail)
-      .filter((m) => memberQuery === '' || m.email.toLowerCase().includes(memberQuery) || (m.department ?? '').toLowerCase().includes(memberQuery));
+      .filter((m) => memberQuery === '' || m.username.includes(memberQuery) || m.email.toLowerCase().includes(memberQuery) || (m.department ?? '').toLowerCase().includes(memberQuery));
   }, [composing, members, memberQuery, userEmail]);
 
   useEffect(() => { setActiveIndex(0); }, [memberQuery]);
@@ -189,7 +221,7 @@ export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose }: Pro
   }
 
   // Tapping a person toggles them in/out of the recipient set.
-  function selectMember(m: Member) {
+  function selectMember(m: DirectoryPerson) {
     setRecipients((prev) => (prev.some((r) => r.id === m.id) ? prev.filter((r) => r.id !== m.id) : [...prev, m]));
     setToValue('');
   }
@@ -258,57 +290,140 @@ export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose }: Pro
   }
 
   const selectedSummary = conversations.find((c) => c.conversation_id === selectedId);
+  const threadName = selectedSummary ? namesOf(otherParticipants(selectedSummary, userEmail)) || 'You' : 'Conversation';
+
+  const q = listQuery.trim().toLowerCase();
+  const shownConversations = q
+    ? conversations.filter((c) =>
+        otherParticipants(c, userEmail).some((e) => e.toLowerCase().includes(q) || nameOf(e).includes(q))
+        || (c.subject ?? '').toLowerCase().includes(q)
+        || (c.last_message_body ?? '').toLowerCase().includes(q))
+    : conversations;
+
+  // Which pane a phone shows; from sm up both are on screen.
+  const rightOpen = Boolean(selectedId || composing);
+
+  const iconBtn = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-[#F1F5F2] text-brand-ink hover:bg-brand-surface-hover';
 
   return (
     <section
       ref={panelRef}
       aria-label="Team messages"
-      className={cn(
-        'fixed right-0 top-14 z-50 flex flex-col',
-        'h-[calc(100vh-3.5rem)] w-full sm:w-[420px]',
-        'bg-brand-surface border-l border-brand-border shadow-2xl shadow-black/20',
-      )}
+      className="fixed right-0 top-14 z-50 flex h-[calc(100dvh-3.5rem)] w-full bg-white shadow-[-18px_0_50px_rgba(12,42,32,0.18)] sm:w-[min(760px,100vw)]"
     >
-      {/* Header */}
-      <header className="flex items-center justify-between gap-2 px-4 h-12 bg-brand-header text-white shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
-          {(selectedId || composing) && (
-            <button
-              onClick={() => (composing ? closeCompose() : setSelectedId(null))}
-              aria-label="Back to conversations"
-              className="p-1.5 -ml-1.5 rounded-lg text-white/75 hover:text-white hover:bg-white/10 transition-colors"
-            >
-              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            </button>
-          )}
-          <h2 className="text-sm font-semibold truncate">
-            {composing
-              ? 'New chat'
-              : selectedId
-                ? (selectedSummary ? otherParticipants(selectedSummary, userEmail).join(', ') || 'Conversation' : 'Conversation')
-                : 'Messages'}
-          </h2>
+      {/* ── Left: conversations ─────────────────────────────── */}
+      <div className={cn('w-full flex-col border-brand-line-soft sm:flex sm:w-[300px] sm:shrink-0 sm:border-r', rightOpen ? 'hidden' : 'flex')}>
+        <div className="flex flex-col gap-3 px-4 pb-3 pt-[18px]">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold text-brand-ink">Messages</h2>
+            <div className="flex items-center gap-1.5">
+              {isSuperAdmin && (
+                <button
+                  type="button"
+                  onClick={openCompose}
+                  aria-label="New message"
+                  title="New message"
+                  className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-brand-primary text-white hover:bg-brand-primary-hover"
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                </button>
+              )}
+              <button type="button" onClick={onClose} aria-label="Close messages" className={cn(iconBtn, 'sm:hidden')}>
+                <X className="h-[18px] w-[18px]" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+          <label className="flex h-10 items-center gap-2 rounded-[10px] bg-brand-surface-alt px-3 text-brand-muted">
+            <Search className="h-[15px] w-[15px]" aria-hidden="true" />
+            <span className="sr-only">Search conversations</span>
+            <input
+              value={listQuery}
+              onChange={(e) => setListQuery(e.target.value)}
+              placeholder="Search people"
+              className="min-w-0 flex-1 bg-transparent text-sm text-brand-ink outline-none placeholder:text-brand-muted"
+            />
+          </label>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          {isSuperAdmin && !selectedId && !composing && (
-            <button
-              onClick={openCompose}
-              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-white/10 text-white text-xs font-semibold hover:bg-white/20 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-            >
-              <SquarePen className="h-4 w-4" aria-hidden="true" />
-              New chat
-            </button>
+
+        <ul className="flex-1 overflow-y-auto">
+          {listLoading && <li className="px-4 py-8 text-center text-xs text-brand-muted">Loading…</li>}
+          {!listLoading && conversations.length === 0 && (
+            <li className="px-4 py-8 text-center text-xs text-brand-muted">
+              {isSuperAdmin
+                ? 'No conversations yet — use + to message someone.'
+                : 'No conversations yet. Messages Admin sends you will show up here.'}
+            </li>
           )}
-          <button
-            onClick={onClose}
-            aria-label="Close messages"
-            className="p-2 rounded-lg text-white/75 hover:text-white hover:bg-white/10 transition-colors"
-          >
-            <X className="h-4 w-4" aria-hidden="true" />
+          {!listLoading && conversations.length > 0 && shownConversations.length === 0 && (
+            <li className="px-4 py-8 text-center text-xs text-brand-muted">No one matches “{listQuery}”.</li>
+          )}
+          {shownConversations.map((c) => {
+            const name = namesOf(otherParticipants(c, userEmail)) || 'You';
+            const on = c.conversation_id === selectedId;
+            return (
+              <li key={c.conversation_id}>
+                <button
+                  type="button"
+                  onClick={() => { closeCompose(); setSelectedId(c.conversation_id); }}
+                  aria-current={on ? 'true' : undefined}
+                  className={cn('flex w-full items-center gap-3 px-4 py-3 text-left transition-colors', on ? 'bg-brand-surface-hover' : 'hover:bg-brand-surface-alt')}
+                >
+                  <Avatar name={name} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex justify-between gap-2">
+                      <b className="truncate text-sm text-brand-ink">{name}</b>
+                      <span className="shrink-0 font-mono text-[11px] text-brand-muted">{listTime(c.last_message_at ?? c.created_at)}</span>
+                    </span>
+                    <span className="block truncate text-[13px] text-brand-muted">
+                      {c.last_message_sender_email === userEmail ? 'You: ' : ''}{c.last_message_body ?? c.subject ?? ''}
+                    </span>
+                  </span>
+                  {c.unread_count > 0 && (
+                    <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-brand-primary px-1.5 font-mono text-[11px] font-semibold text-white">
+                      {c.unread_count > 99 ? '99+' : c.unread_count}
+                    </span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      {/* ── Right: thread, new chat, or a prompt ────────────── */}
+      <div className={cn('min-w-0 flex-1 flex-col sm:flex', rightOpen ? 'flex' : 'hidden')}>
+        <div className="flex min-h-[72px] items-center justify-between gap-3 border-b border-brand-line-soft py-3.5 pl-3 pr-4 sm:pl-5">
+          <div className="flex min-w-0 items-center gap-3">
+            {rightOpen && (
+              <button
+                type="button"
+                onClick={() => (composing ? closeCompose() : setSelectedId(null))}
+                aria-label="Back to conversations"
+                className={cn(iconBtn, 'sm:hidden')}
+              >
+                <ArrowLeft className="h-[18px] w-[18px]" aria-hidden="true" />
+              </button>
+            )}
+            {selectedId && !composing && <Avatar name={threadName} />}
+            <div className="min-w-0">
+              <b className="block truncate text-[15px] text-brand-ink">
+                {composing ? 'New message' : selectedId ? threadName : 'Messages'}
+              </b>
+              {selectedId && !composing && selectedSummary?.subject && (
+                <span className="block truncate text-xs text-brand-muted">{selectedSummary.subject}</span>
+              )}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close messages" className={iconBtn}>
+            <X className="h-[18px] w-[18px]" aria-hidden="true" />
           </button>
         </div>
-      </header>
 
+        {!rightOpen && (
+          <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-brand-muted">
+            {conversations.length ? 'Pick a conversation to read it.' : isSuperAdmin ? 'Start one with +.' : 'Nothing here yet.'}
+          </div>
+        )}
       {/* ── New-chat view ───────────────────────────────────────
           Opened from the header button. "To" field with chips on top,
           the people list in the middle (tap to add/remove), and the
@@ -323,11 +438,11 @@ export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose }: Pro
                   key={r.id}
                   className="inline-flex items-center gap-1 rounded-full bg-brand-primary/10 text-brand-primary text-xs font-medium pl-2 pr-1 py-1"
                 >
-                  {r.email.split('@')[0]}
+                  {r.username}
                   <button
                     type="button"
                     onClick={() => removeRecipient(r.id)}
-                    aria-label={`Remove ${r.email}`}
+                    aria-label={`Remove ${r.username}`}
                     className="rounded-full hover:bg-brand-primary/20 p-0.5"
                   >
                     <X className="h-3 w-3" aria-hidden="true" />
@@ -367,7 +482,8 @@ export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose }: Pro
                     )}
                   >
                     <span className="min-w-0">
-                      <span className="block text-xs font-semibold text-brand-ink truncate">{m.email}</span>
+                      <span className="block text-xs font-semibold text-brand-ink truncate">{m.username}</span>
+                      <span className="block text-[10px] text-brand-muted truncate">{m.email}</span>
                       {m.department && (
                         <span className="block text-[10px] font-mono text-brand-muted">{m.department}</span>
                       )}
@@ -389,15 +505,16 @@ export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose }: Pro
 
           <div className="border-t border-brand-border p-3 shrink-0">
             <div className="flex items-end gap-2">
-              <textarea
-                ref={messageRef}
+              <MentionTextarea
+                inputRef={messageRef}
+                wrapperClassName="flex-1"
                 value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
+                onValueChange={setMessageText}
                 onKeyDown={onMessageKeyDown}
                 disabled={recipients.length === 0}
                 placeholder={recipients.length === 0 ? 'Pick someone first…' : 'Type your message…'}
                 rows={1}
-                className="flex-1 resize-none max-h-28 rounded-lg border border-brand-border bg-brand-bg px-3 py-2 text-sm text-brand-ink placeholder:text-brand-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40 disabled:opacity-60"
+                className="resize-none max-h-28 rounded-lg border border-brand-border bg-brand-bg px-3 py-2 text-sm text-brand-ink placeholder:text-brand-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40 disabled:opacity-60"
               />
               <button
                 onClick={sendNew}
@@ -412,74 +529,24 @@ export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose }: Pro
         </>
       )}
 
-      {/* ── Conversation list ────────────────────────────────── */}
-      {!selectedId && !composing && (
-        <ul className="flex-1 overflow-y-auto divide-y divide-brand-border">
-          {listLoading && (
-            <li className="px-4 py-8 text-center text-xs text-brand-muted">Loading…</li>
-          )}
-
-          {!listLoading && conversations.length === 0 && (
-            <li className="px-4 py-8 text-center text-xs text-brand-muted">
-              {isSuperAdmin
-                ? 'No conversations yet — tap New chat to message someone.'
-                : 'No conversations yet. Messages Admin sends you will show up here.'}
-            </li>
-          )}
-
-          {conversations.map((c) => {
-            const others = otherParticipants(c, userEmail);
-            return (
-              <li key={c.conversation_id}>
-                <button
-                  onClick={() => setSelectedId(c.conversation_id)}
-                  className="w-full text-left px-4 py-3 hover:bg-brand-bg transition-colors focus:outline-none focus-visible:bg-brand-bg"
-                >
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-xs font-semibold text-brand-ink truncate">
-                      {others.join(', ') || 'You'}
-                    </span>
-                    <time className="text-[10px] text-brand-muted shrink-0">
-                      {relativeTime(c.last_message_at ?? c.created_at)}
-                    </time>
-                  </div>
-                  {c.subject && (
-                    <p className="mt-0.5 text-[11px] font-medium text-brand-muted truncate">{c.subject}</p>
-                  )}
-                  <div className="mt-1 flex items-center justify-between gap-2">
-                    <p className="text-xs text-brand-ink/80 truncate">
-                      {c.last_message_sender_email === userEmail ? 'You: ' : ''}
-                      {c.last_message_body ?? ''}
-                    </p>
-                    {c.unread_count > 0 && (
-                      <span className="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-danger text-white text-[10px] font-semibold leading-[18px] text-center">
-                        {c.unread_count > 99 ? '99+' : c.unread_count}
-                      </span>
-                    )}
-                  </div>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
       {/* ── Thread ───────────────────────────────────────────── */}
       {selectedId && (
         <>
-          <ul className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+          <ul className="flex flex-1 flex-col gap-2.5 overflow-y-auto bg-[#FBFCFB] p-5">
             {threadLoading && (
-              <li className="text-center text-xs text-brand-muted py-8">Loading…</li>
+              <li className="py-8 text-center text-xs text-brand-muted">Loading…</li>
             )}
-            {thread?.messages.map((m) => {
+            {thread?.messages.map((m, i) => {
               const mine = m.sender_email === userEmail;
+              const prev = thread.messages[i - 1];
+              const newDay = !prev || dayHeading(prev.created_at) !== dayHeading(m.created_at);
               return (
-                <li key={m.id} className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
-                  <div className={cn('max-w-[85%] rounded-xl px-3 py-2', mine ? 'bg-brand-primary text-white' : 'bg-brand-bg border border-brand-border text-brand-ink')}>
-                    {!mine && (
-                      <p className="text-[10px] font-semibold text-brand-muted mb-0.5">{m.sender_email}</p>
-                    )}
-                    <p className="text-sm whitespace-pre-wrap break-words">{m.body}</p>
+                <li key={m.id} className={cn('flex flex-col', mine ? 'items-end' : 'items-start')}>
+                  {newDay && (
+                    <span className="self-center py-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-brand-muted">{dayHeading(m.created_at)}</span>
+                  )}
+                  <div className={cn('max-w-[76%] rounded-2xl px-3.5 py-2.5', mine ? 'rounded-br-md bg-brand-primary text-white' : 'rounded-bl-md bg-[#F1F5F2] text-brand-ink')}>
+                    <p className="whitespace-pre-wrap break-words text-sm leading-normal"><MentionText text={m.body} tagClassName={mine ? 'font-semibold underline decoration-white/50 underline-offset-2' : undefined} /></p>
                     {m.job && (
                       <Link
                         href={`/admin/jobs/${m.job.id}`}
@@ -493,10 +560,10 @@ export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose }: Pro
                         {m.job.job_card_number ?? m.job.po_number}
                       </Link>
                     )}
-                    <time className={cn('block mt-1 text-[10px]', mine ? 'text-white/70' : 'text-brand-muted')}>
-                      {relativeTime(m.created_at)}
-                    </time>
                   </div>
+                  <time className="mt-1 text-[11px] text-brand-muted" title={relativeTime(m.created_at)}>
+                    {mine ? 'You' : nameOf(m.sender_email)} · <span className="font-mono">{format(new Date(m.created_at), 'HH:mm')}</span>
+                  </time>
                 </li>
               );
             })}
@@ -505,18 +572,19 @@ export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose }: Pro
 
           <div className="border-t border-brand-border p-3 shrink-0">
             <div className="flex items-end gap-2">
-              <textarea
+              <MentionTextarea
+                wrapperClassName="flex-1"
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+                onValueChange={setDraft}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     sendReply();
                   }
                 }}
-                placeholder="Reply…"
+                placeholder="Reply… type @ to tag someone"
                 rows={1}
-                className="flex-1 resize-none max-h-28 rounded-lg border border-brand-border bg-brand-bg px-3 py-2 text-sm text-brand-ink placeholder:text-brand-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
+                className="resize-none max-h-28 rounded-lg border border-brand-border bg-brand-bg px-3 py-2 text-sm text-brand-ink placeholder:text-brand-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
               />
               <button
                 onClick={sendReply}
@@ -530,6 +598,7 @@ export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose }: Pro
           </div>
         </>
       )}
+      </div>
     </section>
   );
 }

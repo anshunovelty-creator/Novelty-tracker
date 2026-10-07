@@ -12,6 +12,7 @@ import { getDeptPermissions } from '@/lib/constants/departments';
 import { createJobRecord } from '@/lib/jobs/createJob';
 import type { AddJobFormData } from '@/lib/types';
 import { orContains } from '@/lib/search';
+import { deptKeyOf } from '@/lib/identity';
 
 // ── GET ───────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
 
   let query = supabase
     .from('jobs')
-    .select('*, job_stage_timestamps(stage), printing_units(id, name, printing_method)')
+    .select('*, job_stage_timestamps(stage), printing_units(id, name, printing_method), job_separations(rate, unit, material_name)')
     .eq('is_closed', closed)
     .order('delivery_date', { ascending: true, nullsFirst: false });
 
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms) {
     return NextResponse.json({ error: 'Invalid department in token' }, { status: 403 });
   }

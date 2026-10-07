@@ -13,6 +13,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptManageJobSeparation } from '@/lib/constants/departments';
+import { deptKeyOf } from '@/lib/identity';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -30,7 +31,7 @@ async function denyWrite(): Promise<NextResponse | null> {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
 
   if (!canDeptManageJobSeparation(perms)) {

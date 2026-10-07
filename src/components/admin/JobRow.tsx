@@ -1,27 +1,23 @@
 'use client';
 // src/components/admin/JobRow.tsx
-// The desk view of a job (sm and up). Renders inside the jobs <table>.
+// The desk view of a job (lg and up). Renders inside the jobs <table>.
 // Stage-change rules, delete, and the modal set are shared with the phone
 // card via useJobActions / JobActionModals — this file is layout only.
 //
-// Column order is identity → work → commercial → state → actions:
-// Job Card | PM / Job | Party / PO | Dispatch | Delivery | Status | Actions.
-// The job card number leads because it is what prepress quotes off the
-// physical card; the job name is the largest text in the row because it is
-// what the floor actually recognises a job by. "Updated" was dropped — the
-// full stage-by-stage timestamp trail lives one click away in the expanded
-// history panel (see HistoryPanel), so a last-touched date here was
-// redundant. "Type" (New/Repeat/Artwork Changed) moved into the Job Card
-// cell's chip row, alongside the printing-unit and urgent chips — it's a
-// small fact about the job's identity, not a separate dimension worth a
-// whole column.
+// Columns follow Job Separation's worksheet so the two lists read alike:
+// Sr No | Party | PO No / Date | PM Code / Material | Qty / Rate | Unit |
+// Stage | Delivery Date | Actions. Sr No is the job card number; rate and
+// material come from the Job Separation line the job was made from (blank
+// for a job added directly). State lives in the stage control and the delivery line — rows
+// are never tinted: zebra and hover are the only fills (DESIGN.md).
 
 import dynamic from 'next/dynamic';
 import { memo, useState } from 'react';
 import Link from 'next/link';
 import { ChevronDown, ChevronUp, PauseCircle, Pencil, Trash2, CheckCircle2 } from 'lucide-react';
 import { cn, formatJobCardNumber, formatNumericDate, formatQty } from '@/lib/utils';
-import { JOB_TYPE_BADGE, urgentBadgeClass, unitDigit, unitCircleClass } from '@/lib/constants/statusColors';
+import { deliveryWords, separationOf } from '@/lib/jobViews';
+import { JOB_TYPE_BADGE, unitDigit, unitCircleClass } from '@/lib/constants/statusColors';
 import { canDeptEditJobDetails } from '@/lib/constants/departments';
 import { useJobActions } from '@/hooks/useJobActions';
 import type { Job } from '@/lib/types';
@@ -37,12 +33,19 @@ import StageSelect from './StageSelect';
 const EditJobModal = dynamic(() => import('./EditJobModal'), { ssr: false });
 
 /** Number of <td>s in a row — the expanded history panel has to span them all. */
-export const JOB_ROW_COLS = 7;
+export const JOB_ROW_COLS = 9;
+
+// Rate carries paise; same format as Job Separation's Qty / Rate cell.
+function formatRate(value: number | null): string | null {
+  return value === null ? null : value.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+}
 
 type Props = {
   job:            Job;
   dept:           DeptPermissions;
   index:          number;
+  /** Today in IST ('YYYY-MM-DD'), from the table — one clock for every row. */
+  today:          string;
   isExpanded:     boolean;
   onToggleExpand: (jobId: string) => void;
   onJobUpdated:   (job: Job) => void;
@@ -51,204 +54,184 @@ type Props = {
 };
 
 function JobRow({
-  job, dept, index, isExpanded, onToggleExpand, onJobUpdated, onJobDeleted, onDuplicate,
+  job, dept, index, today, isExpanded, onToggleExpand, onJobUpdated, onJobDeleted, onDuplicate,
 }: Props) {
   const actions = useJobActions({ job, dept, onJobUpdated, onJobDeleted });
   const [editing, setEditing] = useState(false);
 
-  // Urgency tint (on-hold, QC, urgent) always wins; otherwise zebra-stripe by row position.
-  // The hover band is an inset box-shadow rather than a background so it layers
-  // *over* the urgency tint instead of replacing it — an on-hold row must still
-  // read as on-hold while the cursor is on it. Nine columns across 1400px is
-  // more than the eye tracks unaided; this is what carries it from Job Card to
-  // Actions without losing the row.
+  // Zebra and hover only. The sticky Job cell inherits the row's fill so the
+  // columns scrolling under it never show through.
   const rowClass = cn(
-    'group border-b border-white/8 transition-colors',
-    'hover:shadow-[inset_0_0_0_9999px_rgba(12,42,32,0.065)]',
-    actions.urgencyTint || (index % 2 === 1 ? 'bg-[var(--glass-bg)]' : ''),
+    'group transition-colors',
+    index % 2 === 1 ? 'bg-brand-surface-alt' : 'bg-white',
+    'hover:bg-brand-surface-hover',
   );
+  // Job Separation's cell: compact, top-aligned, a rule between columns.
+  const td = 'border-t border-r border-brand-line-soft px-3 py-2 align-top';
 
   const cardNo   = formatJobCardNumber(job.job_card_number);
+  const due      = deliveryWords(job, today);
+  const sep      = separationOf(job);
 
   return (
     <>
       <tr className={rowClass}>
-        {/* ── Job Card: the number on the physical card, its PO date, and
-             the two facts that change how the row is handled.
-             This cell is the row's way into job detail. It leads the row
-             and holds nothing interactive, so the whole cell is the target
-             — the rest of the row is full of its own controls (status
-             select, inline delivery edit, action buttons) and a row-level
-             click would fight every one of them. ──────────────────────── */}
-        {/* Pinned left so the row keeps its identity while the other eight
-             columns scroll past. Needs an opaque background of its own —
-             a transparent sticky cell lets the scrolling columns show
-             through underneath it. */}
-        <td className="align-top min-w-[150px] p-0 sticky left-0 z-[1] bg-[#FDFEFD] group-hover:bg-[#F3F7F4] border-r border-white/12">
+        {/* ── Sr No: the job card number. The whole cell opens job detail,
+             and it stays pinned left while the other columns scroll past —
+             on the same mint fill as Job Separation's Sr No. ──────────── */}
+        <td className={cn(td, 'sticky left-0 z-[1] min-w-[120px] bg-[var(--glass-bg-strong)] p-0')}>
           <Link
             href={`/admin/jobs/${job.id}`}
             aria-label={`Open job ${cardNo ?? job.po_number} in detail`}
             className={cn(
-              'group/open block px-3 py-2 h-full transition-colors',
-              'hover:bg-black/[0.05] focus:outline-none',
-              'focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-400/70',
+              'group/open flex h-full flex-col gap-0.5 px-3 py-2 focus:outline-none',
+              'focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-primary',
             )}
           >
-            {cardNo ? (
-              <p className="font-mono text-[15px] font-bold leading-tight tracking-[0.02em] text-[var(--glass-ink)] underline decoration-transparent underline-offset-[3px] group-hover/open:decoration-current transition-[text-decoration-color]">
-                {cardNo}
-              </p>
-            ) : (
-              <p className="font-mono text-[13px] font-semibold text-[var(--glass-muted)] underline decoration-transparent underline-offset-[3px] group-hover/open:decoration-current transition-[text-decoration-color]">
-                No card no.
-              </p>
-            )}
-
-            {job.po_date && (
-              <p className="font-mono text-[11px] text-[var(--glass-muted)] mt-0.5">
-                {formatNumericDate(job.po_date)}
-              </p>
-            )}
-
-            <div className="flex flex-wrap items-center gap-1.5 mt-1">
-              <span className={cn('text-[11px] px-1.5 py-0.5 rounded font-medium whitespace-nowrap', JOB_TYPE_BADGE[job.job_type])}>
-                {job.job_type}
+            <span className="flex items-center gap-1.5">
+              <span className={cn(
+                'font-mono text-[13px] font-bold tracking-wide underline decoration-transparent underline-offset-[3px] transition-[text-decoration-color] group-hover/open:decoration-current',
+                cardNo ? 'text-brand-ink' : 'text-brand-muted',
+              )}>
+                {cardNo ?? 'No card no.'}
               </span>
-              {job.printing_units && (
-                <span
-                  className={cn(
-                    'inline-flex items-center justify-center w-5 h-5 shrink-0 rounded-full',
-                    'text-[11px] font-bold text-white',
-                    unitCircleClass(job.printing_units.name),
-                  )}
-                  title={job.printing_units.name}
-                  aria-label={`Printing unit ${job.printing_units.name}`}
-                >
-                  {unitDigit(job.printing_units.name)}
-                </span>
-              )}
               {job.urgent && (
                 <span className={cn(
-                  'inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded',
-                  urgentBadgeClass(job.urgent_priority),
+                  'font-mono text-[11px] font-semibold tracking-[0.04em]',
+                  job.urgent_priority === 1 ? 'text-brand-danger' : job.urgent_priority === 2 ? 'text-[#C2410C]' : 'text-brand-warning',
                 )}>
-                  <span className="dot-pulse inline-block w-1.5 h-1.5 rounded-full bg-current" />
-                  P{job.urgent_priority}
+                  {job.urgent_priority ? `P${job.urgent_priority}` : 'Urgent'}
                 </span>
               )}
-            </div>
+            </span>
           </Link>
         </td>
 
-        {/* ── PM / Job: the largest text in the row. Wraps to two lines
-             rather than truncating — a clipped label name is useless. ── */}
-        <td className="px-3 py-2 align-top min-w-[180px] border-r border-white/8">
-          {job.pm_code && (
-            <p className="font-mono text-[11px] tracking-[0.04em] text-[var(--glass-muted)]">
-              {job.pm_code}
+        {/* ── Party, plus what the floor needs to know about this job:
+             its type, a hold reason, split runs, notes. ───────────────── */}
+        <td className={cn(td, 'min-w-[150px] whitespace-normal break-words')}>
+          <p className="font-semibold leading-snug text-brand-ink">{job.party}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <span className={cn('rounded px-1.5 py-px text-[11px] font-medium', JOB_TYPE_BADGE[job.job_type])}>
+              {job.job_type}
+            </span>
+            {job.has_partial_runs && <span className="text-[11px] font-medium text-brand-muted">Split runs</span>}
+          </div>
+          {job.halt_remark && job.status === 'On Hold' && (
+            <p className="mt-1 flex items-start gap-1 text-xs text-brand-warning">
+              <PauseCircle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+              <span className="line-clamp-1">{job.halt_remark}</span>
             </p>
           )}
-          <p
-            className="text-sm font-medium leading-snug text-[var(--glass-ink)] mt-0.5 line-clamp-2"
-            title={job.job_name ?? undefined}
-          >
-            {job.job_name || <span className="text-[var(--glass-muted)]">Untitled job</span>}
-          </p>
-
-          {(job.has_partial_runs || job.notes || (job.halt_remark && job.status === 'On Hold')) && (
-            <div className="mt-1 space-y-1">
-              {job.has_partial_runs && (
-                <span className="inline-block text-[11px] font-medium px-1.5 py-0.5 rounded bg-purple-400/15 text-purple-200">
-                  Partial Runs
-                </span>
-              )}
-              {job.halt_remark && job.status === 'On Hold' && (
-                <p className="flex items-start gap-1 text-xs text-amber-200 bg-amber-400/10 rounded px-1.5 py-0.5">
-                  <PauseCircle className="w-3 h-3 shrink-0 mt-0.5" aria-hidden="true" />
-                  <span className="line-clamp-1">{job.halt_remark}</span>
-                </p>
-              )}
-              {job.notes && (
-                <p className="text-xs text-[var(--glass-muted)] line-clamp-1" title={job.notes}>
-                  {job.notes}
-                </p>
-              )}
-            </div>
+          {job.notes && (
+            <p className="mt-0.5 line-clamp-1 text-xs text-brand-muted" title={job.notes}>{job.notes}</p>
           )}
         </td>
 
-        {/* ── Party / PO: who it is for, and the paper it came in on. ── */}
-        <td className="px-3 py-2 align-top min-w-[130px] border-r border-white/8">
-          <p className="text-sm font-semibold leading-snug text-[var(--glass-ink)] line-clamp-2" title={job.party}>
-            {job.party}
+        {/* ── PO No / Date ─────────────────────────────────────────── */}
+        <td className={cn(td, 'max-w-[140px] whitespace-nowrap')}>
+          <p className={cn(
+            'font-mono text-[13px] font-bold tracking-wide text-brand-ink',
+            job.po_number.length > 12 && 'whitespace-normal break-all',
+          )}>
+            {job.po_number || '—'}
           </p>
-          <p className="font-mono text-xs text-[var(--glass-muted)] mt-0.5 break-all">
-            {job.po_number}
-          </p>
+          <p className="mt-0.5 text-xs text-brand-muted">{formatNumericDate(job.po_date) || '—'}</p>
         </td>
 
-        {/* ── Dispatch progress ────────────────────────────────────── */}
-        <td className="px-3 py-2 align-top min-w-[110px] border-r border-white/8">
-          {job.label_qty ? (
-            <div>
-              <p className="font-mono text-[13px] text-[var(--glass-ink)]">
-                <span className="font-bold">{formatQty(actions.effectiveDispatched)}</span>
-                <span className="text-[var(--glass-muted)]"> / {formatQty(job.label_qty)}</span>
+        {/* ── PM Code / Material: the line's material, else the job's own
+             name for a job added directly. ─────────────────────────────── */}
+        <td className={cn(td, 'w-[200px] min-w-0 whitespace-normal')}>
+          <p className="font-mono text-[13px] font-bold tracking-wide text-brand-ink">{job.pm_code || '—'}</p>
+          <p className="mt-0.5 break-words text-xs text-brand-muted">{sep?.material_name || job.job_name || '—'}</p>
+        </td>
+
+        {/* ── Qty / Rate, and how much of the order has left. ───────── */}
+        <td className={cn(td, 'whitespace-nowrap')}>
+          <p className="font-mono text-[13px] font-bold tracking-wide text-brand-ink">
+            {job.label_qty ? formatQty(job.label_qty) : '—'}
+          </p>
+          <p className="mt-0.5 font-mono text-xs text-brand-muted">@ {formatRate(sep?.rate ?? null) ?? '—'}</p>
+          {job.label_qty && (actions.effectiveDispatched > 0 || job.is_scheduled_release) ? (
+            <>
+              <p className="mt-0.5 font-mono text-[11px] text-brand-muted">
+                {formatQty(actions.effectiveDispatched)} sent{job.is_scheduled_release && ' · scheduled'}
               </p>
               <div
-                className="h-1 bg-black/[0.08] rounded-full mt-1.5"
+                className="mt-1 h-1 w-16 rounded-full bg-brand-sunken"
                 role="progressbar"
                 aria-valuenow={actions.dispatchPct}
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-label={`Dispatched ${actions.dispatchPct}% of order`}
               >
-                <div
-                  className="h-full bg-emerald-600 rounded-full transition-all"
-                  style={{ width: `${actions.dispatchPct}%` }}
-                />
+                <div className="h-full rounded-full bg-brand-primary" style={{ width: `${actions.dispatchPct}%` }} />
               </div>
-              {job.is_scheduled_release && (
-                <p className="text-[11px] text-sky-200 mt-0.5">Scheduled</p>
-              )}
-            </div>
-          ) : (
-            <span className="text-[var(--glass-muted)] text-xs">—</span>
-          )}
+            </>
+          ) : null}
         </td>
 
-        {/* ── Delivery date with inline edit ───────────────────────── */}
-        <td className="px-3 py-2 align-top min-w-[110px] border-r border-white/8">
-          <DeliveryDateEdit
-            jobId={job.id}
-            deliveryDate={job.delivery_date}
-            dept={dept}
-            onUpdated={(date) => onJobUpdated({ ...job, delivery_date: date })}
-          />
+        {/* ── Unit: the printing unit the job is on. ────────────────── */}
+        <td className={cn(td, 'whitespace-nowrap')}>
+          {job.printing_units ? (
+            <span className="inline-flex items-center gap-1.5 text-xs text-brand-ink">
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white',
+                  unitCircleClass(job.printing_units.name),
+                )}
+              >
+                {unitDigit(job.printing_units.name)}
+              </span>
+              {job.printing_units.name}
+            </span>
+          ) : (sep?.unit || '—')}
         </td>
 
-        {/* ── Status ───────────────────────────────────────────────── */}
-        <td className="px-3 py-2 align-top min-w-[210px] border-r border-white/8">
+        {/* ── Stage ────────────────────────────────────────────────── */}
+        <td className={cn(td, 'w-[230px] min-w-[220px]')}>
           <StageSelect job={job} dept={dept} actions={actions} jobLabel={cardNo ?? job.po_number} />
 
           {job.status === 'Slitting' && job.slitting_confirmed_at && (
-            <p className="flex items-center gap-1 text-[11px] text-emerald-700 font-medium mt-1">
-              <CheckCircle2 className="w-3 h-3" aria-hidden="true" /> Ready for QC
+            <p className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-brand-success">
+              <CheckCircle2 className="h-3 w-3" aria-hidden="true" /> Ready for QC
             </p>
           )}
 
           {actions.canConfirmSlitting && (
             <button
-              onClick={actions.confirmSlitting}
+              onClick={actions.openSlitting}
               disabled={actions.submitting}
               className={cn(
-                'mt-1 w-full inline-flex items-center justify-center gap-1 text-[11px] font-semibold',
-                'px-2 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700',
-                'transition-colors disabled:opacity-60 whitespace-nowrap',
+                'mt-1.5 inline-flex w-full items-center justify-center gap-1 whitespace-nowrap rounded-lg px-2 py-1.5',
+                'bg-brand-primary text-[11px] font-semibold text-white hover:bg-[#0C4232]',
+                'transition-colors disabled:opacity-60',
               )}
             >
-              <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" /> Mark Slitting Complete
+              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> Mark Slitting Complete
             </button>
+          )}
+        </td>
+
+        {/* ── Delivery Date: editable inline, and how it stands. ────── */}
+        <td className={cn(td, 'min-w-[120px] whitespace-nowrap')}>
+          <DeliveryDateEdit
+            jobId={job.id}
+            deliveryDate={job.delivery_date}
+            dept={dept}
+            plain
+            onUpdated={(date) => onJobUpdated({ ...job, delivery_date: date })}
+          />
+          {due.text && (
+            <p className={cn(
+              'mt-0.5 text-xs',
+              due.tone === 'late' ? 'font-medium text-brand-danger'
+                : due.tone === 'soon' ? 'font-medium text-brand-warning'
+                : 'text-brand-muted',
+            )}>
+              {due.text}
+            </p>
           )}
         </td>
 
@@ -256,7 +239,7 @@ function JobRow({
              tooltips carry the label instead of spelling it out in the row.
              w-8 px-0 makes each one a small square rather than a
              text-shaped button with nothing but an icon rattling in it. ── */}
-        <td className="px-3 py-2 align-top min-w-[168px]">
+        <td className={cn(td, 'min-w-[150px] border-r-0')}>
           <div className="flex items-center justify-end gap-1">
             <Button
               size="sm"
@@ -299,7 +282,7 @@ function JobRow({
       {/* Expanded history panel */}
       {isExpanded && (
         <tr>
-          <td colSpan={JOB_ROW_COLS} className="px-4 py-0 bg-black/[0.03]">
+          <td colSpan={JOB_ROW_COLS} className="border-t border-brand-line-soft bg-brand-surface-alt px-4 py-0">
             <HistoryPanel
               jobId={job.id}
               jobType={job.job_type}

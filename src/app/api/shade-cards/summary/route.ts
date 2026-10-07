@@ -7,11 +7,11 @@
 // 1,240" only means something if it counts every approved card rather than
 // however many happen to match what is typed in the search box.
 //
-// Four HEAD counts rather than one grouped query: `count: 'exact', head: true`
+// Separate HEAD counts rather than one grouped query: `count: 'exact', head: true`
 // sends no rows back, and migration 055 indexed both status and making_status,
 // so each is an index-only count over ~3,000 rows. A GROUP BY would need an
 // RPC — a migration and a second place to keep statuses in sync — to save
-// three cheap round trips.
+// a few cheap round trips.
 
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
@@ -21,6 +21,11 @@ export type ShadeCardSummary = {
   total:             number;
   approved:          number;
   pending_approval:  number;
+  /** Made and sent, still waiting on the party's answer — the "Waiting on party" tab. */
+  waiting_on_party:  number;
+  /** Card not made yet, whatever its approval state — the "Not made yet" tab. */
+  not_made:          number;
+  rejected:          number;
   /** Entries created in the last rolling 7×24h — recent intake, not a backlog. */
   added_last_7_days: number;
   /** The exact cutoff the count above used, ISO-8601. The client passes this
@@ -49,14 +54,17 @@ export async function GET() {
   // dates, so it reads correctly over historical rows too.
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  const [total, approved, pending, recent] = await Promise.all([
+  const [total, approved, pending, recent, waiting, notMade, rejected] = await Promise.all([
     base(),
     base().eq('status', 'Approved'),
     base().eq('status', 'Pending Approval'),
     base().gte('created_at', sevenDaysAgo),
+    base().eq('status', 'Pending Approval').eq('making_status', 'Already Made'),
+    base().eq('making_status', 'Pending'),
+    base().eq('status', 'Rejected'),
   ]);
 
-  const failed = [total, approved, pending, recent].find((r) => r.error);
+  const failed = [total, approved, pending, recent, waiting, notMade, rejected].find((r) => r.error);
   if (failed?.error) {
     return NextResponse.json({ error: failed.error.message }, { status: 500 });
   }
@@ -65,6 +73,9 @@ export async function GET() {
     total:             total.count    ?? 0,
     approved:          approved.count ?? 0,
     pending_approval:  pending.count  ?? 0,
+    waiting_on_party:  waiting.count  ?? 0,
+    not_made:          notMade.count  ?? 0,
+    rejected:          rejected.count ?? 0,
     added_last_7_days: recent.count   ?? 0,
     added_since:       sevenDaysAgo,
   } satisfies ShadeCardSummary);

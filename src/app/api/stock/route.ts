@@ -10,6 +10,7 @@ import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptManageStock, canDeptViewStock } from '@/lib/constants/departments';
 import { orContains } from '@/lib/search';
+import { deptKeyOf } from '@/lib/identity';
 
 // ── GET ───────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!canDeptViewStock(perms)) {
     return NextResponse.json({ error: 'Your department cannot see label stock' }, { status: 403 });
   }
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
 
   if (!canDeptManageStock(perms)) {

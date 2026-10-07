@@ -26,6 +26,7 @@ import { parseDateRange, rangeOrClause, parseLimit, searchOrClause } from '@/lib
 import { materialExpense } from '@/lib/bom';
 import { stockUsage } from '@/lib/paperStock';
 import type { BomCostingRow, BomCosting, BomMaterialRequest } from '@/lib/types';
+import { deptKeyOf } from '@/lib/identity';
 
 // What comes back from the embedded select below. bom_costings is 1:1 with
 // job_separations (its PK is the FK), which PostgREST returns as a single
@@ -87,7 +88,7 @@ export async function GET(request: NextRequest) {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!canDeptUseBOM(perms)) {
     return NextResponse.json({ error: 'Bill of Material access required' }, { status: 403 });
   }

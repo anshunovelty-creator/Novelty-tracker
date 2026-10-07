@@ -10,6 +10,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions, canDeptManageDiesPlates } from '@/lib/constants/departments';
 import DiesTabs from '@/components/admin/DiesTabs';
+import { deptKeyOf } from '@/lib/identity';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,16 +22,14 @@ export const metadata = {
 export default async function DiesPage() {
   const supabase = await createServerSupabaseClient();
   const user = await getClaimsUser(supabase);
-  const perms = await getDeptPermissions(user?.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-[var(--glass-ink)]">Dies</h1>
-        <p className="text-sm text-[var(--glass-muted)] mt-0.5">
-          The cutting dies that punch each label&rsquo;s shape — rotary and flatbed,
-          each with their own geometry. Anyone can search the library; Prepress
-          and Admin add and correct the records.
+        <h1 className="text-[30px] font-semibold leading-9 tracking-[-0.025em] text-brand-ink">Dies</h1>
+        <p className="mt-1.5 max-w-[72ch] text-sm text-brand-muted">
+          Find the right die before making a new one. Search by size — it&rsquo;s what you know from the artwork.
         </p>
       </div>
 

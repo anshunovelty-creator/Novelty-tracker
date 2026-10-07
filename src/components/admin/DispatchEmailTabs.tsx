@@ -51,14 +51,12 @@ export default function DispatchEmailTabs({
 
   return (
     <div className="space-y-4">
-      {/* Solid white strip with a Press Green fill on the active tab —
-          the same vocabulary as DiesTabs. The glass-* tokens flatten to
-          near-white inside .admin-light, so a translucent strip on the
-          mint wash reads as nothing at all. */}
+      {/* Underline tabs — the same grammar as DiesTabs and the dashboard's
+          job views. */}
       <div
         role="tablist"
         aria-label="Dispatch email sections"
-        className="inline-flex flex-wrap items-center gap-1 rounded-xl border border-black/[0.08] bg-white p-1"
+        className="flex gap-7 overflow-x-auto overflow-y-hidden border-b border-brand-border"
       >
         {tabs.map((tab) => {
           const selected = tab.id === active;
@@ -72,10 +70,10 @@ export default function DispatchEmailTabs({
               aria-controls="dispatch-tabpanel"
               onClick={() => select(tab.id)}
               className={cn(
-                'min-h-11 whitespace-nowrap rounded-lg px-3.5 text-sm font-medium transition-colors',
+                '-mb-px flex h-12 shrink-0 items-center whitespace-nowrap border-b-2 px-0.5 text-sm transition-colors',
                 selected
-                  ? 'bg-brand-primary text-white'
-                  : 'text-[var(--glass-muted)] hover:bg-black/[0.04] hover:text-[var(--glass-ink)]',
+                  ? 'border-brand-ink font-semibold text-brand-ink'
+                  : 'border-transparent font-medium text-brand-muted hover:text-brand-ink',
               )}
             >
               {tab.label}
@@ -84,7 +82,7 @@ export default function DispatchEmailTabs({
         })}
       </div>
 
-      <p className="text-sm text-[var(--glass-muted)]">{current.caption}</p>
+      <p className="text-sm text-brand-muted">{current.caption}</p>
 
       <div id="dispatch-tabpanel" role="tabpanel" aria-labelledby={`dispatch-tab-${active}`}>
         {children}

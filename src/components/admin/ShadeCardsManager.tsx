@@ -15,23 +15,16 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useState } from 'react';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { Search, Plus, Pencil, Trash2, GitBranch, ChevronLeft, ChevronRight,
-         ListFilter } from 'lucide-react';
+import { Search, Plus, Pencil, Trash2, GitBranch, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatAdminDate, formatNumericDate } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { csvDate, csvTimestamp, type CsvColumn } from '@/lib/export/csv';
 import type { SortDir } from '@/lib/sort';
-import {
-  SHADE_CARD_STATUSES,
-  MAKING_STATUSES,
-  SHADE_CARD_STATUS_COLORS,
-  MAKING_STATUS_COLORS,
-  SHADE_CARD_SEARCH_FIELDS,
-  type ShadeCardStatus,
-  type MakingStatus,
-} from '@/lib/constants/shadeCards';
+import { SHADE_CARD_STATUSES, MAKING_STATUSES, SHADE_CARD_STATUS_COLORS, MAKING_STATUS_COLORS, SHADE_CARD_SEARCH_FIELDS, type ShadeCardStatus, type MakingStatus, SHADE_CARD_STATUS_DOT, MAKING_STATUS_DOT } from '@/lib/constants/shadeCards';
+import { StateChip } from '@/components/ui/StateChip';
 import type { ShadeCard } from '@/lib/types';
+import { SHADE_TAB_FILTERS, WITH_PARTY_LATE_DAYS, daysWithParty, withPartyLabel, type ShadeTab } from '@/lib/shadeCardView';
 import type { ShadeCardSummary } from '@/app/api/shade-cards/summary/route';
 import type { ShadeCardModalMode } from './AddShadeCardModal';
 import CsvExportButton from './CsvExportButton';
@@ -44,7 +37,7 @@ const AddShadeCardModal = dynamic(() => import('./AddShadeCardModal'), { ssr: fa
 
 const COLUMNS = [
   'Party', 'Product', 'Shade #', 'PM Code', 'Prepared', 'Approval',
-  'Status', 'Made', 'Last updated', 'Actions',
+  'Status', 'Made', 'With party', 'Last updated', 'Actions',
 ] as const;
 
 // Click-to-sort — unlike the other tables here, this list is paged on the
@@ -92,85 +85,6 @@ const CSV_COLUMNS: CsvColumn<ShadeCard>[] = [
   { header: 'Updated by',    value: (c) => c.updated_by_name ?? '' },
 ];
 
-function Chip({ label, cfg }: { label: string; cfg: { bg: string; text: string; border?: string } }) {
-  return (
-    <span className={cn('inline-block px-2 py-0.5 rounded-md text-xs font-medium whitespace-nowrap',
-      cfg.bg, cfg.text, cfg.border)}>
-      {label}
-    </span>
-  );
-}
-
-/**
- * One KPI tile. Same vocabulary as DashboardSummaryCard — glass panel, muted
- * micro-label, big mono number, filter glyph and hover lift — with one
- * addition: these tiles drive the filter directly rather than firing a
- * one-shot event, so the applied one has to say it is applied. Without that
- * ring, clicking "Approved" changes the table with nothing left on screen
- * explaining why.
- */
-function KpiTile({
-  label, value, tone = 'text-[var(--glass-ink)]', sub, active = false, onClick, action,
-}: {
-  label:   string;
-  /** Undefined while the summary loads — renders as an em dash, not a zero,
-   *  because "0 approved" is a claim and a loading tile is not. */
-  value:   number | undefined;
-  tone?:   string;
-  sub?:    string;
-  active?: boolean;
-  /** Absent when the number maps onto no filter this table can apply. Such a
-   *  tile renders as a plain panel — the dashboard's summary card draws the
-   *  same line, because a tile that looks clickable promises a drill-down. */
-  onClick?: () => void;
-  action?:  string;
-}) {
-  // Flex column with the caption pushed to the bottom, so a tile that carries
-  // one still lines its number up with the tiles that don't — four numbers
-  // meant to be compared have to share a baseline.
-  const base = 'glass rounded-xl px-4 py-3 text-left relative flex flex-col';
-
-  const body = (
-    <>
-      <p className="text-xs text-[var(--glass-muted)] font-medium mb-0.5">{label}</p>
-      <p className={cn('text-2xl font-semibold font-mono tabular-nums', tone)}>
-        {value?.toLocaleString('en-IN') ?? '—'}
-      </p>
-      {sub && <p className="text-[11px] text-[var(--glass-muted)] mt-auto pt-1">{sub}</p>}
-    </>
-  );
-
-  if (!onClick) {
-    return <div className={base}>{body}</div>;
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      aria-label={`${label}: ${value ?? 'loading'}. ${action}`}
-      className={cn(
-        'group', base,
-        'transition-[background-color,box-shadow,transform] duration-150',
-        'hover:bg-white/10 hover:-translate-y-px',
-        'hover:shadow-[0_4px_14px_rgba(12,42,32,0.10)]',
-        'active:translate-y-0 motion-reduce:hover:translate-y-0',
-        active && 'ring-2 ring-emerald-400/70 bg-white/10',
-      )}
-    >
-      <ListFilter
-        className={cn(
-          'absolute right-3 top-3 h-3.5 w-3.5 text-[var(--glass-muted)] transition-opacity',
-          active ? 'opacity-100' : 'opacity-60 group-hover:opacity-100',
-        )}
-        aria-hidden="true"
-      />
-      {body}
-    </button>
-  );
-}
-
 type Props = {
   canManage: boolean;
   canDelete: boolean;
@@ -184,15 +98,13 @@ export default function ShadeCardsManager({ canManage, canDelete, className }: P
 
   const [search,  setSearch]  = useState('');
   const [field,   setField]   = useState('all');
-  const [status,  setStatus]  = useState('');
-  const [making,  setMaking]  = useState('');
+  // The tab is the status filter: Waiting on party leads, because the cards
+  // sitting with a party are the ones someone has to chase.
+  const [tab,     setTab]     = useState<ShadeTab>('waiting');
+  const { status, making } = SHADE_TAB_FILTERS[tab];
   const [page,    setPage]    = useState(1);
   const [sort,    setSort]    = useState<SortField>('shade_card_number');
   const [dir,     setDir]     = useState<SortDir>('asc');
-  // Set only by the "Added last 7 days" tile — there is no dropdown for it,
-  // because the window it filters on is the one that tile counted rather than
-  // anything a user would pick by hand.
-  const [createdFrom, setCreatedFrom] = useState('');
 
   const [modal,      setModal]      = useState<{ mode: ShadeCardModalMode; card?: ShadeCard } | null>(null);
   const [confirmId,  setConfirmId]  = useState<string | null>(null);
@@ -203,13 +115,12 @@ export default function ShadeCardsManager({ canManage, canDelete, className }: P
   if (search && field !== 'all') params.set('field', field);
   if (status) params.set('status', status);
   if (making) params.set('making', making);
-  if (createdFrom) params.set('created_from', createdFrom);
   params.set('page', String(page));
   params.set('sort', sort);
   params.set('dir', dir);
 
   const { data, isLoading } = useQuery<ListResponse>({
-    queryKey: ['shade-cards', search, field, status, making, createdFrom, page, sort, dir],
+    queryKey: ['shade-cards', search, field, status, making, page, sort, dir],
     queryFn: async () => {
       const res = await fetch(`/api/shade-cards?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to load shade cards');
@@ -301,75 +212,45 @@ export default function ShadeCardsManager({ canManage, canDelete, className }: P
     }
   }
 
-  const hasFilters = Boolean(search || status || making || createdFrom);
+  const hasFilters = Boolean(search || tab !== 'all');
 
-  /** Clears every filter at once. The recency filter has no dropdown of its
-   *  own, so "Total cards" is the only control that can lift it — it must not
-   *  be missed here or the list would stay narrowed with nothing saying why. */
-  function clearFilters() {
-    setSearch('');
-    setStatus('');
-    setMaking('');
-    setCreatedFrom('');
-  }
+  const TABS: { id: ShadeTab; label: string; count: number | undefined }[] = [
+    { id: 'waiting',  label: 'Waiting on party', count: summary?.waiting_on_party },
+    { id: 'notmade',  label: 'Not made yet',     count: summary?.not_made },
+    { id: 'approved', label: 'Approved',         count: summary?.approved },
+    { id: 'rejected', label: 'Rejected',         count: summary?.rejected },
+    { id: 'all',      label: 'All',              count: summary?.total },
+  ];
 
   return (
     // Flex column rather than space-y so the table can be told to absorb
     // whatever height is left over once the controls and paging have taken
     // theirs — see the page for where that height comes from.
     <div className={cn('flex flex-col gap-3', className)}>
-      {/* ── KPIs ─────────────────────────────────────────────── */}
-      {/* Every tile is a filter shortcut. Each one applies its own filter and
-          clears the others, so the tiles and the table never disagree about
-          what is on screen; clicking the applied tile lifts it again, which is
-          the only way back for the recency filter since it has no dropdown. */}
-      <div className="shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiTile
-          label="Total cards"
-          value={summary?.total}
-          active={!hasFilters}
-          onClick={() => changeFilter(clearFilters)}
-          action="Clear all filters"
-        />
-        <KpiTile
-          label="Approved"
-          value={summary?.approved}
-          tone="text-emerald-600"
-          active={status === 'Approved'}
-          onClick={() => changeFilter(() => {
-            const on = status === 'Approved';
-            clearFilters();
-            if (!on) setStatus('Approved');
-          })}
-          action="Show approved cards"
-        />
-        <KpiTile
-          label="Pending approval"
-          value={summary?.pending_approval}
-          tone="text-amber-600"
-          active={status === 'Pending Approval'}
-          onClick={() => changeFilter(() => {
-            const on = status === 'Pending Approval';
-            clearFilters();
-            if (!on) setStatus('Pending Approval');
-          })}
-          action="Show cards waiting on the party"
-        />
-        {/* Filters on the very cutoff the summary counted from, so the list it
-            opens holds exactly the cards this number counted. */}
-        <KpiTile
-          label="Added last 7 days"
-          value={summary?.added_last_7_days}
-          tone="text-sky-600"
-          sub="new entries"
-          active={Boolean(createdFrom)}
-          onClick={() => changeFilter(() => {
-            const on = Boolean(createdFrom);
-            clearFilters();
-            if (!on && summary) setCreatedFrom(summary.added_since);
-          })}
-          action="Show the cards added in the last 7 days"
-        />
+      {/* ── tabs ─────────────────────────────────────────────── */}
+      {/* Register-wide counts beside each tab; the tab is the status filter. */}
+      <div role="tablist" aria-label="Approval" className="flex shrink-0 gap-1 overflow-x-auto border-b border-brand-border">
+        {TABS.map((t) => {
+          const on = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              onClick={() => changeFilter(() => setTab(t.id))}
+              className={cn(
+                '-mb-px flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 text-sm transition-colors',
+                on ? 'border-brand-primary font-semibold text-brand-ink' : 'border-transparent font-medium text-brand-muted hover:text-brand-ink',
+              )}
+            >
+              {t.label}
+              <span className={cn('font-mono text-xs', on ? 'text-brand-ink' : 'text-brand-muted')}>
+                {t.count?.toLocaleString('en-IN') ?? '—'}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* ── controls ─────────────────────────────────────────── */}
@@ -413,29 +294,21 @@ export default function ShadeCardsManager({ canManage, canDelete, className }: P
           <SearchClearButton value={search} onClear={() => changeFilter(() => setSearch(''))} />
         </div>
 
-        <label htmlFor="sc-filter-status" className="sr-only">Filter by status</label>
-        <select
-          id="sc-filter-status"
-          value={status}
-          onChange={(e) => changeFilter(() => setStatus(e.target.value))}
-          className="min-h-11 px-3 rounded-lg text-sm bg-[var(--field-bg)] border border-[var(--field-border)] text-[var(--glass-ink)]"
-        >
-          <option value="">All statuses</option>
-          {SHADE_CARD_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-
-        <label htmlFor="sc-filter-making" className="sr-only">Filter by whether the card is made</label>
-        <select
-          id="sc-filter-making"
-          value={making}
-          onChange={(e) => changeFilter(() => setMaking(e.target.value))}
-          className="min-h-11 px-3 rounded-lg text-sm bg-[var(--field-bg)] border border-[var(--field-border)] text-[var(--glass-ink)]"
-        >
-          <option value="">Made or not</option>
-          {MAKING_STATUSES.map((m) => <option key={m} value={m}>{m}</option>)}
-        </select>
-
-        <CsvExportButton rows={cards} columns={CSV_COLUMNS} filename="shade-cards" />
+        {/* Every card matching the filters, not just this page's 25. */}
+        <CsvExportButton
+          columns={CSV_COLUMNS}
+          filename="shade-cards"
+          count={total}
+          fetchRows={async () => {
+            const all = new URLSearchParams(params);
+            all.delete('page');
+            all.set('export', '1');
+            const res  = await fetch(`/api/shade-cards?${all.toString()}`);
+            const body = await res.json();
+            if (!res.ok) throw new Error(body.error ?? 'Export failed. Please try again.');
+            return body.cards as ShadeCard[];
+          }}
+        />
 
         {canManage && (
           <Button intent="primary" icon={Plus} onClick={() => setModal({ mode: 'create' })}>
@@ -538,13 +411,15 @@ export default function ShadeCardsManager({ canManage, canDelete, className }: P
                     {canManage ? (
                       <>
                         <label htmlFor={`st-${c.id}`} className="sr-only">Approval status for {c.product_name}</label>
+                        <span className="relative inline-flex items-center">
+                        <span aria-hidden="true" className="pointer-events-none absolute left-2 h-2 w-2 rounded-full" style={{ background: SHADE_CARD_STATUS_DOT[c.status] }} />
                         <select
                           id={`st-${c.id}`}
                           value={c.status}
                           disabled={busyId === c.id}
                           onChange={(e) => patchCard(c, { action: 'status', status: e.target.value }, 'Status updated')}
                           className={cn(
-                            'px-2 py-1 rounded-md text-xs font-medium border cursor-pointer disabled:opacity-50',
+                            'pl-6 pr-2 py-1 rounded-md text-xs font-semibold border cursor-pointer disabled:opacity-50',
                             SHADE_CARD_STATUS_COLORS[c.status]?.bg,
                             SHADE_CARD_STATUS_COLORS[c.status]?.text,
                           )}
@@ -556,32 +431,39 @@ export default function ShadeCardsManager({ canManage, canDelete, className }: P
                             : <option value={c.status}>{c.status}</option>}
                           {SHADE_CARD_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                         </select>
+                        </span>
                       </>
                     ) : (
-                      <Chip label={c.status} cfg={SHADE_CARD_STATUS_COLORS[c.status]} />
+                      <StateChip label={c.status} dot={SHADE_CARD_STATUS_DOT[c.status]} />
                     )}
                   </td>
                   <td className="px-4 py-3">
                     {canManage && c.making_status !== 'Already Made' ? (
                       <>
                         <label htmlFor={`mk-${c.id}`} className="sr-only">Whether the card for {c.product_name} is made</label>
+                        <span className="relative inline-flex items-center">
+                        <span aria-hidden="true" className="pointer-events-none absolute left-2 h-2 w-2 rounded-full" style={{ background: MAKING_STATUS_DOT[c.making_status] }} />
                         <select
                           id={`mk-${c.id}`}
                           value={c.making_status}
                           disabled={busyId === c.id}
                           onChange={(e) => patchCard(c, { action: 'making', making_status: e.target.value }, 'Marked as made')}
                           className={cn(
-                            'px-2 py-1 rounded-md text-xs font-medium border cursor-pointer disabled:opacity-50',
+                            'pl-6 pr-2 py-1 rounded-md text-xs font-semibold border cursor-pointer disabled:opacity-50',
                             MAKING_STATUS_COLORS[c.making_status]?.bg,
                             MAKING_STATUS_COLORS[c.making_status]?.text,
                           )}
                         >
                           {MAKING_STATUSES.map((m) => <option key={m} value={m}>{m}</option>)}
                         </select>
+                        </span>
                       </>
                     ) : (
-                      <Chip label={c.making_status} cfg={MAKING_STATUS_COLORS[c.making_status]} />
+                      <StateChip label={c.making_status} dot={MAKING_STATUS_DOT[c.making_status]} />
                     )}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <WithParty card={c} />
                   </td>
                   <td className="px-4 py-3 text-xs text-[var(--glass-muted)] whitespace-nowrap">
                     {c.updated_by_name ?? 'unknown'}
@@ -666,7 +548,7 @@ export default function ShadeCardsManager({ canManage, canDelete, className }: P
                 <p className="font-medium text-[var(--glass-ink)] break-words underline underline-offset-2">{c.party}</p>
                 <p className="text-sm text-[var(--glass-muted)] break-words">{c.product_name}</p>
               </Link>
-              <Chip label={c.status} cfg={SHADE_CARD_STATUS_COLORS[c.status]} />
+              <StateChip label={c.status} dot={SHADE_CARD_STATUS_DOT[c.status]} />
             </div>
 
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 mt-3 pt-3 border-t border-black/[0.06] text-xs">
@@ -681,7 +563,7 @@ export default function ShadeCardsManager({ canManage, canDelete, className }: P
             </dl>
 
             <div className="flex flex-wrap items-center gap-2 mt-3">
-              <Chip label={c.making_status} cfg={MAKING_STATUS_COLORS[c.making_status]} />
+              <StateChip label={c.making_status} dot={MAKING_STATUS_DOT[c.making_status]} />
               <span className="text-xs text-[var(--glass-muted)]">
                 {formatAdminDate(c.updated_at)} · {c.updated_by_name ?? 'unknown'}
               </span>
@@ -729,5 +611,20 @@ export default function ShadeCardsManager({ canManage, canDelete, className }: P
         />
       )}
     </div>
+  );
+}
+
+/** Days the card has been with the party — red once it's late enough to chase. */
+function WithParty({ card }: { card: ShadeCard }) {
+  const days = daysWithParty(card);
+  if (days === null) return <span className="text-xs text-[var(--glass-muted)]">—</span>;
+  const late = days > WITH_PARTY_LATE_DAYS;
+  return (
+    <span
+      className={cn('font-mono text-xs', late ? 'font-semibold text-brand-danger' : 'text-[var(--glass-ink)]')}
+      title={`Sent ${formatNumericDate(card.sent_to_party_date)}${late ? ` — over ${WITH_PARTY_LATE_DAYS} days, worth a reminder` : ''}`}
+    >
+      {withPartyLabel(days)}
+    </span>
   );
 }

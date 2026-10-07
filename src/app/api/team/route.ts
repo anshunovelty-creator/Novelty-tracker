@@ -4,7 +4,7 @@
 // POST /api/team  — onboard a new team member (Admin only)
 //
 // A "team member" here is a Supabase Auth user; department lives in
-// user_metadata.department the same way the rest of the app reads it
+// app_metadata.department the same way the rest of the app reads it
 // (see parseDepartment). There is no separate members table — Auth is
 // the source of truth, so onboarding and removing here IS the whole
 // account lifecycle.
@@ -15,6 +15,9 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptManageTeam } from '@/lib/constants/departments';
+import { usernameOf, suggestUsername, freeUsername } from '@/lib/username';
+import { checkUsername, loadDirectory } from '@/lib/teamDirectory';
+import { deptKeyOf, appMetaOf } from '@/lib/identity';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -25,7 +28,7 @@ async function denyUnlessAdmin(): Promise<NextResponse | null> {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!canDeptManageTeam(perms)) {
     return NextResponse.json({ error: 'Only Admin can manage the team' }, { status: 403 });
   }
@@ -43,10 +46,11 @@ export async function GET() {
 
   const members = (await Promise.all(
     data.users.map(async (u) => {
-      const memberPerms = await getDeptPermissions(u.user_metadata?.department);
+      const memberPerms = await getDeptPermissions(deptKeyOf(u));
       return {
         id:              u.id,
         email:           u.email ?? '',
+        username:        usernameOf(appMetaOf(u), u.email),
         department:      memberPerms?.key ?? null,
         created_at:      u.created_at,
         last_sign_in_at: u.last_sign_in_at ?? null,
@@ -80,12 +84,29 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 });
   }
 
+  // A username is required in spirit but defaulted in practice: left blank,
+  // the login gets one made from its email — numbered (dispatch2) when that
+  // is taken or is a department's tag — which Admin can change later. One
+  // Admin typed must be free as typed.
+  const typed = typeof body.username === 'string' && body.username.trim() ? body.username : null;
+  let username: string;
+  if (typed) {
+    const checked = await checkUsername(typed, null);
+    if ('error' in checked) return NextResponse.json({ error: checked.error }, { status: 400 });
+    username = checked.username;
+  } else {
+    const { people, departments } = await loadDirectory();
+    username = freeUsername(suggestUsername(email), people.map((p) => p.username), departments);
+  }
+
   const admin = createAdminClient();
   const { data, error } = await admin.auth.admin.createUser({
     email,
     password,
     email_confirm: true, // internal staff accounts — no confirmation email to click
-    user_metadata: { department },
+    // app_metadata: only the server can write it, so neither can be
+    // changed by the login itself (migration 076).
+    app_metadata: { department, username },
   });
 
   if (error) {
@@ -98,6 +119,7 @@ export async function POST(request: NextRequest) {
     member: {
       id:              data.user.id,
       email:           data.user.email ?? email,
+      username,
       department,
       created_at:      data.user.created_at,
       last_sign_in_at: null,

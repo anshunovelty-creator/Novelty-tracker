@@ -14,20 +14,25 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Loader2, Plus, Trash2, Check, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { StateChip } from '@/components/ui/StateChip';
 import { cn } from '@/lib/utils';
 import { PRINTING_METHODS, type PrintingMethod, type PrintingUnit } from '@/lib/types';
 import { ConfirmModal } from './modals';
 import { PRINTING_UNITS_KEY } from '@/hooks/useReferenceData';
 
 const inputCls =
-  'rounded-lg border border-black/[0.12] bg-white px-3 py-2 text-sm ' +
-  'text-[var(--glass-ink)] min-h-[44px] w-full ' +
-  'focus:outline-none focus:ring-2 focus:ring-[var(--brand-accent)] focus:border-transparent ' +
-  'disabled:opacity-50 disabled:cursor-not-allowed';
+  'w-full min-h-11 rounded-[10px] border border-brand-border bg-white px-3 text-sm text-brand-ink ' +
+  'focus:border-brand-primary focus:outline-none focus:shadow-[0_0_0_4px_rgba(16,85,63,0.18)] ' +
+  'disabled:cursor-not-allowed disabled:opacity-50';
 
 const btnCls =
-  'inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 rounded-lg ' +
-  'text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+  'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[10px] px-3 ' +
+  'text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50';
+const quietBtn = cn(btnCls, 'border border-brand-border bg-white text-brand-ink hover:bg-brand-surface-alt');
+
+// The unit's number in a dot coloured by its method — the same badge the
+// press floor's "Print on" picker uses.
+const METHOD_DOT: Record<string, string> = { Offset: '#DB2777', Flexo: '#047857' };
 
 export default function PrintingUnitsManager() {
   const [units,   setUnits]   = useState<PrintingUnit[]>([]);
@@ -35,7 +40,8 @@ export default function PrintingUnitsManager() {
   const [error,   setError]   = useState<string | null>(null);
   const [busyId,  setBusyId]  = useState<string | null>(null);
 
-  // New-unit form
+  // New-unit form, folded behind "Add a unit"
+  const [adding,    setAdding]    = useState(false);
   const [newName,   setNewName]   = useState('');
   const [newMethod, setNewMethod] = useState<PrintingMethod>('Flexo');
   const [creating,  setCreating]  = useState(false);
@@ -101,6 +107,7 @@ export default function PrintingUnitsManager() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Could not create unit');
       setNewName('');
+      setAdding(false);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not create unit');
@@ -170,26 +177,38 @@ export default function PrintingUnitsManager() {
   }
 
   return (
-    <div className="space-y-5">
-      {/* ── Add ─────────────────────────────────────────────── */}
-      <form
-        onSubmit={create}
-        className="rounded-xl border border-black/[0.08] bg-white p-4 shadow-sm"
-      >
-        <h2 className="text-sm font-semibold text-[var(--glass-ink)] mb-3">Add a unit</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] sm:items-end gap-2">
+    <section
+      aria-labelledby="units-title"
+      className="flex flex-col gap-4 rounded-2xl border border-brand-border bg-white p-5 shadow-[0_2px_8px_rgba(12,42,32,0.04)] sm:p-6"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h2 id="units-title" className="text-base font-semibold text-brand-ink">Printing units</h2>
+          <p className="text-[13px] text-brand-muted">Jobs pick a unit; the printing method comes from it.</p>
+        </div>
+        {!adding && (
+          <button type="button" onClick={() => setAdding(true)} className={quietBtn}>
+            <Plus className="h-4 w-4" aria-hidden="true" /> Add a unit
+          </button>
+        )}
+      </div>
+
+      {adding && (
+        <form onSubmit={create} className="grid grid-cols-1 gap-2 rounded-xl bg-brand-surface-alt p-3 sm:grid-cols-[1fr_auto_auto_auto] sm:items-end">
           <div>
-            <label htmlFor="new-unit-name" className="block text-xs text-[var(--glass-muted)] mb-1">Unit name</label>
+            <label htmlFor="new-unit-name" className="mb-1 block text-xs font-medium text-brand-muted">Unit name</label>
             <input
               id="new-unit-name"
               className={inputCls}
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               disabled={creating}
+              placeholder="Unit-3"
+              autoFocus
             />
           </div>
           <div>
-            <label htmlFor="new-unit-method" className="block text-xs text-[var(--glass-muted)] mb-1">Printing method</label>
+            <label htmlFor="new-unit-method" className="mb-1 block text-xs font-medium text-brand-muted">Printing method</label>
             <select
               id="new-unit-method"
               className={inputCls}
@@ -198,43 +217,42 @@ export default function PrintingUnitsManager() {
               disabled={creating}
             >
               {PRINTING_METHODS.map((m) => (
-                <option key={m} value={m}>{m} Printing</option>
+                <option key={m} value={m}>{m}</option>
               ))}
             </select>
           </div>
+          <button type="button" onClick={() => { setAdding(false); setNewName(''); }} disabled={creating} className={quietBtn}>
+            Cancel
+          </button>
           <button
             type="submit"
             disabled={creating || !newName.trim()}
-            className={cn(btnCls, 'bg-[var(--brand-accent)] text-white hover:opacity-90')}
+            className={cn(btnCls, 'bg-brand-primary font-semibold text-white hover:bg-brand-primary-hover')}
           >
-            {creating
-              ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-              : <Plus className="w-4 h-4" aria-hidden="true" />}
+            {creating && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
             Add unit
           </button>
-        </div>
-      </form>
-
-      {error && (
-        <p role="alert" className="text-sm text-red-600">{error}</p>
+        </form>
       )}
 
-      {/* ── List ────────────────────────────────────────────── */}
+      {error && (
+        <p role="alert" className="text-sm text-brand-danger">{error}</p>
+      )}
+
       {loading ? (
-        <p className="flex items-center gap-2 text-sm text-[var(--glass-muted)]">
-          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+        <p className="flex items-center gap-2 text-sm text-brand-muted">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
           Loading units…
         </p>
       ) : units.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-black/[0.14] p-8 text-center">
-          <p className="text-sm text-[var(--glass-ink)] font-medium">No printing units yet</p>
-          <p className="text-sm text-[var(--glass-muted)] mt-1">
-            Add one above. New jobs default to Flexo and will stay unassigned
-            until a Flexo unit exists.
+        <div className="rounded-xl border border-dashed border-brand-border p-6 text-center">
+          <p className="text-sm font-medium text-brand-ink">No printing units yet</p>
+          <p className="mt-1 text-sm text-brand-muted">
+            Add one. New jobs default to Flexo and stay unassigned until a Flexo unit exists.
           </p>
         </div>
       ) : (
-        <ul className="space-y-2">
+        <ul className="flex flex-col">
           {units.map((u) => {
             const busy      = busyId === u.id;
             const isEditing = editId === u.id;
@@ -243,13 +261,10 @@ export default function PrintingUnitsManager() {
             return (
               <li
                 key={u.id}
-                className={cn(
-                  'rounded-xl border border-black/[0.08] bg-white p-3 shadow-sm',
-                  !u.is_active && 'opacity-60',
-                )}
+                className={cn('border-t border-brand-line-soft py-3 first:border-t-0 first:pt-0', !u.is_active && 'opacity-60')}
               >
                 {isEditing ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto_auto]">
                     <label htmlFor={`edit-name-${u.id}`} className="sr-only">Unit name</label>
                     <input
                       id={`edit-name-${u.id}`}
@@ -270,70 +285,55 @@ export default function PrintingUnitsManager() {
                         <option key={m} value={m}>{m}</option>
                       ))}
                     </select>
+                    <button onClick={() => setEditId(null)} disabled={busy} className={quietBtn}>
+                      <X className="h-4 w-4" aria-hidden="true" /> Cancel
+                    </button>
                     <button
                       onClick={() => saveEdit(u.id)}
                       disabled={busy || !editName.trim()}
-                      className={cn(btnCls, 'bg-emerald-600 text-white hover:bg-emerald-700')}
+                      className={cn(btnCls, 'bg-brand-primary font-semibold text-white hover:bg-brand-primary-hover')}
                     >
                       {busy
-                        ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-                        : <Check className="w-4 h-4" aria-hidden="true" />}
+                        ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        : <Check className="h-4 w-4" aria-hidden="true" />}
                       Save
-                    </button>
-                    <button
-                      onClick={() => setEditId(null)}
-                      disabled={busy}
-                      className={cn(btnCls, 'border border-black/[0.12] text-[var(--glass-ink)]')}
-                    >
-                      <X className="w-4 h-4" aria-hidden="true" />
-                      Cancel
                     </button>
                   </div>
                 ) : (
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                    <span className="font-mono text-sm font-semibold text-[var(--glass-ink)]">
-                      {u.name}
+                    <span
+                      aria-hidden="true"
+                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-mono text-xs font-semibold text-white"
+                      style={{ background: METHOD_DOT[u.printing_method] ?? '#64748B' }}
+                    >
+                      {u.name.replace(/\D/g, '') || u.name[0]}
                     </span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-black/[0.06] text-[var(--glass-ink)]">
-                      {u.printing_method}
-                    </span>
+                    <span className="text-sm font-semibold text-brand-ink">{u.name}</span>
+                    <span className="text-sm text-brand-muted">{u.printing_method}</span>
                     {isDefault && (
-                      <span
-                        className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800"
-                        title={`New ${u.printing_method} jobs are assigned to this unit`}
-                      >
-                        Default for {u.printing_method}
+                      <span title={`New ${u.printing_method} jobs are assigned to this unit`}>
+                        <StateChip label="Default" dot="#059669" />
                       </span>
                     )}
                     {!u.is_active && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
-                        Retired
-                      </span>
+                      <StateChip label="Retired" dot="#94A39B" className="font-medium text-brand-muted" />
                     )}
 
                     <span className="ml-auto flex items-center gap-1.5">
-                      <button
-                        onClick={() => startEdit(u)}
-                        disabled={busy}
-                        className={cn(btnCls, 'border border-black/[0.12] text-[var(--glass-ink)]')}
-                      >
+                      <button onClick={() => startEdit(u)} disabled={busy} className={quietBtn}>
                         Edit
                       </button>
-                      <button
-                        onClick={() => patch(u.id, { is_active: !u.is_active })}
-                        disabled={busy}
-                        className={cn(btnCls, 'border border-black/[0.12] text-[var(--glass-ink)]')}
-                      >
-                        {busy && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
+                      <button onClick={() => patch(u.id, { is_active: !u.is_active })} disabled={busy} className={quietBtn}>
+                        {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
                         {u.is_active ? 'Retire' : 'Reactivate'}
                       </button>
                       <button
                         onClick={() => setPendingDelete(u)}
                         disabled={busy}
                         aria-label={`Delete ${u.name}`}
-                        className={cn(btnCls, 'border border-red-200 text-red-700 hover:bg-red-50')}
+                        className={cn(btnCls, 'w-11 px-0 text-brand-danger hover:bg-[#FEF2F2]')}
                       >
-                        <Trash2 className="w-4 h-4" aria-hidden="true" />
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
                       </button>
                     </span>
                   </div>
@@ -344,9 +344,8 @@ export default function PrintingUnitsManager() {
         </ul>
       )}
 
-      <p className="text-xs text-[var(--glass-muted)]">
-        A job&apos;s unit is auto-set from its printing method using the default
-        unit above. Prepress can override it per job from the job card.
+      <p className="text-xs text-brand-muted">
+        &ldquo;Default&rdquo; is the unit a new job of that method lands on. Prepress can change it per job.
       </p>
 
       {pendingDelete && (
@@ -360,6 +359,6 @@ export default function PrintingUnitsManager() {
           onConfirm={confirmRemove}
         />
       )}
-    </div>
+    </section>
   );
 }

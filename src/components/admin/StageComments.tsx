@@ -7,6 +7,7 @@ import type { StageComment } from '@/lib/types';
 import type { Stage } from '@/lib/constants/stages';
 import type { Department } from '@/lib/constants/departments';
 import toast from 'react-hot-toast';
+import { MentionTextarea } from '@/components/ui/Mention';
 
 type Props = {
   jobId:             string;
@@ -58,9 +59,9 @@ export default function StageComments({ jobId, stage, dept, existingComments, on
 
   return (
     <div className="mt-2 space-y-2">
-      <textarea
+      <MentionTextarea
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onValueChange={setText}
         placeholder="Internal note (staff only — never shown to client)…"
         rows={2}
         autoFocus

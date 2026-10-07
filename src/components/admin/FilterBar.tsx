@@ -18,6 +18,9 @@ type Props = {
   sortBy:               JobSortOption;
   onSortByChange:       (v: JobSortOption) => void;
   onClearFilters:       () => void;
+  /** The dashboard puts search in the jobs card's header; this drops the
+   *  bar's own box so there is only ever one data-global-search input. */
+  hideSearch?:          boolean;
 };
 
 export default function FilterBar({
@@ -26,6 +29,7 @@ export default function FilterBar({
   urgentOnly, onUrgentOnlyChange,
   sortBy, onSortByChange,
   onClearFilters,
+  hideSearch = false,
 }: Props) {
   // Which filters are actually narrowing the list right now. Sort order is
   // deliberately excluded — re-ordering rows hides nothing, so offering to
@@ -38,7 +42,10 @@ export default function FilterBar({
 
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-2">
+      <div className={cn(
+        'grid grid-cols-1 gap-2',
+        hideSearch ? 'sm:grid-cols-[minmax(0,240px)_minmax(0,280px)_auto] sm:justify-start' : 'sm:grid-cols-[1fr_auto_auto_auto]',
+      )}>
         {/* Search.
             Six other admin pages use this icon + placeholder pattern; the
             dashboard used the floating-label Field, which reads as static
@@ -46,7 +53,7 @@ export default function FilterBar({
             Search and form entry are different jobs, so they no longer share
             a control: the floating label stays for data entry, search gets
             the affordance that says "type here". */}
-        <div className="relative">
+        {!hideSearch && <div className="relative">
           <Search
             className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--glass-muted)]"
             aria-hidden="true"
@@ -71,13 +78,13 @@ export default function FilterBar({
           {search ? (
             <SearchClearButton value={search} onClear={() => onSearchChange('')} />
           ) : (
-            // The Ctrl+K shortcut already worked but was announced only in a
-            // title tooltip nobody hovers.
+            // "/" focuses this box (Ctrl K now searches everything); shown
+            // here because a title tooltip is something nobody hovers.
             <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border border-[var(--field-border)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--glass-muted)] sm:block">
-              Ctrl K
+              /
             </kbd>
           )}
-        </div>
+        </div>}
 
         {/* Status filter */}
         <SelectField

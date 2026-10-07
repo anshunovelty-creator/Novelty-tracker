@@ -17,6 +17,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptDecideBOM } from '@/lib/constants/departments';
+import { deptKeyOf } from '@/lib/identity';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -36,7 +37,7 @@ async function requireDecide() {
   if (!user) {
     return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) } as const;
   }
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms || !canDeptDecideBOM(perms)) {
     return {
       error: NextResponse.json(

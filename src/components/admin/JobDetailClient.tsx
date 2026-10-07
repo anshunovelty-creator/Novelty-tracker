@@ -1,7 +1,11 @@
 'use client';
 // src/components/admin/JobDetailClient.tsx
-// Full job detail view for /admin/jobs/[id].
-// Contains all interactive state — status dropdown, all 6 modals, delivery date edit.
+// Full job detail view for /admin/jobs/[id], Control Room layout:
+//   header  — stage control, type/urgency, party — job, delivery, the numbers
+//   left    — Pipeline (every stage, who and when) and releases / print runs
+//   right   — Next step (the one button most visits need), shelf stock for
+//             this PM code, internal notes, the shade card
+// Holds all interactive state — the stage modals, delivery date edit.
 // Receives initial job data from the server page; updates local state after changes.
 
 import { useState, useEffect } from 'react';
@@ -9,15 +13,22 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn, formatAdminDate, formatJobCardNumber, formatShortDate, formatQty } from '@/lib/utils';
 import { CheckCircle2 } from 'lucide-react';
-import { STATUS_COLORS, JOB_TYPE_BADGE, urgentBadgeClass } from '@/lib/constants/statusColors';
-import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES, isPerReleaseStage, isBackwardMove } from '@/lib/constants/stages';
-import { canDeptSetStage, canDeptOverridePOClosed, canDeptConfirmSlitting } from '@/lib/constants/departments';
+import { PIPELINE_STAGES, REPEAT_SKIPPED_STAGES, isPerReleaseStage, isBackwardMove, effectiveStageIndex, stageIndex } from '@/lib/constants/stages';
+import { canDeptOverridePOClosed, canDeptConfirmSlitting, canDeptSetStage } from '@/lib/constants/departments';
 import type { Job } from '@/lib/types';
 import type { DeptPermissions } from '@/lib/constants/departments';
 import type { Stage } from '@/lib/constants/stages';
-import HistoryPanel from './HistoryPanel';
+import { ReleasesSection } from './HistoryPanel';
 import JobShadeCardPanel from './JobShadeCardPanel';
+import JobPipeline from './JobPipeline';
+import JobNotesCard from './JobNotesCard';
+import JobShelfStockCard from './JobShelfStockCard';
+import { useJobDetail } from '@/hooks/useJobDetail';
+import { useDepartments } from '@/hooks/useReferenceData';
+import { deliveryWords, istToday } from '@/lib/jobViews';
+import type { DepartmentRecord } from '@/lib/types';
 import DeliveryDateEdit from './DeliveryDateEdit';
+import StageSelect from './StageSelect';
 import PrintingUnitEdit from './PrintingUnitEdit';
 import { JOBS_CHANGED_EVENT } from '@/lib/constants/events';
 import {
@@ -28,7 +39,11 @@ import {
   PartialDispatchModal,
   FullDispatchModal,
   ClosePOModal,
+  ConfirmSlittingModal,
+  partialDispatchPayload,
+  fullDispatchPayload,
 } from './modals';
+import { postSlittingConfirmation, type StatusPayload } from '@/hooks/useJobActions';
 import toast from 'react-hot-toast';
 
 type Props = {
@@ -44,7 +59,8 @@ type ModalState =
   | { type: 'partial_dispatch' }
   | { type: 'full_dispatch' }
   | { type: 'close_po' }
-  | { type: 'revert'; targetStage: Stage };
+  | { type: 'revert'; targetStage: Stage }
+  | { type: 'slitting' };
 
 export default function JobDetailClient({ initialJob, dept }: Props) {
   const router = useRouter();
@@ -52,11 +68,11 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
   const [modal,        setModal]        = useState<ModalState>({ type: 'none' });
   const [submitting,   setSubmitting]   = useState(false);
   const [pendingStage, setPendingStage] = useState<Stage | null>(null);
-  const [pendingPayload, setPendingPayload] = useState<{
-    new_status:      Stage;
-    remark?:         string;
-    qty_dispatched?: number;
-  } | null>(null);
+  // Stage history, comments and schedules — shared by Pipeline, Notes and
+  // Releases; refetched whenever the job row changes.
+  const { detail, reload: reloadDetail, setDetail } = useJobDetail(initialJob.id, job.updated_at);
+  const { data: departments } = useDepartments<DepartmentRecord>();
+  const [pendingPayload, setPendingPayload] = useState<StatusPayload | null>(null);
 
   // router.refresh() re-runs the page's server query and hands down a fresh
   // initialJob — fold it into local state, or every refresh (a release
@@ -135,14 +151,7 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
     await submitStatusChange({ new_status: newStage });
   }
 
-  async function submitStatusChange(payload: {
-    new_status:             Stage;
-    remark?:                string;
-    qty_dispatched?:        number;
-    override_prerequisite?: boolean;
-    override_backward?:     boolean;
-    override_remark?:       string;
-  }) {
+  async function submitStatusChange(payload: StatusPayload) {
     setSubmitting(true);
     setModal({ type: 'none' });
 
@@ -155,11 +164,8 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
       const data = await res.json();
 
       if (res.status === 409 && data.error === 'PREREQUISITE_MISSING') {
-        setPendingPayload({
-          new_status:     payload.new_status,
-          remark:         payload.remark,
-          qty_dispatched: payload.qty_dispatched,
-        });
+        // Keep the whole body (qty, stock, rack, vehicle) for the Admin override retry.
+        setPendingPayload({ ...payload });
         setModal({
           type:         'warning',
           targetStage:  payload.new_status,
@@ -194,21 +200,15 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
 
   // Covers the machine-board path, which sets job.status = 'Slitting'
   // directly and bypasses /status — see confirm-slitting/route.ts.
-  async function confirmSlitting() {
+  async function confirmSlitting(rollsSlit: number | null) {
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/jobs/${job.id}/confirm-slitting`, { method: 'POST' });
-      const data = await res.json();
-
-      if (!res.ok) {
-        toast.error(data.error ?? 'Failed to confirm slitting');
-        return;
-      }
-
-      setJob(data.job);
+      const result = await postSlittingConfirmation(job.id, rollsSlit);
+      if ('error' in result) { toast.error(result.error); return; }
+      setJob(result.job);
+      setModal({ type: 'none' });
+      if (rollsSlit) reloadDetail();
       toast.success('Slitting marked complete — QC can proceed');
-    } catch {
-      toast.error('Network error. Try again.');
     } finally {
       setSubmitting(false);
     }
@@ -230,107 +230,113 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
     ? Math.round((effectiveDispatched / job.label_qty) * 100)
     : 0;
 
+  // ── Next step ────────────────────────────────────────────────
+  // The stage after the furthest one reached (what resuming a held job
+  // returns it to), in this job's own pipeline — Repeat and scheduled
+  // releases drop stages. Who owns it comes from the department grid.
+  const pipeline  = filteredStages.filter((s) => PIPELINE_STAGES.includes(s));
+  const eff       = effectiveStageIndex(job.status as Stage, completedStages);
+  const nextStage = pipeline.find((s) => stageIndex(s) > eff) ?? null;
+  const owners    = nextStage
+    ? (departments ?? [])
+        .filter((d) => !d.is_super_admin && !d.is_read_only)
+        .filter((d) => (d.all_stages || d.stages.includes(nextStage))
+          && (!d.printing_method_scope || !job.printing_method || d.printing_method_scope === job.printing_method))
+        .map((d) => d.display_name)
+    : [];
+  const canMoveNext = nextStage ? canDeptSetStage(dept, nextStage, job.printing_method) : false;
+  const canHold     = !['On Hold', 'PO Closed', 'Dispatched'].includes(job.status) && canDeptSetStage(dept, 'On Hold', job.printing_method);
+  const asks: Partial<Record<Stage, string>> = {
+    'Quality Check':    'Asks for QC remarks.',
+    'Partial Dispatch': 'Asks how many labels go now.',
+    'Dispatched':       'Confirms the full quantity going out.',
+  };
+
+  const delivery = deliveryWords(job, istToday());
+  const cardNo   = formatJobCardNumber(job.job_card_number);
+  const CARD     = 'rounded-2xl border border-brand-border bg-white shadow-[0_2px_8px_rgba(12,42,32,0.04)]';
+
   // ── Render ───────────────────────────────────────────────────
 
   return (
     <div className="space-y-5">
 
-      {/* Back link */}
-      <Link
-        href="/admin"
-        className="inline-flex items-center gap-1.5 text-sm text-[var(--glass-muted)] hover:text-[var(--glass-ink)] transition-colors"
-      >
-        ← Back to Dashboard
-      </Link>
+      <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-[13px] text-brand-muted">
+        <Link href="/admin" className="flex min-h-8 items-center font-medium text-brand-primary hover:text-brand-primary-hover">All jobs</Link>
+        <span aria-hidden="true">/</span>
+        <span className="font-mono text-brand-ink">{cardNo ?? job.po_number}</span>
+      </nav>
 
-      {/* Page header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold text-[var(--glass-ink)] font-mono tracking-tight">
-            {job.po_number}
-          </h1>
-          {job.pm_code && (
-            <p className="text-sm text-[var(--glass-muted)] font-mono mt-0.5">{job.pm_code}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {job.has_partial_runs && (
-            <span className="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-full bg-purple-400/15 text-purple-200">
-              Partial Runs
-            </span>
-          )}
-          {job.urgent && (
-            <span className={cn(
-              'inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full',
-              urgentBadgeClass(job.urgent_priority)
-            )}>
-              <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-              URGENT · P{job.urgent_priority}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Job info card */}
-      <div className="glass rounded-xl p-6">
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-8 gap-y-5">
-
-          <InfoField label="Job Card">
-            <p className="text-sm font-mono font-semibold text-[var(--glass-ink)]">
-              {formatJobCardNumber(job.job_card_number) ?? '—'}
-            </p>
-          </InfoField>
-
-          <InfoField label="Party">
-            <p className="text-sm font-semibold text-[var(--glass-ink)]">{job.party}</p>
-          </InfoField>
-
-          <InfoField label="Job Name">
-            <p className="text-sm text-[var(--glass-ink)]">{job.job_name ?? '—'}</p>
-          </InfoField>
-
-          <InfoField label="Type">
-            <span className={cn(
-              'text-xs px-2 py-0.5 rounded font-medium',
-              JOB_TYPE_BADGE[job.job_type]
-            )}>
-              {job.job_type}
-            </span>
-          </InfoField>
-
-          <InfoField label="Label Qty">
-            <p className="text-sm font-mono text-[var(--glass-ink)]">{formatQty(job.label_qty)}</p>
-          </InfoField>
-
-          <InfoField label="Dispatched">
-            {job.label_qty ? (
-              <div>
-                <p className="text-sm font-mono text-[var(--glass-ink)]">
-                  {formatQty(effectiveDispatched)} / {formatQty(job.label_qty)}
-                </p>
-                <div className="h-1.5 bg-white/10 rounded-full mt-1.5 w-24">
-                  <div
-                    className="h-full bg-emerald-400 rounded-full transition-all"
-                    style={{ width: `${dispatchPct}%` }}
-                  />
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-[var(--glass-muted)]">—</p>
+      {/* ── Header: stage, who/what, delivery, the numbers ───── */}
+      <section className={cn(CARD, 'flex flex-wrap items-start justify-between gap-6 p-5 sm:p-6')}>
+        <div className="flex min-w-0 flex-[1_1_520px] flex-col gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="w-full max-w-[300px]">
+              <StageSelect
+                job={job}
+                dept={dept}
+                actions={{ availableStages: filteredStages, completedSet, submitting, handleStageSelect }}
+                jobLabel={cardNo ?? job.po_number}
+                variant="card"
+              />
+            </div>
+            <span className="inline-flex h-7 items-center rounded-lg bg-brand-sunken px-2.5 text-xs font-semibold text-brand-muted">{job.job_type}</span>
+            {job.urgent && (
+              <span className="inline-flex h-7 items-center rounded-lg bg-[#FEF2F2] px-2.5 font-mono text-xs font-semibold text-brand-danger">
+                {job.urgent_priority != null ? `P${job.urgent_priority} · Urgent` : 'Urgent'}
+              </span>
             )}
-          </InfoField>
+            {job.is_scheduled_release && <span className="inline-flex h-7 items-center rounded-lg bg-brand-sunken px-2.5 text-xs font-semibold text-brand-muted">Scheduled releases</span>}
+            {job.has_partial_runs && <span className="inline-flex h-7 items-center rounded-lg bg-brand-sunken px-2.5 text-xs font-semibold text-brand-muted">Print runs</span>}
+          </div>
+          <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.025em] text-brand-ink sm:text-[30px]">
+            {job.party}
+            {job.job_name && <span className="font-normal text-brand-muted"> — {job.job_name}</span>}
+          </h1>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-brand-muted">
+            {cardNo && <span>Job card <span className="font-mono font-semibold text-brand-ink">{cardNo}</span></span>}
+            <span>PO <span className="font-mono text-brand-ink">{job.po_number}</span>{job.po_date && <> · <span className="font-mono">{formatShortDate(job.po_date)}</span></>}</span>
+            {job.pm_code && <span>PM code <span className="font-mono text-brand-ink">{job.pm_code}</span></span>}
+            <span>Added <span className="font-mono">{formatAdminDate(job.created_at)}</span></span>
+          </div>
+        </div>
 
-          <InfoField label="Delivery Date">
+        <div className="flex flex-col items-start gap-1 sm:items-end">
+          <span className="text-[10px] font-medium uppercase tracking-[0.025em] text-brand-muted">Delivery date</span>
+          <div className="font-mono text-lg font-semibold">
             <DeliveryDateEdit
               jobId={job.id}
               deliveryDate={job.delivery_date}
               dept={dept}
               onUpdated={(date) => setJob((j) => ({ ...j, delivery_date: date }))}
             />
-          </InfoField>
+          </div>
+          {delivery.text && (
+            <span className={cn(
+              'text-[13px] font-semibold',
+              delivery.tone === 'late' ? 'text-brand-danger' : delivery.tone === 'soon' ? 'text-brand-warning' : 'text-brand-muted',
+            )}>
+              {delivery.tone === 'late' ? delivery.text : delivery.text === 'today' ? 'Due today' : `Due ${delivery.text}`}
+            </span>
+          )}
+        </div>
 
-          {/* Prepress/production pick the unit that takes this job. */}
-          <InfoField label="Printing">
+        <dl className="grid flex-[1_1_100%] grid-cols-[repeat(auto-fit,minmax(min(150px,100%),1fr))] gap-px overflow-hidden rounded-xl border border-brand-line-soft bg-brand-line-soft">
+          <Figure label="Ordered"><span className="font-mono text-lg font-semibold">{formatQty(job.label_qty)}</span></Figure>
+          <Figure label="Dispatched">
+            <span className={cn('font-mono text-lg font-semibold', effectiveDispatched === 0 && 'text-brand-muted')}>{formatQty(effectiveDispatched)}</span>
+            {job.label_qty ? (
+              <span className="mt-1 block h-1 w-full max-w-[120px] overflow-hidden rounded-full bg-brand-sunken" aria-hidden="true">
+                <span className="block h-full rounded-full bg-brand-primary" style={{ width: `${Math.min(dispatchPct, 100)}%` }} />
+              </span>
+            ) : null}
+          </Figure>
+          <Figure label="Still to send">
+            <span className="font-mono text-lg font-semibold">
+              {job.label_qty ? formatQty(Math.max(0, (job.remaining_qty ?? job.label_qty - effectiveDispatched))) : '—'}
+            </span>
+          </Figure>
+          <Figure label="Printing unit">
             <PrintingUnitEdit
               jobId={job.id}
               printingMethod={job.printing_method}
@@ -338,126 +344,116 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
               dept={dept}
               onSaved={() => router.refresh()}
             />
-          </InfoField>
+          </Figure>
+        </dl>
 
-          <InfoField label="PO Date">
-            <p className="text-sm font-mono text-[var(--glass-ink)]">{formatShortDate(job.po_date)}</p>
-          </InfoField>
+        {job.notes && (
+          <p className="flex-[1_1_100%] rounded-xl bg-brand-surface-alt px-3.5 py-2.5 text-[13px] text-brand-ink">
+            <span className="font-semibold">Job note:</span> {job.notes}
+          </p>
+        )}
+      </section>
 
-          <InfoField label="Created">
-            <p className="text-sm font-mono text-[var(--glass-muted)]">{formatAdminDate(job.created_at)}</p>
-          </InfoField>
-
-          <InfoField label="Status">
-            <select
-              value={job.status}
-              disabled={submitting}
-              onChange={(e) => handleStageSelect(e.target.value as Stage)}
-              className={cn(
-                'w-full px-2 py-1.5 rounded-lg border border-transparent text-xs font-medium',
-                // Match the app-wide emerald focus bloom (see inputCls / DeliveryDateEdit)
-                'focus:outline-none focus:border-emerald-300/70',
-                'focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)]',
-                'transition-all cursor-pointer',
-                STATUS_COLORS[job.status]?.bg   ?? 'bg-white/10',
-                STATUS_COLORS[job.status]?.text  ?? 'text-white/80',
-                '[&>option]:bg-white [&>option]:text-[var(--glass-ink)]',
-                submitting && 'opacity-60 cursor-not-allowed'
-              )}
-            >
-              {filteredStages.map((stage) => {
-                // Backward picks are Admin-only, and shown greyed for everyone
-                // else so the pipeline reads as the one-way ratchet it is.
-                const backward  = isBackwardStage(stage);
-                const allowed   = canDeptSetStage(dept, stage, job.printing_method)
-                                  && (!backward || dept.isSuperAdmin);
-                const completed = completedSet.has(stage);
-                return (
-                  <option key={stage} value={stage} disabled={!allowed}>
-                    {`${allowed ? '' : '🔒 '}${completed ? '✓ ' : ''}${stage}`}
-                  </option>
-                );
-              })}
-            </select>
-            {job.is_scheduled_release && (
-              <p className="text-[10px] text-[var(--glass-muted)] mt-1">
-                Printing onward is updated per release below
-              </p>
-            )}
-
-            {job.status === 'Slitting' && job.slitting_confirmed_at && (
-              <p className="flex items-center gap-1.5 text-xs text-emerald-300 font-medium mt-2">
-                <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" /> Ready for QC
-              </p>
-            )}
-
-            {canConfirmSlitting && (
-              <button
-                onClick={confirmSlitting}
-                disabled={submitting}
-                className={cn(
-                  'mt-2 w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold',
-                  'px-3 py-2 rounded-lg bg-emerald-500/90 text-white hover:bg-emerald-500',
-                  'transition-colors disabled:opacity-60',
-                )}
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" /> Mark Slitting Complete
-              </button>
-            )}
-          </InfoField>
-
-          {job.is_scheduled_release && (
-            <InfoField label="Release">
-              <span className="text-xs px-2 py-0.5 rounded bg-sky-400/15 text-sky-200 font-medium">
-                Scheduled
-              </span>
-            </InfoField>
+      <div className="flex flex-wrap items-start gap-5">
+        {/* ── Left: the pipeline and what ships when ─────────── */}
+        <div className="flex min-w-0 flex-[999_1_640px] flex-col gap-5">
+          <JobPipeline job={job} detail={detail} />
+          {detail && (
+            <ReleasesSection
+              job={detail}
+              isScheduledRelease={job.is_scheduled_release || detail.is_scheduled_release}
+              dept={dept}
+              variant="card"
+              onChanged={() => { reloadDetail(); window.dispatchEvent(new Event(JOBS_CHANGED_EVENT)); }}
+            />
           )}
         </div>
 
-        {/* Notes */}
-        {job.notes && (
-          <div className="mt-5 pt-5 border-t border-white/10">
-            <p className="text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1">Notes</p>
-            <p className="text-sm text-[var(--glass-ink)]">{job.notes}</p>
-          </div>
-        )}
+        {/* ── Right: what to do next, and what's around it ───── */}
+        <aside className="flex min-w-0 flex-[1_1_360px] flex-col gap-5">
+          <section aria-label="Next step" className={cn(CARD, 'flex flex-col gap-3.5 p-5')}>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-medium uppercase tracking-[0.025em] text-brand-muted">Next step</span>
+              {job.status === 'PO Closed' ? (
+                <>
+                  <h2 className="text-lg font-semibold text-brand-ink">PO closed</h2>
+                  <p className="text-[13px] leading-relaxed text-brand-muted">Nothing left to do on this job. It stays in reports and history.</p>
+                </>
+              ) : canConfirmSlitting ? (
+                <>
+                  <h2 className="text-lg font-semibold text-brand-ink">Confirm slitting</h2>
+                  <p className="text-[13px] leading-relaxed text-brand-muted">Quality Check stays locked until slitting is confirmed.</p>
+                </>
+              ) : nextStage ? (
+                <>
+                  <h2 className="text-lg font-semibold text-brand-ink">
+                    {job.status === 'On Hold' ? `Resume at ${nextStage}` : <>{job.status} <span aria-hidden="true">→</span><span className="sr-only">, then</span> {nextStage}</>}
+                  </h2>
+                  <p className="text-[13px] leading-relaxed text-brand-muted">
+                    {job.is_scheduled_release && isPerReleaseStage(nextStage)
+                      ? 'From printing onward this job moves per release — use Scheduled releases below.'
+                      : <>{owners.length > 0 ? <>Owned by {owners.join(', ')}. </> : null}{asks[nextStage] ?? ''}</>}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-lg font-semibold text-brand-ink">{job.status}</h2>
+                  <p className="text-[13px] leading-relaxed text-brand-muted">
+                    The pipeline is complete.{canDeptOverridePOClosed(dept) ? ' Close the PO once the party has everything.' : ''}
+                  </p>
+                </>
+              )}
+            </div>
 
-        {/* Halt remark */}
-        {job.status === 'On Hold' && job.halt_remark && (
-          <div className="mt-4">
-            <p className="text-xs text-amber-200 bg-amber-400/10 border border-amber-300/25 rounded-lg px-3 py-2">
-              ⏸ On hold: {job.halt_remark}
-            </p>
-          </div>
-        )}
+            {job.status === 'Slitting' && job.slitting_confirmed_at && (
+              <p className="flex items-center gap-1.5 text-[13px] font-semibold text-brand-success">
+                <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Slitting confirmed — ready for QC
+              </p>
+            )}
 
-        {/* QC remark */}
-        {job.qc_remark && (
-          <div className="mt-4">
-            <p className="text-xs text-sky-200 bg-sky-400/10 border border-sky-300/25 rounded-lg px-3 py-2">
-              QC note: {job.qc_remark}
-            </p>
-          </div>
-        )}
-      </div>
+            {canConfirmSlitting ? (
+              <button type="button" onClick={() => setModal({ type: 'slitting' })} disabled={submitting} className={PRIMARY}>
+                <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Mark slitting complete
+              </button>
+            ) : nextStage && !(job.is_scheduled_release && isPerReleaseStage(nextStage)) ? (
+              canMoveNext ? (
+                <button type="button" onClick={() => handleStageSelect(nextStage)} disabled={submitting} className={PRIMARY}>
+                  {job.status === 'On Hold' ? `Resume at ${nextStage}` : `Move to ${nextStage}`}
+                </button>
+              ) : (
+                <p className="rounded-xl bg-brand-surface-alt px-3.5 py-2.5 text-[13px] text-brand-muted">
+                  Your department can&rsquo;t set {nextStage}. Leave a note below and {owners[0] ?? 'the owner'} will see it.
+                </p>
+              )
+            ) : !nextStage && job.status !== 'PO Closed' && canDeptOverridePOClosed(dept) ? (
+              <button type="button" onClick={() => handleStageSelect('PO Closed')} disabled={submitting} className={PRIMARY}>
+                Close PO
+              </button>
+            ) : null}
 
-      {/* Shade card cross-reference — read-only; see JobShadeCardPanel. */}
-      <JobShadeCardPanel
-        pmCode={job.pm_code}
-        party={job.party}
-        product={job.job_name}
-      />
+            {canHold && (
+              <button
+                type="button"
+                onClick={() => handleStageSelect('On Hold')}
+                disabled={submitting}
+                className="flex min-h-11 items-center justify-center rounded-[10px] border border-brand-border bg-white px-3.5 text-sm font-medium text-brand-warning transition-colors hover:bg-brand-surface-alt disabled:opacity-50"
+              >
+                Put on hold
+              </button>
+            )}
+          </section>
 
-      {/* Stage history + comments + dispatch schedules */}
-      <div className="glass rounded-xl px-6 pb-2">
-        <HistoryPanel
-          jobId={job.id}
-          jobType={job.job_type}
-          isScheduledRelease={job.is_scheduled_release}
-          dept={dept}
-          refreshKey={job.updated_at}
-        />
+          <JobShelfStockCard pmCode={job.pm_code} jobId={job.id} />
+
+          <JobNotesCard
+            job={job}
+            detail={detail}
+            onAdded={(c) => setDetail((d) => (d ? { ...d, stage_comments: [...d.stage_comments, c] } : d))}
+          />
+
+          {/* Shade card cross-reference — read-only; see JobShadeCardPanel. */}
+          <JobShadeCardPanel pmCode={job.pm_code} party={job.party} product={job.job_name} />
+        </aside>
       </div>
 
       {/* ── Modals (same pattern as JobRow) ────────────────────── */}
@@ -484,6 +480,8 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
 
       {modal.type === 'revert' && (
         <RevertStageModal
+          job={job}
+          completedStages={completedStages}
           currentStage={job.status}
           targetStage={modal.targetStage}
           onCancel={() => { setModal({ type: 'none' }); setPendingStage(null); }}
@@ -501,6 +499,7 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
 
       {modal.type === 'on_hold' && (
         <OnHoldModal
+          job={job}
           onCancel={() => setModal({ type: 'none' })}
           onConfirm={(remark) =>
             submitStatusChange({ new_status: 'On Hold', remark })
@@ -510,6 +509,10 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
 
       {modal.type === 'qc' && (
         <QCModal
+          job={job}
+          onReject={canDeptSetStage(dept, 'On Hold', job.printing_method)
+            ? (remark) => { setPendingStage(null); submitStatusChange({ new_status: 'On Hold', remark }); }
+            : undefined}
           onCancel={() => { setModal({ type: 'none' }); setPendingStage(null); }}
           onConfirm={(remark) => {
             const target = (pendingStage ?? 'Quality Check') as Stage;
@@ -526,21 +529,28 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
 
       {modal.type === 'partial_dispatch' && (
         <PartialDispatchModal
+          job={job}
           remaining={job.remaining_qty ?? (job.label_qty ? job.label_qty - job.dispatched_qty : 0)}
           onCancel={() => setModal({ type: 'none' })}
-          onConfirm={(qty) =>
-            submitStatusChange({ new_status: 'Partial Dispatch', qty_dispatched: qty })
-          }
+          onConfirm={(d) => submitStatusChange(partialDispatchPayload(d))}
         />
       )}
 
       {modal.type === 'full_dispatch' && (
         <FullDispatchModal
+          job={job}
           remaining={job.remaining_qty ?? (job.label_qty ? job.label_qty - job.dispatched_qty : 0)}
           onCancel={() => setModal({ type: 'none' })}
-          onConfirm={() =>
-            submitStatusChange({ new_status: 'Dispatched' })
-          }
+          onConfirm={(d) => submitStatusChange(fullDispatchPayload(d))}
+        />
+      )}
+
+      {modal.type === 'slitting' && (
+        <ConfirmSlittingModal
+          job={job}
+          busy={submitting}
+          onCancel={() => setModal({ type: 'none' })}
+          onConfirm={confirmSlitting}
         />
       )}
 
@@ -557,21 +567,18 @@ export default function JobDetailClient({ initialJob, dept }: Props) {
   );
 }
 
-// ── Small helper — keeps the info grid DRY ──────────────────────
+// ── Small helpers ───────────────────────────────────────────────
 
-function InfoField({
-  label,
-  children,
-}: {
-  label:    string;
-  children: React.ReactNode;
-}) {
+const PRIMARY = cn(
+  'flex min-h-12 items-center justify-center gap-2 rounded-[10px] bg-brand-primary px-4 text-[15px] font-semibold text-white',
+  'transition-colors hover:bg-brand-primary-hover disabled:opacity-50',
+);
+
+function Figure({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
-      <p className="text-xs font-medium text-[var(--glass-muted)] uppercase tracking-wide mb-1">
-        {label}
-      </p>
-      {children}
+    <div className="flex flex-col gap-1 bg-white px-3.5 py-3 text-brand-ink">
+      <dt className="text-[10px] font-medium uppercase tracking-[0.025em] text-brand-muted">{label}</dt>
+      <dd>{children}</dd>
     </div>
   );
 }

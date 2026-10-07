@@ -13,10 +13,12 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
+import { allPages } from '@/lib/api/allPages';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptUseBOM, canDeptDecideBOM } from '@/lib/constants/departments';
+import { deptKeyOf } from '@/lib/identity';
 
 function text(value: unknown): string | null {
   return typeof value === 'string' ? value.trim() || null : null;
@@ -36,7 +38,7 @@ export async function GET(_request: NextRequest) {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!canDeptUseBOM(perms)) {
     return NextResponse.json({ error: 'Bill of Material access required' }, { status: 403 });
   }
@@ -52,7 +54,25 @@ export async function GET(_request: NextRequest) {
 
   // NUMERIC arrives as a number from PostgREST today; pin it anyway, since
   // the costing table compares and multiplies this on the client.
-  const materials = (data ?? []).map((m) => ({ ...m, rate_per_sqm: Number(m.rate_per_sqm) }));
+  // How many costed jobs use each material — shown as "Used by N jobs", and
+  // the reason a used material can only be retired, not deleted. Paged:
+  // one request stops at 1000 costings, and a material past the cap would
+  // read "Used by 0" and offer Delete.
+  let uses: { material_id: string }[];
+  try {
+    uses = await allPages((from, to) => supabase
+      .from('bom_costings')
+      .select('material_id')
+      .not('material_id', 'is', null)
+      .order('job_separation_id', { ascending: true })
+      .range(from, to));
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+  }
+  const usedBy = new Map<string, number>();
+  for (const u of uses) usedBy.set(u.material_id, (usedBy.get(u.material_id) ?? 0) + 1);
+
+  const materials = (data ?? []).map((m) => ({ ...m, rate_per_sqm: Number(m.rate_per_sqm), used_by: usedBy.get(m.id) ?? 0 }));
 
   return NextResponse.json({ materials });
 }
@@ -63,7 +83,7 @@ export async function POST(request: NextRequest) {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms || !canDeptDecideBOM(perms)) {
     return NextResponse.json(
       { error: 'Only Admin can add a material to the master list' },

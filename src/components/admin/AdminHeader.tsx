@@ -1,368 +1,255 @@
 'use client';
 // src/components/admin/AdminHeader.tsx
+// One 56px bar: the logo, the section groups (Jobs, Production, Stock,
+// Dispatch, then BOM, Follow-ups and Reports), and on the right search,
+// notes, the admin gear and the account menu.
+//
+// Groups with more than one page open a small menu under their tab; a group
+// holding a single page is a plain link. Who sees which group is decided in
+// lib/adminNav.ts, so the bar, the phone sheet, the phone tab bar and Ctrl+K
+// always agree.
+//
+// Below lg the groups move into a sheet behind the hamburger, listed under
+// their group names. On phones a tab bar at the bottom carries Jobs,
+// Machines, Stock, Notes and More.
 
 import Link from 'next/link';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { Package, Scissors, Disc, Users, SplitSquareHorizontal, Contact, ClipboardList, Truck, Menu, X, Building2, LayoutDashboard, Printer, Palette, Settings, type LucideIcon } from 'lucide-react';
+import { ChevronDown, Cpu, LayoutDashboard, LogOut, Menu, MessageSquare, MoreHorizontal, Package, Printer, Search, Settings, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import {
   canDeptUseBOM,
   canDeptManageDispatchNotifications,
-  canDeptManagePartyContacts,
-  canDeptManageRegister,
-  canDeptManageTeam,
-  canDeptManageNotificationRecipients,
   canDeptExportData,
   canDeptViewStock,
   type DeptPermissions,
 } from '@/lib/constants/departments';
+import { NOTES_OPEN_EVENT, NOTES_UNREAD_EVENT } from '@/lib/constants/events';
+import {
+  buildAdminLinks, buildNavGroups, groupBadge, isActiveHref, isGroupActive,
+  type NavGroup, type NavLink,
+} from '@/lib/adminNav';
+import { initials } from '@/lib/team';
 import { Logo } from '@/components/brand/Logo';
 import ExportButton from './ExportButton';
+import CommandPalette from './CommandPalette';
 import { useBomPendingCount, useDispatchPendingCount } from '@/hooks/useBadgeCounts';
 
 type Props = {
   dept:        DeptPermissions;
+  /** Department name, e.g. "Admin". */
   displayName: string;
-  userEmail:   string;
+  /** The person signed in — their Team name, else the start of their email. */
+  userName:    string;
 };
 
-/** How the section strip is currently drawn. The header steps down this
- *  ladder one rung at a time, and only when the rung above genuinely no
- *  longer fits:
- *
- *    full  — every section with its full name. The normal state.
- *    short — abbreviated names ("Label Stock" → "Stock"). Still readable
- *            words, just less of them.
- *    icon  — symbols alone, with the name on hover and for screen readers.
- *    menu  — even the icons collide, so the strip gives up its space to the
- *            hamburger the small screens already use.
- *
- *  The whole strip moves together: one decisive change at one width, rather
- *  than twelve items independently popping in and out as you drag. */
-type Density = typeof DENSITY_LADDER[number] | 'menu';
+const iconBtn =
+  'relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-white/[0.08] text-white transition-colors hover:bg-white/[0.16] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-mint/70';
 
-const DENSITY_LADDER = ['full', 'short', 'icon'] as const;
-
-/** Extra room a wider rung must clear before the strip climbs back to it.
- *  Without this margin a viewport sitting exactly on a threshold — or a
- *  scrollbar appearing on the page below — would flip between two rungs on
- *  every stray pixel. Growing costs 24px more than shrinking. */
-const DENSITY_HYSTERESIS = 24;
-
-type NavItem = {
-  href:   string;
-  label:  string;
-  /** Name used on the `short` rung. Omit where the full name is already as
-   *  tight as it goes — "Dies" has nothing to give. */
-  short?: string;
-  icon:   LucideIcon;
-  /** Unanswered-work count; rendered as an amber pill when > 0. */
-  badge?: number;
-  /** Spoken form of the badge, e.g. "3 requests awaiting a decision". */
-  badgeLabel?: (n: number) => string;
-};
-
-/** Is `href` the section the user is currently in?
- *  /admin is the dashboard itself, so it only matches exactly — otherwise it
- *  would light up on every child route and two entries would read as active. */
-function isActive(pathname: string, href: string) {
-  return href === '/admin' ? pathname === '/admin' : pathname.startsWith(href);
-}
-
-function labelFor(item: NavItem, density: Density) {
-  return density === 'short' ? item.short ?? item.label : item.label;
-}
-
-/** The shape of a strip entry, at one rung of the ladder.
- *
- *  Shared by the real links and by the hidden rulers that decide which rung
- *  we are on, so what gets measured is exactly what gets rendered — the whole
- *  ladder is only as honest as that pairing. */
-function entryClass(density: Density, active: boolean) {
-  return cn(
-    'relative inline-flex shrink-0 items-center rounded-lg py-1.5 text-xs font-medium',
-    // Icons alone want square padding; a name beside them wants breathing
-    // room on either side of the pair.
-    density === 'icon' ? 'px-2' : 'gap-1.5 px-2.5',
-    // Colour is the only thing that moves on hover. The active cue is the
-    // sliding underline, which lives outside the entry.
-    'transition-colors duration-200 ease-out',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70',
-    active ? 'text-white' : 'text-white/70 hover:bg-white/10 hover:text-white',
-  );
-}
-
-/** Unanswered-work marker. A counted pill where there is room for one, and a
- *  corner dot on the icon rung where there is not — the count is still one
- *  hover away, and losing it is better than the icons colliding. */
-function NavBadge({ item, density }: { item: NavItem; density: Density }) {
-  const n = item.badge ?? 0;
+/** Amber count for unanswered work inside a group (BOM requests, unsent dispatch emails). */
+function CountPill({ n, label, className }: { n: number; label?: string; className?: string }) {
   if (n <= 0) return null;
-
-  if (density === 'icon') {
-    return (
-      <span
-        className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-amber-300 ring-2 ring-[#10553F]"
-        aria-label={item.badgeLabel?.(n)}
-      />
-    );
-  }
   return (
     <span
-      className="ml-0.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-300 px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-[#0A1F18]"
-      aria-label={item.badgeLabel?.(n)}
+      aria-label={label}
+      className={cn('inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-300 px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-[#0A1F18]', className)}
     >
       {n}
     </span>
   );
 }
 
-/** One section link in the stacked sheet — full-width 44px rows, always with
- *  the full name. The sheet has vertical room, so it never abbreviates. */
-function StackedNavLink({ item, pathname }: { item: NavItem; pathname: string }) {
-  const active = isActive(pathname, item.href);
-  const Icon   = item.icon;
+// ── Dropdown ──────────────────────────────────────────────────
+// Disclosure pattern: a button with aria-expanded and a list of links. It
+// closes on Escape (focus back to the button), an outside click, or a
+// navigation. Arrow keys move between the links once inside.
+
+function useDismiss(open: boolean, close: () => void, rootRef: React.RefObject<HTMLElement | null>, btnRef: React.RefObject<HTMLButtonElement | null>) {
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (!rootRef.current?.contains(e.target as Node)) close();
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { close(); btnRef.current?.focus(); }
+    }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, close, rootRef, btnRef]);
+}
+
+/** Open/close state for one header dropdown, closed again on every navigation. */
+function useDropdown(pathname: string) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const btnRef  = useRef<HTMLButtonElement>(null);
+  const menuId  = useId();
+  const close   = useRef(() => setOpen(false)).current;
+  useDismiss(open, close, rootRef, btnRef);
+  useEffect(() => { setOpen(false); }, [pathname]);
+  return { open, setOpen, close, rootRef, btnRef, menuId };
+}
+
+function onMenuArrows(e: React.KeyboardEvent<HTMLElement>) {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  e.preventDefault();
+  const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('a, button:not([disabled])'));
+  const i = items.indexOf(document.activeElement as HTMLElement);
+  const next = e.key === 'ArrowDown' ? (i + 1) % items.length : (i - 1 + items.length) % items.length;
+  items[next]?.focus();
+}
+
+const menuPanel =
+  'nav-menu-in absolute top-[calc(100%+6px)] z-50 min-w-[200px] rounded-xl border border-brand-border bg-white p-1.5 text-brand-ink shadow-[0_12px_32px_rgba(12,42,32,0.18)]';
+
+function MenuLink({ item, pathname, onPick }: { item: NavLink; pathname: string; onPick: () => void }) {
+  const active = isActiveHref(pathname, item.href);
+  const Icon = item.icon;
   return (
     <Link
       href={item.href}
+      onClick={onPick}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'flex w-full min-h-11 items-center gap-2.5 rounded-lg px-2 text-sm font-medium',
-        'transition-colors duration-200 ease-out',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70',
-        // The active entry reads by fill plus full-strength text. The fill is
-        // an area cue rather than a colour one, so it still separates for
-        // anyone who cannot tell white/85 from white; aria-current above
-        // carries it for assistive tech.
-        active ? 'bg-white/15 text-white' : 'text-white/85 hover:bg-white/10 hover:text-white',
+        'flex min-h-11 items-center gap-2.5 rounded-lg px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
+        active ? 'bg-brand-surface-hover font-semibold text-brand-primary' : 'font-medium hover:bg-brand-surface-hover',
       )}
     >
-      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+      <Icon className="h-4 w-4 shrink-0 text-brand-muted" aria-hidden="true" />
       <span className="flex-1">{item.label}</span>
-      <NavBadge item={item} density="full" />
+      <CountPill n={item.badge ?? 0} label={item.badgeLabel?.(item.badge ?? 0)} />
     </Link>
   );
 }
 
-export default function AdminHeader({ dept, displayName, userEmail }: Props) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const supabase = createClient();
+const tabCls = (active: boolean) => cn(
+  'inline-flex h-10 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2.5 text-sm xl:px-3 transition-colors',
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-mint/70',
+  active ? 'bg-white/[0.16] font-semibold text-white' : 'font-medium text-white/80 hover:bg-white/10 hover:text-white',
+);
+
+function GroupTab({ group, pathname }: { group: NavGroup; pathname: string }) {
+  const active = isGroupActive(pathname, group);
+
+  // One page in the group: no menu to open, just go there.
+  if (group.items.length === 1) {
+    const item = group.items[0];
+    return (
+      <Link href={item.href} aria-current={active ? 'page' : undefined} className={tabCls(active)}>
+        {group.label}
+        <CountPill n={item.badge ?? 0} label={item.badgeLabel?.(item.badge ?? 0)} className="ml-1" />
+      </Link>
+    );
+  }
+  return <GroupMenu group={group} pathname={pathname} active={active} />;
+}
+
+function GroupMenu({ group, pathname, active }: { group: NavGroup; pathname: string; active: boolean }) {
+  const { open, setOpen, close, rootRef, btnRef, menuId } = useDropdown(pathname);
+  const badge = groupBadge(group);
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        ref={btnRef}
+        type="button"
+        aria-expanded={open}
+        aria-controls={menuId}
+        aria-current={active ? 'page' : undefined}
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setOpen(true);
+            requestAnimationFrame(() => document.getElementById(menuId)?.querySelector<HTMLElement>('a')?.focus());
+          }
+        }}
+        className={tabCls(active)}
+      >
+        {group.label}
+        <CountPill n={badge} label={`${badge} waiting in ${group.label}`} className="ml-1" />
+        <ChevronDown
+          className={cn('h-3 w-3 transition-transform motion-reduce:transition-none', open && 'rotate-180', !active && 'opacity-70')}
+          strokeWidth={2.4}
+          aria-hidden="true"
+        />
+      </button>
+      {open && (
+        <div id={menuId} className={cn(menuPanel, 'left-0')} onKeyDown={onMenuArrows}>
+          {group.items.map((item) => (
+            <MenuLink key={item.href} item={item} pathname={pathname} onPick={close} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Header ────────────────────────────────────────────────────
+
+export default function AdminHeader({ dept, displayName, userName }: Props) {
+  const router      = useRouter();
+  const pathname    = usePathname();
+  const supabase    = createClient();
   const queryClient = useQueryClient();
 
-  const [mobileOpen, setMobileOpen] = useState(false);
-  // Every navigation closes the sheet so it never lingers over the next page.
+  const [sheetOpen, setSheetOpen]     = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(() => { setSheetOpen(false); }, [pathname]);
+
+  // Realtime-driven counts with a slow fallback poll — see useBadgeCounts.
+  const bomPending      = useBomPendingCount(canDeptUseBOM(dept));
+  const dispatchPending = useDispatchPendingCount(canDeptManageDispatchNotifications(dept));
+
+  const groups     = buildNavGroups(dept, { bomPending, dispatchPending });
+  const adminLinks = buildAdminLinks(dept);
+  const allLinks   = [...groups.flatMap((g) => g.items), ...adminLinks];
+  const sheetGroups: NavGroup[] = adminLinks.length
+    ? [...groups, { key: 'admin', label: 'Admin', icon: Settings, items: adminLinks }]
+    : groups;
+
+  // NotesFeed (mounted in the layout) owns the notes; it reports its unread
+  // count by event and opens when asked the same way.
+  const [notesUnread, setNotesUnread] = useState(0);
   useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
-
-  // Material requests still awaiting the owner. Only Production and Admin
-  // can see the section at all, so nobody else even asks.
-  const showBom = canDeptUseBOM(dept);
-
-  // Realtime-driven count with a slow fallback poll — see useBadgeCounts.
-  // BomTabs reads the same query, so the number is fetched once.
-  const bomPending = useBomPendingCount(showBom);
-
-  // Parties with a dispatch batch still waiting to be emailed. Only
-  // Dispatch/Admin manage this queue — kept live the same way as the BOM badge.
-  const canQueue = canDeptManageDispatchNotifications(dept);
-
-  // Dispatch Emails now also holds the party-contact and internal-recipient
-  // lists as tabs, so the entry has to show for anyone holding any of the
-  // three keys — an Admin who manages recipients but not the queue would
-  // otherwise have no way in. The badge stays gated on the queue permission
-  // alone, since /api/dispatch-notifications refuses anyone else.
-  const showDispatchEmails =
-    canQueue || canDeptManagePartyContacts(dept) || canDeptManageNotificationRecipients(dept);
-
-  const dispatchPending = useDispatchPendingCount(canQueue);
+    const onUnread = (e: Event) => setNotesUnread(Number((e as CustomEvent<number>).detail) || 0);
+    window.addEventListener(NOTES_UNREAD_EVENT, onUnread);
+    return () => window.removeEventListener(NOTES_UNREAD_EVENT, onUnread);
+  }, []);
+  const openNotes  = () => { setSheetOpen(false); window.dispatchEvent(new Event(NOTES_OPEN_EVENT)); };
+  const notesLabel = notesUnread > 0 ? `Internal notes, ${notesUnread} unread` : 'Internal notes';
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
-      const key = e.key.toLowerCase();
-
-      // Ctrl+K focuses whatever search box is on the current page — every
-      // admin page tags its own search input with data-global-search, so
-      // there is at most one match at a time.
-      if (key === 'k') {
-        e.preventDefault();
+      // "/" focuses whatever search box is on the current page — every admin
+      // page tags its own search input with data-global-search, so there is
+      // at most one match. Only when not already typing somewhere.
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const t = e.target as HTMLElement | null;
+        if (t?.closest('input, textarea, select, [contenteditable="true"]')) return;
         const search = document.querySelector<HTMLInputElement>('[data-global-search]');
-        search?.focus();
-        search?.select();
+        if (!search) return;
+        e.preventDefault();
+        search.focus();
+        search.select();
+        return;
+      }
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+      // Ctrl+K searches everything — jobs, plates, dies, stock, parties.
+      if (e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen((open) => !open);
       }
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [router]);
-
-  // The single source of truth for the strip and the sheet. Permission gates
-  // live here rather than beside the markup, so the two can never drift on
-  // who is allowed to see what.
-  //
-  // Dashboard leads: it had no entry at all before, reachable only by clicking
-  // the logo — which is why ten sub-pages each grew their own "Back to
-  // dashboard" link to compensate.
-  //
-  // Dies, plates and job separation are readable by every department —
-  // Prepress is the only one who can change them, enforced in /api/dies,
-  // /api/plates, /api/job-separations. Label stock is its own pair of
-  // features: stock_view to see the tab, stock_edit to change the shelf,
-  // enforced in /api/stock and by RLS on label_stock (071).
-  const navItems: NavItem[] = [
-    { href: '/admin',                label: 'Dashboard',                       icon: LayoutDashboard },
-    ...(canDeptViewStock(dept)
-      ? [{ href: '/admin/stock', label: 'Label Stock', short: 'Stock', icon: Package }] : []),
-    { href: '/admin/slips',          label: 'Slips',                           icon: Printer },
-    { href: '/admin/dies',           label: 'Dies',                            icon: Scissors },
-    { href: '/admin/plates',         label: 'Plates',                          icon: Disc },
-    { href: '/admin/shade-cards',    label: 'Shade Cards',  short: 'Shades',   icon: Palette },
-    { href: '/admin/job-separation', label: 'Job Separation', short: 'Job Sep', icon: SplitSquareHorizontal },
-    // Bill of Material — order value against material cost per job, and the
-    // material requests the floor raises from it. Production + Admin only,
-    // mirrored by canDeptUseBOM in every /api/bom-* route and by RLS on the
-    // bom_* tables. The badge counts requests nobody has answered yet.
-    ...(showBom ? [{
-      href: '/admin/bom', label: 'BOM', icon: ClipboardList,
-      badge: bomPending,
-      badgeLabel: (n: number) => `${n} material request${n === 1 ? '' : 's'} awaiting Admin`,
-    }] : []),
-    // Consolidated dispatch email queue — Dispatch/Admin only, mirrored by
-    // canDeptManageDispatchNotifications in every /api/dispatch-notifications
-    // route and by RLS on pending_dispatch_notifications. The badge counts
-    // parties with an unsent batch waiting.
-    ...(showDispatchEmails ? [{
-      href: '/admin/dispatch-notifications', label: 'Dispatch Emails', short: 'Dispatch', icon: Truck,
-      badge: dispatchPending,
-      badgeLabel: (n: number) => `${n} part${n === 1 ? 'y' : 'ies'} with an unsent dispatch email`,
-    }] : []),
-    // Follow-ups (customer CRM) holds sales/contact data with no reason to be
-    // shop-floor-visible — Admin only, mirrored by canDeptManageRegister in
-    // every /api/register route and by RLS on the register_* tables. Ordered
-    // before Team on request.
-    ...(canDeptManageRegister(dept)
-      ? [{ href: '/admin/register', label: 'Follow-ups', short: 'Follow', icon: Contact }] : []),
-    // Team management touches login accounts directly — Admin only, mirrored
-    // by the check in every /api/team route.
-    ...(canDeptManageTeam(dept)
-      ? [{ href: '/admin/team', label: 'Team', icon: Users }] : []),
-    // Create departments and configure their permission grids — the
-    // super-admin department only, since this page edits the permission
-    // system itself.
-    ...(dept.isSuperAdmin
-      ? [{ href: '/admin/departments', label: 'Departments', short: 'Depts', icon: Building2 }] : []),
-    // Company name/address/logo/support email — the details that make this
-    // deployment identifiable as one particular printing company. Admin
-    // only, same reasoning as Departments above.
-    ...(dept.isSuperAdmin
-      ? [{ href: '/admin/settings', label: 'Settings', icon: Settings }] : []),
-  ];
-
-  // ── Which rung of the ladder ────────────────────────────────────────
-  // Three hidden rulers render the strip at full, short and icon width. We
-  // take the first that fits the room the header actually has, and fall
-  // through to the hamburger when none of them do.
-  //
-  // Measuring beats a set of fixed breakpoints because the entry count is
-  // per-department — a Production login has eight sections where an admin has
-  // twelve, and their strips run out of room at genuinely different widths.
-  //
-  // The strip is `flex-1 min-w-0`, so its width comes from the header and
-  // never from its own contents; changing what is inside it therefore cannot
-  // feed back into its size, and the observer below cannot loop.
-  const shellRef  = useRef<HTMLElement>(null);
-  const barRef    = useRef<HTMLDivElement>(null);
-  const rulerRefs = {
-    full:  useRef<HTMLDivElement>(null),
-    short: useRef<HTMLDivElement>(null),
-    icon:  useRef<HTMLDivElement>(null),
-  };
-  // Full names are the server-rendered default: it is the right answer on the
-  // wide monitors this runs on, so the common case never corrects itself.
-  const [density, setDensity] = useState<Density>('full');
-
-  // Re-measure whenever the entry set changes shape: a permission-gated
-  // section appearing, or a badge going from absent to two digits, both
-  // change the width a rung needs.
-  const navSignature = navItems.map((i) => `${i.href}:${i.badge ?? 0}`).join('|');
-
-  useLayoutEffect(() => {
-    const shell = shellRef.current;
-    if (!shell) return;
-
-    function evaluate() {
-      const avail = shell?.clientWidth ?? 0;
-      // Below lg the strip is display:none and reads 0 — nothing to decide,
-      // the hamburger owns that range outright.
-      if (!avail) return;
-
-      const needs = {
-        full:  rulerRefs.full.current?.getBoundingClientRect().width  ?? 0,
-        short: rulerRefs.short.current?.getBoundingClientRect().width ?? 0,
-        icon:  rulerRefs.icon.current?.getBoundingClientRect().width  ?? 0,
-      };
-      if (!needs.full) return;
-
-      setDensity((prev) => {
-        const prevRung = DENSITY_LADDER.indexOf(prev as typeof DENSITY_LADDER[number]);
-        for (let rung = 0; rung < DENSITY_LADDER.length; rung++) {
-          const step = DENSITY_LADDER[rung];
-          // Climbing back towards fuller names has to clear the margin;
-          // stepping down to save space does not.
-          const climbing = prevRung === -1 || rung < prevRung;
-          if (needs[step] + (climbing ? DENSITY_HYSTERESIS : 0) <= avail) return step;
-        }
-        return 'menu';
-      });
-    }
-
-    evaluate();
-    const ro = new ResizeObserver(evaluate);
-    ro.observe(shell);
-    // Web fonts land after first paint and change every name's width, so the
-    // first measurement is taken against fallback metrics; redo it once
-    // DM Sans is actually in.
-    document.fonts?.ready.then(evaluate).catch(() => {});
-    return () => ro.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navSignature]);
-
-  // On the bottom rung the strip stands down and the hamburger takes over,
-  // exactly as it does below lg.
-  const useMenu = density === 'menu';
-  useEffect(() => {
-    if (!useMenu) setMobileOpen(false);
-  }, [useMenu]);
-
-  // ── Sliding active indicator ────────────────────────────────────────
-  // The only thing in the strip that moves. It is measured rather than
-  // animated per-entry so it travels the real distance between two entries of
-  // different widths, and it is driven by transform/width on a single element
-  // — no layout thrash, and nothing mounts or unmounts.
-  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
-
-  useLayoutEffect(() => {
-    const bar = barRef.current;
-    if (!bar) { setIndicator(null); return; }
-
-    function measure() {
-      const el = bar?.querySelector<HTMLElement>('[data-bar-active="true"]');
-      setIndicator(el ? { left: el.offsetLeft, width: el.offsetWidth } : null);
-    }
-
-    measure();
-    // The strip re-centres as the header's max-width steps up on wide
-    // monitors, so the indicator has to follow the element, not a remembered
-    // number.
-    const ro = new ResizeObserver(measure);
-    ro.observe(bar);
-    document.fonts?.ready.then(measure).catch(() => {});
-    return () => ro.disconnect();
-  }, [density, pathname, navSignature]);
+  }, []);
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -374,178 +261,252 @@ export default function AdminHeader({ dept, displayName, userEmail }: Props) {
     router.refresh();
   }
 
-  /** The contents of one entry, at one rung. Rendered both as a real link and
-   *  inside the rulers, which is what keeps the measurements truthful. */
-  function EntryBody({ item, density }: { item: NavItem; density: Density }) {
-    const Icon = item.icon;
-    return (
-      <>
-        <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-        {density !== 'icon' && <span>{labelFor(item, density)}</span>}
-        <NavBadge item={item} density={density} />
-      </>
-    );
-  }
-
-  /** A ruler: the whole strip at one rung, laid out where nothing can see it.
-   *  `visibility: hidden` (rather than `display: none`) is the point — it
-   *  still lays out, so it still has a measurable width, while staying out of
-   *  the tab order and the accessibility tree. */
-  function Ruler({ at }: { at: typeof DENSITY_LADDER[number] }) {
-    return (
-      <div
-        ref={rulerRefs[at]}
-        aria-hidden="true"
-        className="pointer-events-none absolute left-0 top-0 flex w-max items-center gap-1"
-        style={{ visibility: 'hidden', transform: 'translateX(-200vw)' }}
-      >
-        {navItems.map((item) => (
-          <span key={item.href} className={entryClass(at, false)}>
-            <EntryBody item={item} density={at} />
-          </span>
-        ))}
-      </div>
-    );
-  }
+  const adminActive = adminLinks.some((l) => isActiveHref(pathname, l.href)) || isActiveHref(pathname, '/admin/printing-units');
 
   return (
-    <header className="bg-brand-header sticky top-0 z-40 border-b border-white/10">
-      <div className="max-w-screen-2xl 3xl:max-w-[1800px] 4xl:max-w-[2200px] mx-auto px-4 h-14 flex items-center gap-3 sm:gap-5">
-
+    <header className="sticky top-0 z-40 border-b border-white/10 bg-brand-header">
+      <div className="mx-auto flex h-14 max-w-screen-2xl items-center gap-3 px-4 lg:gap-5 3xl:max-w-[1800px] 4xl:max-w-[2200px]">
         <Link href="/admin" aria-label="Go to dashboard" title="Dashboard" className="shrink-0">
           <Logo onDark width={120} height={30} priority />
         </Link>
 
-        {/* flex-1 min-w-0: the strip takes exactly the space the logo and the
-            right-hand controls leave it and no more, so it can never push the
-            header wide or slide under its neighbours. overflow-x-clip is the
-            belt to that braces — for the one frame between a resize and the
-            re-measure, an entry is clipped rather than spilling.
-            The element stays in the layout even on the `menu` rung, because
-            the rulers inside it are what let the strip come back when the
-            window grows again. */}
-        <nav
-          ref={shellRef}
-          aria-label="Admin sections"
-          className="relative hidden h-full min-w-0 flex-1 overflow-x-clip lg:block"
-        >
-          {!useMenu && (
-            <div
-              // Keyed by rung so a step up or down crossfades rather than
-              // snapping. Only opacity animates — the header's height never
-              // changes, so nothing below it moves during a resize.
-              key={density}
-              ref={barRef}
-              className="nav-swap relative flex h-full items-center gap-1"
-            >
-              {navItems.map((item) => {
-                const active = isActive(pathname, item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    // On the icon rung the visible glyph carries no text, so
-                    // the name has to come from here — as a hover tooltip and
-                    // as the accessible name. Harmless on the other rungs.
-                    title={item.label}
-                    aria-label={item.label}
-                    data-bar-active={active}
-                    aria-current={active ? 'page' : undefined}
-                    className={entryClass(density, active)}
-                  >
-                    <EntryBody item={item} density={density} />
-                  </Link>
-                );
-              })}
-
-              {/* The indicator sits in the strip's own coordinate space, so it
-                  can slide between entries of different widths in one move. */}
-              {indicator && (
-                <span
-                  aria-hidden="true"
-                  className="nav-indicator absolute bottom-0 left-0 h-0.5 rounded-full bg-emerald-300"
-                  style={{
-                    transform: `translateX(${indicator.left}px)`,
-                    width: indicator.width,
-                  }}
-                />
-              )}
-            </div>
-          )}
-
-          <Ruler at="full" />
-          <Ruler at="short" />
-          <Ruler at="icon" />
+        <nav aria-label="Admin sections" className="hidden min-w-0 flex-1 items-center gap-0.5 lg:flex">
+          {groups.map((g) => <GroupTab key={g.key} group={g} pathname={pathname} />)}
         </nav>
 
-        {/* Right side */}
-        <div className="ml-auto flex shrink-0 items-center gap-3">
-          <span className="text-white/75 text-xs font-mono hidden sm:inline">
-            {displayName}
-          </span>
-          {/* Full-database export — Admin only, mirrored by the check in
-              GET /api/export, which is the actual gate. */}
-          {canDeptExportData(dept) && <ExportButton />}
-          {/* Below lg, and on the menu rung, this moves into the sheet
-              instead, sized for a proper tap target there — this compact text
-              button only appears beside a strip. */}
-          <button
-            onClick={handleLogout}
-            className={cn(
-              'hidden text-white/70 hover:text-white text-xs transition-colors px-2 py-1',
-              !useMenu && 'lg:inline-block',
-            )}
-          >
-            Sign out
-          </button>
-
-          {/* Hamburger toggle — wherever the strip has stood down, this is the
-              only way to reach the sections, so it needs a real 44px tap
-              target. */}
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <button
             type="button"
-            onClick={() => setMobileOpen((open) => !open)}
-            aria-expanded={mobileOpen}
-            aria-controls="admin-mobile-nav"
-            aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
-            className={cn(
-              'inline-flex items-center justify-center min-h-11 min-w-11 -mr-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors',
-              !useMenu && 'lg:hidden',
-            )}
+            onClick={() => setPaletteOpen(true)}
+            aria-label="Search everything (Ctrl K)"
+            title="Search everything (Ctrl K)"
+            className={iconBtn}
           >
-            {mobileOpen
-              ? <X className="h-5 w-5" aria-hidden="true" />
-              : <Menu className="h-5 w-5" aria-hidden="true" />}
+            <Search className="h-[19px] w-[19px]" aria-hidden="true" />
+          </button>
+
+          <button type="button" onClick={openNotes} aria-label={notesLabel} title={notesLabel} className={cn(iconBtn, 'hidden sm:inline-flex')}>
+            <MessageSquare className="h-[19px] w-[19px]" aria-hidden="true" />
+            {notesUnread > 0 && (
+              <span aria-hidden="true" className="absolute right-1 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-mint px-1 font-mono text-[10px] font-semibold text-[#0A1F18]">
+                {notesUnread > 99 ? '99+' : notesUnread}
+              </span>
+            )}
+          </button>
+
+          {adminLinks.length > 0 && <AdminGear links={adminLinks} pathname={pathname} active={adminActive} />}
+
+          <AccountMenu
+            userName={userName}
+            displayName={displayName}
+            canExport={canDeptExportData(dept)}
+            onLogout={handleLogout}
+            pathname={pathname}
+          />
+
+          {/* Below lg this is the only way to the sections, so a full 44px target. */}
+          <button
+            type="button"
+            onClick={() => setSheetOpen((o) => !o)}
+            aria-expanded={sheetOpen}
+            aria-controls="admin-mobile-nav"
+            aria-label={sheetOpen ? 'Close menu' : 'Open menu'}
+            className="-mr-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-white/85 transition-colors hover:bg-white/10 hover:text-white lg:hidden"
+          >
+            {sheetOpen ? <X className="h-5 w-5" aria-hidden="true" /> : <Menu className="h-5 w-5" aria-hidden="true" />}
           </button>
         </div>
       </div>
 
-      {/* Section sheet — the same links and conditions as the strip, stacked
-          with full-width 44px rows and always with the full names. */}
-      {mobileOpen && (
+      {/* Section sheet — every group with its pages, full names, 44px rows. */}
+      {sheetOpen && (
         <nav
           id="admin-mobile-nav"
           aria-label="Admin sections (menu)"
-          className={cn(
-            'nav-panel-in border-t border-white/10 bg-brand-header px-4 py-2',
-            !useMenu && 'lg:hidden',
-          )}
+          className="nav-panel-in max-h-[calc(100dvh-56px)] overflow-y-auto border-t border-white/10 bg-brand-header px-4 pb-3 pt-1 lg:hidden"
         >
-          {navItems.map((item) => (
-            <StackedNavLink key={item.href} item={item} pathname={pathname} />
+          {sheetGroups.map((g) => (
+            <div key={g.key} className="border-b border-white/10 py-2">
+              {/* A one-page group's heading would only repeat its link. */}
+              {!(g.items.length === 1 && g.items[0].label === g.label) && (
+                <p className="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-white/60">{g.label}</p>
+              )}
+              {g.items.map((item) => {
+                const active = isActiveHref(pathname, item.href);
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    aria-current={active ? 'page' : undefined}
+                    className={cn(
+                      'flex min-h-11 w-full items-center gap-2.5 rounded-lg px-2 text-sm font-medium transition-colors',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-mint/70',
+                      active ? 'bg-white/15 text-white' : 'text-white/85 hover:bg-white/10 hover:text-white',
+                    )}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span className="flex-1">{item.label}</span>
+                    <CountPill n={item.badge ?? 0} label={item.badgeLabel?.(item.badge ?? 0)} />
+                  </Link>
+                );
+              })}
+            </div>
           ))}
-
-          <div className="mt-1 pt-2 border-t border-white/10 flex items-center justify-between">
-            <span className="text-white/75 text-xs font-mono px-2">{displayName}</span>
+          <div className="flex items-center justify-between gap-3 pt-2">
+            <span className="min-w-0 px-2">
+              <span className="block truncate text-sm font-semibold text-white">{userName}</span>
+              <span className="block font-mono text-[11px] uppercase text-white/70">{displayName}</span>
+            </span>
             <button
+              type="button"
               onClick={handleLogout}
-              className="min-h-11 px-3 rounded-lg text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 transition-colors"
+              className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-medium text-white/85 transition-colors hover:bg-white/10 hover:text-white"
             >
+              <LogOut className="h-4 w-4" aria-hidden="true" />
               Sign out
             </button>
           </div>
         </nav>
       )}
+
+      {/* Phone tab bar — below sm. What the floor reaches for on a phone;
+          everything else is under More. */}
+      <nav
+        aria-label="Quick sections"
+        className="fixed inset-x-0 bottom-0 z-40 flex border-t border-brand-border bg-white pb-[env(safe-area-inset-bottom)] sm:hidden"
+      >
+        {(() => {
+          const tab = 'relative flex min-h-[60px] flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium';
+          const third = canDeptViewStock(dept)
+            ? { href: '/admin/stock', label: 'Stock', icon: Package }
+            : { href: '/admin/slips', label: 'Slips', icon: Printer };
+          const links = [
+            { href: '/admin',          label: 'Jobs',     icon: LayoutDashboard },
+            { href: '/admin/machines', label: 'Machines', icon: Cpu },
+            third,
+          ];
+          return (
+            <>
+              {links.map((l) => {
+                const on = !sheetOpen && (l.href === '/admin'
+                  ? pathname === '/admin' || pathname.startsWith('/admin/jobs/')
+                  : isActiveHref(pathname, l.href));
+                const Icon = l.icon;
+                return (
+                  <Link key={l.href} href={l.href} aria-current={on ? 'page' : undefined}
+                        className={cn(tab, on ? 'font-semibold text-brand-primary' : 'text-brand-muted')}>
+                    <Icon className="h-[22px] w-[22px]" aria-hidden="true" />
+                    {l.label}
+                  </Link>
+                );
+              })}
+              <button type="button" onClick={openNotes} aria-label={notesLabel} className={cn(tab, 'text-brand-muted')}>
+                <MessageSquare className="h-[22px] w-[22px]" aria-hidden="true" />
+                Notes
+                {notesUnread > 0 && (
+                  <span aria-hidden="true" className="absolute left-[52%] top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-primary px-1 font-mono text-[10px] font-semibold text-white">
+                    {notesUnread > 99 ? '99+' : notesUnread}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setSheetOpen((o) => !o); window.scrollTo({ top: 0 }); }}
+                aria-expanded={sheetOpen}
+                aria-controls="admin-mobile-nav"
+                className={cn(tab, sheetOpen ? 'font-semibold text-brand-primary' : 'text-brand-muted')}
+              >
+                <MoreHorizontal className="h-[22px] w-[22px]" aria-hidden="true" />
+                More
+              </button>
+            </>
+          );
+        })()}
+      </nav>
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        sections={allLinks.map(({ href, label, icon }) => ({ href, label, icon }))}
+      />
     </header>
+  );
+}
+
+// ── Gear: Team, Departments, Settings ─────────────────────────
+
+function AdminGear({ links, pathname, active }: { links: NavLink[]; pathname: string; active: boolean }) {
+  const { open, setOpen, close, rootRef, btnRef, menuId } = useDropdown(pathname);
+  return (
+    <div ref={rootRef} className="relative hidden lg:block">
+      <button
+        ref={btnRef}
+        type="button"
+        aria-label="Admin settings"
+        title="Team, departments and settings"
+        aria-expanded={open}
+        aria-controls={menuId}
+        onClick={() => setOpen((o) => !o)}
+        className={cn(iconBtn, active && 'bg-white/[0.2]')}
+      >
+        <Settings className="h-[19px] w-[19px]" aria-hidden="true" />
+      </button>
+      {open && (
+        <div id={menuId} className={cn(menuPanel, 'right-0')} onKeyDown={onMenuArrows}>
+          {links.map((l) => <MenuLink key={l.href} item={l} pathname={pathname} onPick={close} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Account: who is signed in, export, sign out ───────────────
+
+function AccountMenu({ userName, displayName, canExport, onLogout, pathname }: {
+  userName: string; displayName: string; canExport: boolean; onLogout: () => void; pathname: string;
+}) {
+  const { open, setOpen, rootRef, btnRef, menuId } = useDropdown(pathname);
+  return (
+    <div ref={rootRef} className="relative hidden sm:block">
+      <button
+        ref={btnRef}
+        type="button"
+        aria-expanded={open}
+        aria-controls={menuId}
+        aria-label={`Signed in as ${userName}, ${displayName}. Account menu`}
+        onClick={() => setOpen((o) => !o)}
+        className="ml-1 flex min-h-11 items-center gap-2 rounded-[10px] px-1.5 text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-mint/70 xl:pl-2.5"
+      >
+        <span className="hidden flex-col items-end xl:flex">
+          <span className="max-w-[160px] truncate text-[13px] font-semibold leading-tight">{userName}</span>
+          <span className="font-mono text-[11px] uppercase leading-tight text-white/75">{displayName}</span>
+        </span>
+        <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.14] font-mono text-[11px] font-semibold xl:hidden">
+          {initials(userName)}
+        </span>
+      </button>
+      {open && (
+        <div id={menuId} className={cn(menuPanel, 'right-0 w-[240px]')} onKeyDown={onMenuArrows}>
+          <div className="px-3 pb-2 pt-1.5">
+            <p className="truncate text-sm font-semibold">{userName}</p>
+            <p className="font-mono text-[11px] uppercase text-brand-muted">{displayName}</p>
+          </div>
+          <div className="border-t border-brand-line-soft pt-1">
+            {/* Full-database export — Admin only; GET /api/export is the real gate.
+                The menu stays open while it runs so its progress stays visible. */}
+            {canExport && <ExportButton variant="menu" />}
+            <button
+              type="button"
+              onClick={onLogout}
+              className="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 text-sm font-medium text-brand-ink transition-colors hover:bg-brand-surface-hover"
+            >
+              <LogOut className="h-4 w-4 text-brand-muted" aria-hidden="true" />
+              Sign out
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

@@ -25,6 +25,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getDeptPermissions } from '@/lib/constants/departments';
 import { getClaimsUser } from '@/lib/supabase/claims';
+import { deptKeyOf } from '@/lib/identity';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -95,7 +96,7 @@ export async function middleware(request: NextRequest) {
       }
     );
     const user = await getClaimsUser(supabase);
-    const perms = await getDeptPermissions(user?.user_metadata?.department);
+    const perms = await getDeptPermissions(deptKeyOf(user));
     if (perms?.isReadOnly) {
       return NextResponse.json(
         { error: 'Viewers have read-only access' },

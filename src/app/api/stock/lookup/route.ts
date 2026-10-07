@@ -16,6 +16,7 @@ import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptManageStock } from '@/lib/constants/departments';
 import { orContains } from '@/lib/search';
+import { deptKeyOf } from '@/lib/identity';
 
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!canDeptManageStock(perms)) {
     return NextResponse.json({ error: 'Your department cannot add label stock' }, { status: 403 });
   }

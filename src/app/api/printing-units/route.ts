@@ -10,6 +10,7 @@ import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions } from '@/lib/constants/departments';
 import { PRINTING_METHODS, type PrintingMethod } from '@/lib/types';
+import { deptKeyOf } from '@/lib/identity';
 
 // ── GET ───────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
 
   // Units define how the floor is organised — Admin only, matching the
   // delete-job restriction already enforced in JobRow/JobCard.
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms?.isSuperAdmin) {
     return NextResponse.json(
       { error: 'Only Admin can create printing units' },

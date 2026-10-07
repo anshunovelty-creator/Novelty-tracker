@@ -10,6 +10,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptManageRegister } from '@/lib/constants/departments';
+import { deptKeyOf } from '@/lib/identity';
 
 const STAGES = ['enquiry', 'artwork', 'quotation', 'approval', 'po'] as const;
 
@@ -30,7 +31,7 @@ async function requireAdmin() {
   const user = await getClaimsUser(supabase);
   if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) } as const;
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms || !canDeptManageRegister(perms)) {
     return { error: NextResponse.json({ error: 'Register is Admin only' }, { status: 403 }) } as const;
   }

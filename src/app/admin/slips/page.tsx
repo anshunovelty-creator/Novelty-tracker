@@ -16,6 +16,7 @@ import {
   canDeptPrintRollSlips,
 } from '@/lib/constants/departments';
 import SlipsManager from '@/components/admin/SlipsManager';
+import { deptKeyOf } from '@/lib/identity';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,16 +28,15 @@ export const metadata = {
 export default async function SlipsPage() {
   const supabase = await createServerSupabaseClient();
   const user = await getClaimsUser(supabase);
-  const perms = await getDeptPermissions(user?.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-[var(--glass-ink)]">Slips</h1>
-        <p className="text-sm text-[var(--glass-muted)] mt-0.5">
-          Prints the carton, roll and address slips on the TSC P210. The job
-          supplies the party, product and PM code — you add the counts and the
-          date.
+        <h1 className="text-[30px] font-semibold leading-9 tracking-[-0.025em] text-brand-ink">Print slips</h1>
+        <p className="mt-1.5 max-w-[72ch] text-sm text-brand-muted">
+          Pick a job, pick the slip — everything else fills in from the job.
+          Prints on the TSC P210&rsquo;s 6″ × 4″ stock.
         </p>
       </div>
 

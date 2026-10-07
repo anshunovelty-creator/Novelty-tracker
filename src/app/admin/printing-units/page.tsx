@@ -6,6 +6,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions } from '@/lib/constants/departments';
 import PrintingUnitsManager from '@/components/admin/PrintingUnitsManager';
+import { deptKeyOf } from '@/lib/identity';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,7 @@ export default async function PrintingUnitsPage() {
   // means non-Admins never see a screen whose every control 403s.
   const supabase = await createServerSupabaseClient();
   const user = await getClaimsUser(supabase);
-  const perms = await getDeptPermissions(user?.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   // TODO(dept-migration): this page gates the printing-UNITS master list
   // (create/rename a unit), a distinct concept from 'printing_edit' (who
   // may set a JOB's printing method — Prepress/Production). No named
@@ -31,8 +32,8 @@ export default async function PrintingUnitsPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-[var(--glass-ink)]">Printing Units</h1>
-        <p className="text-sm text-[var(--glass-muted)] mt-0.5">
+        <h1 className="text-[30px] font-semibold leading-9 tracking-[-0.025em] text-brand-ink">Printing Units</h1>
+        <p className="mt-1.5 max-w-[72ch] text-sm text-brand-muted">
           Each unit runs one printing method. New jobs start on Flexo and are
           assigned that method&apos;s default unit automatically.
         </p>

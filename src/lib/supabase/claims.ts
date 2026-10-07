@@ -10,16 +10,23 @@
 // times per request as needed (unlike getUser(), which pays the round-trip
 // cost every time).
 //
-// Returns the same shape callers already destructure elsewhere in the app
-// (id / email / user_metadata) so existing `user.id`, `user.email`,
-// `user.user_metadata?.department` usages keep working unchanged.
+// Identity comes from app_metadata, never user_metadata: the signed-in user
+// can rewrite their own user_metadata from the browser, so a department or
+// username read from there could be anything they like (migration 076).
+// Read the department with deptKeyOf(user) from '@/lib/identity'.
+//
+// A token issued before migration 076 has no department in app_metadata
+// (tokens refresh hourly); for that case only, the same app_metadata is read
+// from the server's copy of the account instead.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export interface ClaimsUser {
   id: string;
   email: string;
-  user_metadata: Record<string, unknown>;
+  /** Service-role-only metadata: department and username. Safe to trust. */
+  app_metadata: Record<string, unknown>;
 }
 
 export async function getClaimsUser(
@@ -29,9 +36,16 @@ export async function getClaimsUser(
   if (error || !data?.claims) return null;
 
   const { claims } = data;
+  let appMeta = (claims.app_metadata as Record<string, unknown> | undefined) ?? {};
+
+  if (typeof appMeta.department !== 'string') {
+    const { data: fresh } = await createAdminClient().auth.admin.getUserById(claims.sub);
+    appMeta = (fresh?.user?.app_metadata as Record<string, unknown> | undefined) ?? appMeta;
+  }
+
   return {
     id: claims.sub,
     email: claims.email ?? '',
-    user_metadata: (claims.user_metadata as Record<string, unknown>) ?? {},
+    app_metadata: appMeta,
   };
 }

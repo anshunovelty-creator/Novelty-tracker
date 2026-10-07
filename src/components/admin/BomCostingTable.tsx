@@ -39,20 +39,17 @@ import {
   type StockLine,
 } from '@/lib/paperStock';
 import { usePaperStock } from '@/hooks/usePaperStock';
+import { useRefetchOnChange } from '@/hooks/useRefetchOnChange';
 import type { DateRange } from '@/lib/jobSeparationQuery';
 import type { BomCostingRow, BomMaterial, BomMaterialRequest, BomRequestStatus } from '@/lib/types';
 import { csvDate, type CsvColumn } from '@/lib/export/csv';
 import { Button } from '@/components/ui/Button';
+import { StateChip } from '@/components/ui/StateChip';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { PromptModal } from './modals';
 import { useRefreshStock } from './PaperStockModals';
 import CsvExportButton from './CsvExportButton';
 import { SearchClearButton } from '@/components/ui/SearchClearButton';
-
-// Loose on purpose — a costing is typed in over minutes, not seconds, and
-// the poll pauses entirely while the tab is hidden. Paused altogether while
-// any row has unsaved edits, so a refetch can't reset a half-typed number.
-const POLL_MS = 30_000;
 
 // Mirrors DEFAULT_LIMIT in src/lib/jobSeparationQuery.ts.
 const PAGE_SIZE = 500;
@@ -73,12 +70,12 @@ const COLUMNS = [
   'Material', 'Width (mm)', 'Running (m)', 'Stock', 'Expense', 'Difference', 'Request',
 ] as const;
 
-// Light-theme chips, per DESIGN.md §2.5 — colour encodes state only.
-const REQUEST_CHIP: Record<BomRequestStatus, string> = {
-  pending:   'bg-amber-100 text-amber-800 border-amber-200',
-  ordered:   'bg-emerald-100 text-emerald-800 border-emerald-200',
-  declined:  'bg-red-100 text-red-700 border-red-200',
-  cancelled: 'bg-slate-100 text-slate-600 border-slate-200',
+// A state is a dot + its name (DESIGN.md) — colour encodes state only.
+const REQUEST_DOT: Record<BomRequestStatus, string> = {
+  pending:   '#D97706',
+  ordered:   '#0284C7',
+  declined:  '#B91C1C',
+  cancelled: '#94A39B',
 };
 
 const REQUEST_LABEL: Record<BomRequestStatus, string> = {
@@ -135,9 +132,10 @@ const EXPORT_COLUMNS: CsvColumn<ExportRow>[] = [
   { header: 'Request',        value: (r) => r.latest_request ? `${r.latest_request.ref} · ${REQUEST_LABEL[r.latest_request.status]}` : null },
 ];
 
-type Props = { canDecide: boolean };
+/** canSeeTotals: the department's "See money totals" feature — hides the ₹ sums, not the per-row figures. */
+type Props = { canDecide: boolean; canSeeTotals: boolean };
 
-export default function BomCostingTable({ canDecide }: Props) {
+export default function BomCostingTable({ canDecide, canSeeTotals }: Props) {
   // The table scrolls, not the page — see useFitToViewport.
   const fitRef = useFitToViewport<HTMLDivElement>();
   const queryClient = useQueryClient();
@@ -180,8 +178,16 @@ export default function BomCostingTable({ canDecide }: Props) {
       return { rows: (data.rows ?? []) as BomCostingRow[], hasMore: Boolean(data.hasMore) };
     },
     placeholderData: keepPreviousData,
-    refetchInterval: dirtyCount > 0 || requesting || issuing || returning ? false : POLL_MS,
   });
+  // Every 30 s, ask whether anything a row shows changed (a few bytes) and
+  // re-download the list only if it did. Held while any row has unsaved
+  // edits or a write is in flight, so a refetch can't reset a half-typed
+  // number — the change is applied as soon as that clears.
+  useRefetchOnChange(
+    ['job_separations', 'bom_costings', 'bom_materials', 'bom_material_requests', 'paper_stock_movements'],
+    [['bom-costings']],
+    { paused: Boolean(dirtyCount > 0 || requesting || issuing || returning) },
+  );
   const rows    = rowsQuery.data?.rows ?? EMPTY_ROWS;
   const hasMore = rowsQuery.data?.hasMore ?? false;
   const loading = rowsQuery.isLoading;
@@ -225,6 +231,11 @@ export default function BomCostingTable({ canDecide }: Props) {
   );
 
   const totals = useMemo(() => costingTotals(exportRows), [exportRows]);
+  // Metres used from the paper store instead of new rolls, and the priced
+  // jobs whose paper cost more than the order paid — the two numbers the
+  // strip adds beyond the money totals.
+  const stockMetres = useMemo(() => exportRows.reduce((m, r) => m + Math.max(0, r.stock_issued_m ?? 0), 0), [exportRows]);
+  const overBudget  = useMemo(() => exportRows.filter((r) => r.difference !== null && r.difference < 0).length, [exportRows]);
 
   function draftFor(row: BomCostingRow): Draft {
     return drafts[row.job.id] ?? draftFromRow(row);
@@ -391,7 +402,7 @@ export default function BomCostingTable({ canDecide }: Props) {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search sr. no, party, PO no, PM code or product"
             aria-label="Search Bill of Material"
-            title="Search (Ctrl+K)"
+            title="Search this page (/)"
             data-global-search
             className={cn(inputClass, 'w-full pl-9 pr-11')}
           />
@@ -421,23 +432,38 @@ export default function BomCostingTable({ canDecide }: Props) {
             )}
           </p>
 
-          {/* Saved figures only, and only across rows that have an expense
-              — an order value with no expense against it would make the
-              difference read better than anyone has actually established. */}
-          <dl
-            className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm"
-            title={hasMore ? 'Totals only what’s loaded — narrow the search or "Load more" to cover the rest' : 'Totals of the rows shown, using saved figures'}
-          >
-            <Total label="Order value" value={totals.orderValue} />
-            <Total label="Expense" value={totals.expense} />
-            <Total
-              label="Difference"
-              value={totals.difference}
-              tone={totals.difference < 0 ? 'text-red-700' : 'text-emerald-800'}
-              starred={hasMore}
-            />
-          </dl>
         </div>
+      )}
+
+      {/* ── Totals strip ───────────────────────────────────────── */}
+      {/* Saved figures only, and only across rows that have an expense — an
+          order value with no expense against it would make the difference
+          read better than anyone has actually established. */}
+      {!loading && rows.length > 0 && (
+        <dl
+          className={cn('grid grid-cols-2 gap-3', canSeeTotals && 'lg:grid-cols-4')}
+          title={hasMore ? 'Totals only what’s loaded — narrow the search or "Load more" to cover the rest' : 'Totals of the rows shown, using saved figures'}
+        >
+          {/* The ₹ sums follow the department's "See money totals" feature;
+              metres and the over-budget count are not money and stay. */}
+          {canSeeTotals && (
+            <>
+              <Total label="Order value" value={`₹${formatInr(totals.orderValue)}`} starred={hasMore} />
+              <Total
+                label="Paper expense"
+                value={`₹${formatInr(totals.expense)}`}
+                sub={<>Difference <span className={cn('font-mono font-semibold', totals.difference < 0 ? 'text-red-700' : 'text-emerald-800')}>₹{signedInr(totals.difference)}</span></>}
+              />
+            </>
+          )}
+          <Total label="Paper from stock" value={`${formatMeters(stockMetres)} m`} sub="saved buying new rolls" />
+          <Total
+            label="Jobs over paper budget"
+            value={String(overBudget)}
+            tone={overBudget > 0 ? 'text-red-700' : 'text-[var(--glass-ink)]'}
+            sub={overBudget > 0 ? 'expense above the order value' : 'none — every priced job is within its order'}
+          />
+        </dl>
       )}
 
       {/* ── The sheet ──────────────────────────────────────────── */}
@@ -1111,11 +1137,8 @@ function RowActions({
 
 function RequestChip({ request }: { request: BomMaterialRequest }) {
   return (
-    <span
-      className={cn('inline-block rounded-md border px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap', REQUEST_CHIP[request.status])}
-      title={`${request.ref} · ${formatNumericDate(request.created_at)}`}
-    >
-      {REQUEST_LABEL[request.status]}
+    <span title={`${request.ref} · ${formatNumericDate(request.created_at)}`}>
+      <StateChip label={REQUEST_LABEL[request.status]} dot={REQUEST_DOT[request.status]} className="text-xs" />
     </span>
   );
 }
@@ -1131,13 +1154,17 @@ function Figure({ label, value, dirty = false, signed = false }: { label: string
   );
 }
 
-function Total({ label, value, tone = 'text-[var(--glass-ink)]', starred = false }: { label: string; value: number; tone?: string; starred?: boolean }) {
+/** One card in the totals strip — label, big mono figure, a line under it. */
+function Total({ label, value, tone = 'text-[var(--glass-ink)]', sub, starred = false }: {
+  label: string; value: string; tone?: string; sub?: React.ReactNode; starred?: boolean;
+}) {
   return (
-    <div className="flex items-baseline gap-1.5">
-      <dt className="text-xs text-[var(--glass-muted)]">{label}</dt>
-      <dd className={cn('font-mono font-semibold tabular-nums', tone)}>
-        ₹{signedInr(value)}{starred && <span className="text-emerald-700">*</span>}
+    <div className="flex flex-col gap-1 rounded-2xl border border-brand-border bg-white px-4 py-3.5 shadow-[0_2px_8px_rgba(12,42,32,0.04)]">
+      <dt className="text-[10px] font-medium uppercase tracking-[0.025em] text-[var(--glass-muted)]">{label}</dt>
+      <dd className={cn('font-mono text-[22px] font-semibold leading-7 tabular-nums', tone)}>
+        {value}{starred && <span className="text-emerald-700">*</span>}
       </dd>
+      {sub && <dd className="text-xs text-[var(--glass-muted)]">{sub}</dd>}
     </div>
   );
 }

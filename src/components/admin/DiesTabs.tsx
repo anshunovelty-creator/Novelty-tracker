@@ -6,6 +6,7 @@
 // separate nav destinations.
 
 import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import DiesManager from './DiesManager';
 import FlatbedDiesManager from './FlatbedDiesManager';
@@ -18,11 +19,13 @@ const TABS: { value: Tab; label: string }[] = [
 ];
 
 export default function DiesTabs({ canManage }: { canManage: boolean }) {
-  const [tab, setTab] = useState<Tab>('roto');
+  // ?tab=flatbed — the Ctrl K palette links a flatbed die straight to its sheet.
+  const [tab, setTab] = useState<Tab>(useSearchParams().get('tab') === 'flatbed' ? 'flatbed' : 'roto');
 
   return (
     <div className="space-y-4">
-      <div role="tablist" aria-label="Die type" className="inline-flex items-center gap-1 rounded-xl border border-black/[0.08] bg-white p-1">
+      {/* Underline tabs — the same grammar as the dashboard's job views. */}
+      <div role="tablist" aria-label="Die type" className="flex gap-7 border-b border-brand-border">
         {TABS.map((t) => (
           <button
             key={t.value}
@@ -31,10 +34,10 @@ export default function DiesTabs({ canManage }: { canManage: boolean }) {
             aria-selected={tab === t.value}
             onClick={() => setTab(t.value)}
             className={cn(
-              'min-h-9 px-3.5 rounded-lg text-sm font-medium transition-colors',
+              '-mb-px flex h-12 items-center border-b-2 px-0.5 text-sm transition-colors',
               tab === t.value
-                ? 'bg-brand-primary text-white'
-                : 'text-[var(--glass-muted)] hover:text-[var(--glass-ink)] hover:bg-black/[0.04]',
+                ? 'border-brand-ink font-semibold text-brand-ink'
+                : 'border-transparent font-medium text-brand-muted hover:text-brand-ink',
             )}
           >
             {t.label}

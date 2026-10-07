@@ -83,7 +83,7 @@ async function loadDeptCache(): Promise<Map<string, DeptPermissions>> {
 }
 
 /**
- * Resolves the raw department string from JWT/user_metadata into its
+ * Resolves the raw department string from JWT app_metadata into its
  * full loaded permission set. Returns null for anything that isn't a
  * non-empty string, or doesn't match a department that currently exists
  * in the `departments` table — the same "reject bad tokens" contract
@@ -238,6 +238,18 @@ export function canDeptSetStage(
   return perms.stages.includes(stage);
 }
 
+/**
+ * Display names of the floor departments (Admin left out) that may set
+ * `stage` on a job of `printingMethod` — for the "Only Dispatch can…" reply
+ * when someone else tries.
+ */
+export async function deptNamesForStage(stage: Stage, printingMethod?: PrintingMethod): Promise<string[]> {
+  const byKey = await loadDeptCache();
+  return Array.from(byKey.values())
+    .filter((p) => !p.isSuperAdmin && canDeptSetStage(p, stage, printingMethod))
+    .map((p) => p.displayName);
+}
+
 /** Whether `perms` may advance a print run to `runStage` (see constants/runStages.ts). */
 export function canDeptSetRunStage(perms: DeptPermissions | null, runStage: RunStage): boolean {
   return perms !== null && (perms.isSuperAdmin || perms.runStages.includes(runStage));
@@ -248,8 +260,16 @@ export function canDeptUseMeterCalculator(perms: DeptPermissions | null): boolea
   return hasFeature(perms, 'meter_calculator_use');
 }
 
-/** Who sees the "Total order value" sum on Job Separation. */
-export function canDeptSeeJobSeparationTotal(perms: DeptPermissions | null): boolean {
+/**
+ * Who sees money totals: the "Total order value" sum on Job Separation and
+ * the BOM costing totals (order value, paper expense, difference). Per-row
+ * values stay visible to everyone who can see the rows.
+ *
+ * The key keeps its original name (job_separation_total_view, migration 065)
+ * so every department that already had the Job Separation total keeps it —
+ * no migration; it simply covers BOM's totals too now.
+ */
+export function canDeptSeeMoneyTotals(perms: DeptPermissions | null): boolean {
   return hasFeature(perms, 'job_separation_total_view');
 }
 

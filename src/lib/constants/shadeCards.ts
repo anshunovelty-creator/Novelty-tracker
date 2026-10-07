@@ -42,18 +42,29 @@ type ColorConfig = {
 
 // Amber for waiting, emerald for signed off — the same colour-to-state mapping
 // the job stages use, so the two never contradict each other on one screen.
-export const SHADE_CARD_STATUS_COLORS: Record<ShadeCardStatus, ColorConfig> = {
-  'Pending Approval':   { bg: 'bg-amber-100',   text: 'text-amber-800',   border: 'border border-amber-200' },
-  'Approved':           { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border border-emerald-200' },
-  'Rejected':           { bg: 'bg-red-100',     text: 'text-red-700',     border: 'border border-red-200' },
-  'Revision Requested': { bg: 'bg-purple-100',  text: 'text-purple-700',  border: 'border border-purple-200' },
-  'Expired':            { bg: 'bg-slate-100',   text: 'text-slate-600',   border: 'border border-slate-200' },
+// A state reads as a dot + its name (StateChip); these are the dot colours.
+export const SHADE_CARD_STATUS_DOT: Record<ShadeCardStatus, string> = {
+  'Pending Approval':   '#D97706',
+  'Approved':           '#059669',
+  'Rejected':           '#B91C1C',
+  'Revision Requested': '#9333EA',
+  'Expired':            '#64748B',
 };
 
-export const MAKING_STATUS_COLORS: Record<MakingStatus, ColorConfig> = {
-  'Pending':      { bg: 'bg-amber-100',   text: 'text-amber-800',   border: 'border border-amber-200' },
-  'Already Made': { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border border-emerald-200' },
+export const MAKING_STATUS_DOT: Record<MakingStatus, string> = {
+  'Pending':      '#D97706',
+  'Already Made': '#059669',
 };
+
+// Surfaces for the inline status <select>s. Neutral for every state — the
+// colour lives in the dot beside the control, never in a filled control.
+const NEUTRAL: ColorConfig = { bg: 'bg-white', text: 'text-brand-ink', border: 'border border-[var(--field-border)]' };
+export const SHADE_CARD_STATUS_COLORS: Record<ShadeCardStatus, ColorConfig> = Object.fromEntries(
+  (Object.keys(SHADE_CARD_STATUS_DOT) as ShadeCardStatus[]).map((s) => [s, NEUTRAL]),
+) as Record<ShadeCardStatus, ColorConfig>;
+export const MAKING_STATUS_COLORS: Record<MakingStatus, ColorConfig> = Object.fromEntries(
+  (Object.keys(MAKING_STATUS_DOT) as MakingStatus[]).map((s) => [s, NEUTRAL]),
+) as Record<MakingStatus, ColorConfig>;
 
 /** Rows per page in the shade card list. */
 export const SHADE_CARD_PAGE_SIZE = 25;

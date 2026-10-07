@@ -57,6 +57,18 @@ describe('size matching against stored values', () => {
   });
 });
 
+describe('sizePatterns with a tolerance', () => {
+  it('matches every whole millimetre within ±2', () => {
+    expect(sizePatterns('210', 2)).toEqual(['208', '208.%', '209', '209.%', '210', '210.%', '211', '211.%', '212', '212.%']);
+  });
+  it('never goes below zero', () => {
+    expect(sizePatterns('1', 2)).toEqual(['0', '0.%', '1', '1.%', '2', '2.%', '3', '3.%']);
+  });
+  it('ignores the tolerance for text', () => {
+    expect(sizePatterns('abc', 2)).toEqual(['abc']);
+  });
+});
+
 describe('orMatch', () => {
   it('ORs contains-matches and size-matches into one quoted filter', () => {
     expect(orMatch(['shape'], ['length', 'width'], '87')).toBe(

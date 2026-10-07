@@ -11,6 +11,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions, canDeptManageShadeCards } from '@/lib/constants/departments';
 import { isSelectableStatus, isMakingStatus } from '@/lib/constants/shadeCards';
+import { deptKeyOf } from '@/lib/identity';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -24,10 +25,11 @@ function optionalDate(value: unknown): string | null {
   return Number.isNaN(Date.parse(s)) ? null : s;
 }
 
-function actorName(user: { email?: string; user_metadata?: Record<string, unknown> }): string {
-  const meta = user.user_metadata ?? {};
-  const full = typeof meta.full_name === 'string' ? meta.full_name.trim() : '';
-  return full || user.email || 'Unknown';
+/** Who made the change, for the card's "Updated by". The login's email —
+ *  never a name from user_metadata, which the user can rewrite themself and
+ *  would let them sign someone else's name to a change (migration 076). */
+function actorName(user: { email?: string }): string {
+  return user.email || 'Unknown';
 }
 
 /** The editable field set, shared by PATCH (edit) and POST (revise). */
@@ -53,7 +55,7 @@ async function requireManager() {
   const user = await getClaimsUser(supabase);
   if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms) return { error: NextResponse.json({ error: 'Invalid department' }, { status: 403 }) };
   if (!canDeptManageShadeCards(perms)) {
     return { error: NextResponse.json({ error: 'Your department cannot change shade cards' }, { status: 403 }) };
@@ -255,7 +257,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms?.isSuperAdmin) {
     return NextResponse.json({ error: 'Only an admin can delete a shade card' }, { status: 403 });
   }

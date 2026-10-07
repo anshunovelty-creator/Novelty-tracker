@@ -17,6 +17,11 @@
 //   9. Write on_time_dispatch_log if status = Dispatched
 //  10. Close PO if status = PO Closed
 //  11. Trigger notifications (email + WhatsApp) for qualifying stages — not on a revert
+//
+// Idempotency-Key (optional header, a UUID): the same change sent twice is
+// applied once. The dashboard sets it so a change replayed after a dropped
+// connection — which may already have gone through — can't dispatch twice.
+// See POST below and migration 072.
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -25,15 +30,70 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { upsertRemainingStock, clearRemainingStock, addExtraStock } from '@/lib/api/labelStock';
-import { getDeptPermissions, canDeptSetStage, canDeptOverridePOClosed } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptSetStage, canDeptOverridePOClosed, deptNamesForStage } from '@/lib/constants/departments';
+import { NOT_YOUR_STAGE, notYourStageTitle } from '@/lib/stageBlocked';
 import { getPrerequisite, getVisibleStages, isStageSkipped, isPerReleaseStage, isBackwardMove, NOTIFICATION_TRIGGER_STAGES, DISPATCH_STAGES } from '@/lib/constants/stages';
 import { toMonthKey } from '@/lib/utils';
 import type { Stage } from '@/lib/constants/stages';
 import type { StatusChangePayload, Job } from '@/lib/types';
+import { deptKeyOf } from '@/lib/identity';
 
 type Params = { params: Promise<{ id: string }> };
 
-export async function POST(request: NextRequest, { params }: Params) {
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const JOB_SELECT = '*, job_stage_timestamps(stage), printing_units(id, name, printing_method)';
+
+// ── Duplicate guard ───────────────────────────────────────────
+// Claims the Idempotency-Key before doing anything. A key already claimed
+// means this change was applied (or is being applied) by an earlier send,
+// so the answer is the job as it stands now — the same shape as success.
+// A refused or failed change gives its key back, so a corrected retry with
+// the same key can still go through.
+//
+// Fails open: no key, or no job_status_requests table yet (migration 072
+// not applied), and the change is handled exactly as it was before.
+export async function POST(request: NextRequest, ctx: Params) {
+  const key = request.headers.get('idempotency-key')?.trim() ?? '';
+  if (!key) return applyStatusChange(request, ctx);
+  if (!UUID_RE.test(key)) {
+    return NextResponse.json({ error: 'Idempotency-Key must be a UUID' }, { status: 400 });
+  }
+
+  const { id } = await ctx.params;
+  const supabase = await createServerSupabaseClient();
+  const user = await getClaimsUser(supabase);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const admin = createAdminClient();
+  const { error: claimError } = await admin
+    .from('job_status_requests')
+    .insert({ id: key, job_id: id, created_by: user.email ?? null });
+
+  if (claimError?.code === '23505') {
+    const { data: job, error } = await supabase.from('jobs').select(JOB_SELECT).eq('id', id).single();
+    if (error || !job) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
+    return NextResponse.json({ job, duplicate: true });
+  }
+  if (claimError) {
+    // Missing table, or the job id doesn't exist (FK) — let the normal path
+    // answer; it reports a bad job id properly.
+    console.warn('[POST status] idempotency claim skipped:', claimError.code, claimError.message);
+    return applyStatusChange(request, ctx);
+  }
+
+  let res: Response;
+  try {
+    res = await applyStatusChange(request, ctx);
+  } catch (err) {
+    await admin.from('job_status_requests').delete().eq('id', key);
+    throw err;
+  }
+  if (!res.ok) await admin.from('job_status_requests').delete().eq('id', key);
+  return res;
+}
+
+async function applyStatusChange(request: NextRequest, { params }: Params) {
   const { id } = await params;
   const supabase = await createServerSupabaseClient();
 
@@ -43,7 +103,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms) {
     return NextResponse.json({ error: 'Invalid department in token' }, { status: 403 });
   }
@@ -53,7 +113,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     new_status, remark, qty_dispatched, override_prerequisite, override_backward, override_remark,
     // Label stock (optional): Dispatch confirms what is left on the shelf at a
     // partial dispatch, and reports any surplus printed at a full dispatch.
-    stock_remaining_qty, extra_label_qty, extra_label_location, extra_label_remark,
+    stock_remaining_qty, stock_remaining_location, extra_label_qty, extra_label_location, extra_label_remark,
   } = body;
 
   if (!new_status) {
@@ -96,9 +156,15 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   // ── 2. Department permission check ────────────────────────
+  // Says who CAN, so the person refused knows whom to tell — the jobs table
+  // turns this into the "not your stage" toast with a Leave a note button.
   if (!canDeptSetStage(perms, new_status)) {
     return NextResponse.json(
-      { error: `${perms.key} department cannot set status to "${new_status}"` },
+      {
+        error:         notYourStageTitle(await deptNamesForStage(new_status), new_status),
+        code:          NOT_YOUR_STAGE,
+        signed_in_as:  perms.displayName,
+      },
       { status: 403 }
     );
   }
@@ -126,7 +192,12 @@ export async function POST(request: NextRequest, { params }: Params) {
   // the dropdowns just mirror it for UX.
   if (!canDeptSetStage(perms, new_status, job.printing_method)) {
     return NextResponse.json(
-      { error: `${perms.key} cannot update this job's printing method (${job.printing_method}).` },
+      {
+        error:        notYourStageTitle(await deptNamesForStage(new_status, job.printing_method), new_status)
+                      + ` on ${job.printing_method} jobs`,
+        code:         NOT_YOUR_STAGE,
+        signed_in_as: perms.displayName,
+      },
       { status: 403 }
     );
   }
@@ -296,7 +367,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     jobUpdate.halt_remark = remark?.trim() ?? null;
   } else if (new_status === 'Quality Check') {
     jobUpdate.qc_remark = remark?.trim() ?? null;
-  } else if (remark?.trim() && (job as any).status === 'Quality Check') {
+  } else if (remark?.trim() && (job as any).status === 'Quality Check' && new_status !== 'Partial Dispatch' && new_status !== 'Dispatched') {
+    // (A dispatch remark is the vehicle note for the party's email, not QC's.)
     // Remark provided while advancing FROM Quality Check — persist as qc_remark
     jobUpdate.qc_remark = remark.trim();
   }
@@ -324,9 +396,38 @@ export async function POST(request: NextRequest, { params }: Params) {
   //  we write in dependency order; if a later write fails, the job
   //  is still updated but the log/timestamp may be missing.
   //  For production-critical atomicity, wrap these in a Postgres function.)
+  //
+  // The job goes first, and only if nobody changed it since step 3 read
+  // it (updated_at is bumped by a trigger on every write). Without that,
+  // two dispatches at the same moment each added to the same old
+  // dispatched_qty and one vanished — and both passed the over-dispatch
+  // check above. A refused save has written nothing yet.
+  const { data: saved, error: updateError } = await admin
+    .from('jobs')
+    .update(jobUpdate)
+    .eq('id', id)
+    .eq('updated_at', job.updated_at)
+    .select('id')
+    .maybeSingle();
 
-  // Write stage timestamps FIRST so the job select below (which joins
-  // job_stage_timestamps for the dropdown ✓ marks) returns fresh data.
+  if (updateError) {
+    console.error('[POST status] update job:', updateError);
+    // jobs_dispatched_qty_in_range (migration 073): the database's own
+    // last word on dispatching more than the order.
+    if (updateError.code === '23514') {
+      return NextResponse.json({ error: 'That would dispatch more than this job\'s order' }, { status: 409 });
+    }
+    return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+  if (!saved) {
+    return NextResponse.json(
+      { error: 'Someone else just changed this job — refresh and try again', code: 'JOB_CHANGED' },
+      { status: 409 }
+    );
+  }
+
+  // Stage timestamps next, then the job is re-read below with them joined
+  // (the dropdown's ✓ marks), so the answer carries fresh data.
   // Reaching a pipeline stage means every earlier visible stage is complete
   // too, so backfill all of them up to and including the new stage.
   // ignoreDuplicates preserves original completed_at values for stages that
@@ -372,17 +473,15 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   await Promise.all(timestampWrites);
 
-  // Update job
-  const { data: updatedJob, error: updateError } = await admin
+  const { data: updatedJob, error: rereadError } = await admin
     .from('jobs')
-    .update(jobUpdate)
+    .select(JOB_SELECT)
     .eq('id', id)
-    .select('*, job_stage_timestamps(stage), printing_units(id, name, printing_method)')
     .single();
 
-  if (updateError) {
-    console.error('[POST status] update job:', updateError);
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
+  if (rereadError || !updatedJob) {
+    console.error('[POST status] re-read job:', rereadError);
+    return NextResponse.json({ error: rereadError?.message ?? 'Job not found' }, { status: 500 });
   }
 
   // ── Label stock side-effects ──────────────────────────────
@@ -411,7 +510,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       ? stock_remaining_qty
       : computedRemaining;
     sideEffects.push(
-      upsertRemainingStock(admin, updatedJob as Job, remainingForStock, stockActor)
+      upsertRemainingStock(admin, updatedJob as Job, remainingForStock, stockActor, stock_remaining_location)
         .then(logIfError('remaining stock'))
     );
   }

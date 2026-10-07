@@ -11,6 +11,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptManageDiesPlates } from '@/lib/constants/departments';
 import { DIE_STATUSES, type DieStatus } from '@/lib/types';
 import { containsPattern, orMatch } from '@/lib/search';
+import { deptKeyOf } from '@/lib/identity';
 
 // Optional free text: blank means "not recorded", not an empty string.
 function text(value: unknown): string | null {
@@ -77,6 +78,8 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const search = searchParams.get('search')?.trim();
   const field  = searchParams.get('field')?.trim();
+  // ±mm on length and width — the "near enough" size search (0 = exact).
+  const tol    = Math.min(5, Math.max(0, Math.trunc(Number(searchParams.get('tol')) || 0)));
 
   let query = supabase
     .from('dies')
@@ -95,7 +98,7 @@ export async function GET(request: NextRequest) {
       // Picked a specific text field — search just that column. Sizes match
       // on the whole millimetre: "210" finds 210 and 210.84, not 1210 or 2100.
       query = config.type === 'size'
-        ? query.or(orMatch([], [config.column], search))
+        ? query.or(orMatch([], [config.column], search, tol))
         : query.ilike(config.column, containsPattern(search));
     } else {
       // "All fields" — someone holding a die searches by whatever they can
@@ -103,7 +106,7 @@ export async function GET(request: NextRequest) {
       // corner style, or its serial — or where it should be sitting.
       // Length and width match on the whole millimetre, as above.
       query = query.or(orMatch(
-        ['job_name', 'material', 'corner', 'serial_no', 'location'], ['length', 'width'], search,
+        ['job_name', 'material', 'corner', 'serial_no', 'location'], ['length', 'width'], search, tol,
       ));
     }
   }
@@ -121,7 +124,7 @@ export async function POST(request: NextRequest) {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
 
   if (!canDeptManageDiesPlates(perms)) {

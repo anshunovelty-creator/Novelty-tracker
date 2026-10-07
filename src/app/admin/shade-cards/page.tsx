@@ -10,6 +10,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions, canDeptManageShadeCards } from '@/lib/constants/departments';
 import ShadeCardsManager from '@/components/admin/ShadeCardsManager';
+import { deptKeyOf } from '@/lib/identity';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,7 @@ export const metadata = {
 export default async function ShadeCardsPage() {
   const supabase = await createServerSupabaseClient();
   const user = await getClaimsUser(supabase);
-  const perms = await getDeptPermissions(user?.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
 
   return (
     // The register is a working list, not a document: on a desktop viewport the
@@ -35,11 +36,9 @@ export default async function ShadeCardsPage() {
     // small-screen card list is meant to scroll with the page anyway.
     <div className="flex flex-col gap-4 lg:h-[calc(100dvh-105px)] lg:overflow-hidden">
       <div className="shrink-0">
-        <h1 className="text-xl font-semibold text-[var(--glass-ink)]">Shade Cards</h1>
-        <p className="text-sm text-[var(--glass-muted)] mt-0.5">
-          Colour-approval cards sent to each party, with the approval status and
-          whether the physical card has been made. Every department can search
-          this list; Prepress, QC and Admin keep it up to date.
+        <h1 className="text-[30px] font-semibold leading-9 tracking-[-0.025em] text-brand-ink">Shade Cards</h1>
+        <p className="mt-1.5 max-w-[72ch] text-sm text-brand-muted">
+          Every colour approval, every version. A rejected card is revised, never overwritten.
         </p>
       </div>
 

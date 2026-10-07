@@ -7,6 +7,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptManagePartyContacts } from '@/lib/constants/departments';
+import { deptKeyOf } from '@/lib/identity';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -19,7 +20,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!canDeptManagePartyContacts(perms)) {
     return NextResponse.json({ error: 'Only Admin can manage party contacts' }, { status: 403 });
   }
@@ -54,7 +55,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!canDeptManagePartyContacts(perms)) {
     return NextResponse.json({ error: 'Only Admin can manage party contacts' }, { status: 403 });
   }

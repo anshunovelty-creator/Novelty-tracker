@@ -7,7 +7,8 @@ import { Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { LoadingButton } from '@/components/ui/Loading';
 
-export default function ExportButton() {
+/** `menu` draws it as a row in the header's account menu. */
+export default function ExportButton({ variant = 'header' }: { variant?: 'header' | 'menu' }) {
   const [busy, setBusy] = useState(false);
 
   async function handleExport() {
@@ -52,10 +53,12 @@ export default function ExportButton() {
       loading={busy}
       loadingStages={['Collecting jobs…', 'Adding releases…', 'Packing file…']}
       title="Download all jobs, scheduled releases and print runs as CSV"
-      className="min-h-[44px] gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3.5 text-xs font-medium text-white/85 transition-colors hover:bg-white/[0.16] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60 disabled:opacity-70"
+      className={variant === 'menu'
+        ? 'flex min-h-11 w-full items-center justify-start gap-2.5 rounded-lg px-3 text-sm font-medium text-brand-ink transition-colors hover:bg-brand-surface-hover disabled:opacity-70'
+        : 'min-h-[44px] gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3.5 text-xs font-medium text-white/85 transition-colors hover:bg-white/[0.16] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60 disabled:opacity-70'}
     >
       <Download className="h-4 w-4" aria-hidden="true" />
-      Export
+      {variant === 'menu' ? 'Export all data' : 'Export'}
     </LoadingButton>
   );
 }

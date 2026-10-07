@@ -34,6 +34,7 @@ import { formatInr, orderDifference } from '@/lib/bom';
 import { formatMeters } from '@/lib/paperStock';
 import type { BomMaterialRequestWithJob, BomRequestStatus } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
+import { StateChip } from '@/components/ui/StateChip';
 
 export type RequestGroup = {
   key:          string;
@@ -97,13 +98,13 @@ export function groupRequests(requests: BomMaterialRequestWithJob[]): RequestGro
   return groups.sort((a, b) => b.meters - a.meters || a.materialName.localeCompare(b.materialName));
 }
 
-// Light-theme chips, per DESIGN.md — colour encodes state only.
-const STATUS_CHIP: Record<BomRequestStatus | 'received', { label: string; cls: string }> = {
-  pending:   { label: 'Awaiting',  cls: 'bg-amber-50 text-amber-800 border-amber-200' },
-  ordered:   { label: 'Ordered',   cls: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
-  received:  { label: 'Received',  cls: 'bg-emerald-600 text-white border-emerald-600' },
-  declined:  { label: 'Declined',  cls: 'bg-red-50 text-red-700 border-red-200' },
-  cancelled: { label: 'Withdrawn', cls: 'bg-slate-50 text-slate-600 border-slate-200' },
+// A state is a dot + its name (DESIGN.md) — colour encodes state only.
+const STATUS_CHIP: Record<BomRequestStatus | 'received', { label: string; dot: string }> = {
+  pending:   { label: 'Awaiting',  dot: '#D97706' },
+  ordered:   { label: 'Ordered',   dot: '#0284C7' },
+  received:  { label: 'Received',  dot: '#059669' },
+  declined:  { label: 'Declined',  dot: '#B91C1C' },
+  cancelled: { label: 'Withdrawn', dot: '#94A39B' },
 };
 
 type Props = {
@@ -346,8 +347,8 @@ function RequestLine({
             Receive
           </Button>
         ) : (
-          <span className={cn('rounded-full border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap', chip.cls)} title={r.decided_at ? `${chip.label} ${formatNumericDate(r.received_at ?? r.decided_at)}` : undefined}>
-            {chip.label}
+          <span title={r.decided_at ? `${chip.label} ${formatNumericDate(r.received_at ?? r.decided_at)}` : undefined}>
+            <StateChip label={chip.label} dot={chip.dot} />
           </span>
         )}
         <RowMenu items={menu} label={`More actions for ${r.ref}`} />

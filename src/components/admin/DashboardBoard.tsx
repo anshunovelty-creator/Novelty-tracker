@@ -1,19 +1,21 @@
 'use client';
 // src/components/admin/DashboardBoard.tsx
-// Coordinates the dashboard's Machine Board visibility and the Add Job
-// trigger, both of which used to be owned by MachineBoard and AddJobForm
-// respectively — each in its own spot on the page. Lifted here so all three
-// toolbar actions (Manage Printing Units, Show/Hide Machine Board, Add Job)
-// can sit together in one row instead of three unrelated locations.
+// The dashboard below the summary: the page header (count, date, Add job),
+// the machines strip with the full MachineBoard folded beneath it, and the
+// jobs table. Owns the board's open/closed preference and the Add Job
+// trigger, which opens the AddJobForm living inside JobsTable.
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ChevronDown, ChevronUp, Plus, Settings } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { Plus, Settings } from 'lucide-react';
 import { Button, buttonClass } from '@/components/ui/Button';
 import type { DeptPermissions } from '@/lib/constants/departments';
 import type { Job } from '@/lib/types';
 import MachineBoard from './MachineBoard';
+import MachinesStrip from './MachinesStrip';
 import JobsTable from './JobsTable';
+import FloorQueue from './FloorQueue';
 import type { AddJobFormHandle } from './AddJobForm';
 
 // Whether the board is collapsed, remembered per browser — same convention as
@@ -53,52 +55,81 @@ export default function DashboardBoard({ dept, jobs }: Props) {
 
   const addJobFormRef = useRef<AddJobFormHandle>(null);
 
-  // Treat "not yet known" the same as hidden for the toggle's own label/icon
-  // — matches MachineBoard rendering nothing until the preference resolves.
-  const isHidden = collapsed !== false;
+  // The press floor's phone queue — for a department whose own stages
+  // include In Printing (Production, Unit-1 Floor). Admin can set every
+  // stage, so it would always qualify; it previews the queue with ?floor=1.
+  const floorParam = useSearchParams()?.get('floor') === '1';
+  const showFloor = (!dept.allStages && dept.stages.includes('In Printing')) || (dept.isSuperAdmin && floorParam);
 
-  // Manage Printing Units, Show/Hide Machine Board, Add Job — clustered
-  // together and handed to JobsTable to render on the "Active Jobs" heading
-  // row, rather than taking a row of their own above the table.
-  const toolbar = (
-    <div className="flex items-center gap-2">
-      {dept.isSuperAdmin && (
-        <Link href="/admin/printing-units" className={buttonClass('ghost', 'sm')}>
-          <Settings className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          Manage Printing Units
-        </Link>
-      )}
+  // Shown unless someone hid it: while the preference is still unknown the
+  // tiles stay up (no flash on first paint), and MachineBoard itself waits
+  // for the answer before loading.
+  const isHidden = collapsed === true;
 
-      <Button
-        size="sm"
-        icon={isHidden ? ChevronDown : ChevronUp}
-        onClick={() => applyCollapsed(!isHidden)}
-        aria-expanded={!isHidden}
-      >
-        {isHidden ? 'Show Machine Board' : 'Hide Machine Board'}
-      </Button>
-
-      <Button
-        size="sm"
-        intent="primary"
-        icon={Plus}
-        onClick={() => addJobFormRef.current?.open()}
-      >
-        Add Job
-      </Button>
-    </div>
-  );
+  // Today in the plant's own time zone, so the server render and the
+  // browser agree on the date whatever the visitor's clock says.
+  const today = new Intl.DateTimeFormat('en-GB', {
+    weekday: 'short', day: '2-digit', month: 'short', timeZone: 'Asia/Kolkata',
+  }).format(new Date());
 
   return (
-    <div className="space-y-6">
-      <MachineBoard dept={dept} collapsed={collapsed} />
+    <div className="flex flex-col gap-7">
+      {showFloor && (
+        <div className="sm:hidden">
+          <FloorQueue dept={dept} initialJobs={jobs} />
+        </div>
+      )}
+
+      {/* Page header: what this page is, how much is in flight, and the two
+          ways new work enters — a PO line in Job Separation, or a job. */}
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-col gap-1.5">
+          <h1 className="text-[30px] font-semibold leading-9 tracking-[-0.025em] text-brand-ink">Jobs</h1>
+          <p className="text-sm text-brand-muted">
+            <span className="font-mono font-semibold text-brand-ink">{jobs.length}</span> in production
+            {' · '}
+            <span className="font-mono">{today}</span>
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {dept.isSuperAdmin && (
+            <Link
+              href="/admin/settings#units"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-brand-muted hover:bg-black/[0.04] hover:text-brand-ink"
+            >
+              <Settings className="h-4 w-4 shrink-0" aria-hidden="true" />
+              Printing units
+            </Link>
+          )}
+          <Link href="/admin/job-separation" className={buttonClass('ghost', 'md')}>
+            Job Separation
+          </Link>
+          <Button
+            intent="primary"
+            icon={Plus}
+            onClick={() => addJobFormRef.current?.open()}
+          >
+            Add job
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        <MachinesStrip
+          boardOpen={!isHidden}
+          onToggleBoard={() => applyCollapsed(!isHidden)}
+          boardId="machine-board"
+        />
+        <div id="machine-board">
+          <MachineBoard dept={dept} collapsed={collapsed} />
+        </div>
+      </div>
 
       <JobsTable
         initialJobs={jobs}
         dept={dept}
         addJobFormRef={addJobFormRef}
         hideAddTrigger
-        toolbarExtra={toolbar}
       />
     </div>
   );

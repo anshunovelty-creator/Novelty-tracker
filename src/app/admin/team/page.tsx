@@ -9,6 +9,8 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions, canDeptManageTeam } from '@/lib/constants/departments';
 import TeamManager from '@/components/admin/TeamManager';
+import AdminSectionNav from '@/components/admin/AdminSectionNav';
+import { deptKeyOf } from '@/lib/identity';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,19 +22,19 @@ export const metadata = {
 export default async function TeamPage() {
   const supabase = await createServerSupabaseClient();
   const user = await getClaimsUser(supabase);
-  const perms = await getDeptPermissions(user?.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
 
   if (!canDeptManageTeam(perms)) {
     redirect('/admin');
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold text-[var(--glass-ink)]">Team</h1>
-        <p className="text-sm text-[var(--glass-muted)] mt-0.5">
-          Every login this app has, and which department it belongs to. Add a
-          member when someone joins; remove one when they leave.
+    <div className="flex flex-col gap-6">
+      {perms?.isSuperAdmin && <AdminSectionNav />}
+      <div className="flex flex-col gap-1.5">
+        <h1 className="text-[30px] font-semibold leading-9 tracking-[-0.025em] text-brand-ink">Team</h1>
+        <p className="max-w-[72ch] text-sm text-brand-muted">
+          Who can sign in, and as which department. The department decides what they can change.
         </p>
       </div>
 

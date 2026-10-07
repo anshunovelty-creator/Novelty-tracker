@@ -10,6 +10,7 @@ import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptManageDispatchNotifications } from '@/lib/constants/departments';
 import type { PendingDispatchNotification, PendingDispatchGroup } from '@/lib/types';
+import { deptKeyOf } from '@/lib/identity';
 
 const MANUAL_STATUSES = ['Partial Dispatch', 'Dispatched'] as const;
 
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!canDeptManageDispatchNotifications(perms)) {
     return NextResponse.json({ error: 'Only Dispatch/Admin can view dispatch notifications' }, { status: 403 });
   }
@@ -59,6 +60,20 @@ export async function GET(request: NextRequest) {
     .map(([party, items]) => ({ party, items }))
     .sort((a, b) => a.party.localeCompare(b.party));
 
+  // How many contacts each party has on file — the queue marks a party with
+  // none as not ready, since its email would have nowhere to go.
+  if (result.length > 0) {
+    const { data: contacts } = await admin
+      .from('party_contacts')
+      .select('party, email')
+      .in('party', result.map((g) => g.party));
+    const counts = new Map<string, number>();
+    for (const c of (contacts ?? []) as { party: string; email: string | null }[]) {
+      if (c.email) counts.set(c.party, (counts.get(c.party) ?? 0) + 1);
+    }
+    for (const g of result) g.contact_count = counts.get(g.party) ?? 0;
+  }
+
   return NextResponse.json({ groups: result });
 }
 
@@ -67,7 +82,7 @@ export async function POST(request: NextRequest) {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!canDeptManageDispatchNotifications(perms)) {
     return NextResponse.json({ error: 'Only Dispatch/Admin can add dispatch entries' }, { status: 403 });
   }

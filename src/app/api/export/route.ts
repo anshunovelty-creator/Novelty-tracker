@@ -13,6 +13,7 @@ import { getDeptPermissions, canDeptExportData } from '@/lib/constants/departmen
 import { buildExportFiles } from '@/lib/export/adminExport';
 import { createZip } from '@/lib/export/zip';
 import { getBranding, slugify } from '@/lib/branding';
+import { deptKeyOf } from '@/lib/identity';
 
 // zlib and Buffer — this cannot run on the edge runtime.
 export const runtime = 'nodejs';
@@ -27,7 +28,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms) {
     return NextResponse.json({ error: 'Invalid department in token' }, { status: 403 });
   }

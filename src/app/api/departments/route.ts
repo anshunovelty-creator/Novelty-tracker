@@ -17,6 +17,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, invalidateDeptCache } from '@/lib/constants/departments';
+import { deptKeyOf } from '@/lib/identity';
 
 const KEY_RE = /^[A-Za-z][A-Za-z0-9_-]{1,49}$/;
 
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms?.isSuperAdmin) {
     return NextResponse.json({ error: 'Only the super-admin department can create departments' }, { status: 403 });
   }

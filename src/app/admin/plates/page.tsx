@@ -10,6 +10,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions, canDeptManageDiesPlates } from '@/lib/constants/departments';
 import PlatesManager from '@/components/admin/PlatesManager';
+import { deptKeyOf } from '@/lib/identity';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,16 +22,14 @@ export const metadata = {
 export default async function PlatesPage() {
   const supabase = await createServerSupabaseClient();
   const user = await getClaimsUser(supabase);
-  const perms = await getDeptPermissions(user?.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-[var(--glass-ink)]">Plates</h1>
-        <p className="text-sm text-[var(--glass-muted)] mt-0.5">
-          Printing plates made for each party&apos;s item, with the cylinder they
-          run on and the rack they sit on. Every department can search this
-          list; Prepress and Admin keep it up to date.
+        <h1 className="text-[30px] font-semibold leading-9 tracking-[-0.025em] text-brand-ink">Plates</h1>
+        <p className="mt-1.5 max-w-[72ch] text-sm text-brand-muted">
+          Plate sets on the racks, with the cylinder they run on. Search here before making a new one.
         </p>
       </div>
 

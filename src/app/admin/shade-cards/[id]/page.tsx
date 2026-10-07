@@ -14,10 +14,8 @@ import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { cn, formatAdminDate, formatNumericDate } from '@/lib/utils';
-import {
-  SHADE_CARD_STATUS_COLORS,
-  MAKING_STATUS_COLORS,
-} from '@/lib/constants/shadeCards';
+import { SHADE_CARD_STATUS_DOT, MAKING_STATUS_DOT } from '@/lib/constants/shadeCards';
+import { StateChip } from '@/components/ui/StateChip';
 import type { ShadeCard, ShadeCardStatusHistoryEntry } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -73,19 +71,9 @@ export default async function ShadeCardDetailPage(
       </Link>
 
       <div className="flex flex-wrap items-center gap-2">
-        <h1 className="text-xl font-semibold text-[var(--glass-ink)]">{card.party}</h1>
-        <span className={cn('px-2 py-0.5 rounded-md text-xs font-medium',
-          SHADE_CARD_STATUS_COLORS[card.status]?.bg,
-          SHADE_CARD_STATUS_COLORS[card.status]?.text,
-          SHADE_CARD_STATUS_COLORS[card.status]?.border)}>
-          {card.status}
-        </span>
-        <span className={cn('px-2 py-0.5 rounded-md text-xs font-medium',
-          MAKING_STATUS_COLORS[card.making_status]?.bg,
-          MAKING_STATUS_COLORS[card.making_status]?.text,
-          MAKING_STATUS_COLORS[card.making_status]?.border)}>
-          {card.making_status}
-        </span>
+        <h1 className="text-[30px] font-semibold leading-9 tracking-[-0.025em] text-brand-ink">{card.party}</h1>
+        <StateChip label={card.status} dot={SHADE_CARD_STATUS_DOT[card.status]} />
+        <StateChip label={card.making_status} dot={MAKING_STATUS_DOT[card.making_status]} />
         {!card.is_current && (
           <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
             Superseded
@@ -171,12 +159,7 @@ export default async function ShadeCardDetailPage(
                 ) : (
                   <span className="text-[var(--glass-muted)]">created as</span>
                 )}
-                <span className={cn('px-2 py-0.5 rounded-md text-xs font-medium',
-                  SHADE_CARD_STATUS_COLORS[h.new_status]?.bg,
-                  SHADE_CARD_STATUS_COLORS[h.new_status]?.text,
-                  SHADE_CARD_STATUS_COLORS[h.new_status]?.border)}>
-                  {h.new_status}
-                </span>
+                <StateChip label={h.new_status} dot={SHADE_CARD_STATUS_DOT[h.new_status]} />
                 <span className="text-xs text-[var(--glass-muted)]">
                   {h.changed_by_name ?? 'unknown'}
                 </span>

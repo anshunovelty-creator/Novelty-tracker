@@ -9,6 +9,7 @@
 
 import dynamic from 'next/dynamic';
 import { useState, useEffect, useMemo } from 'react';
+import { useUrlSearch } from '@/hooks/useUrlSearch';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { Search, Plus, Pencil, Trash2, Layers } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -93,6 +94,7 @@ const PLATE_EXPORT_COLUMNS: CsvColumn<Plate>[] = [
 
 export default function PlatesManager({ canManage }: { canManage: boolean }) {
   const [search,      setSearch]      = useState('');
+  useUrlSearch(setSearch);
   const [searchField, setSearchField] = useState('all');
   const [adding,      setAdding]      = useState(false);
   const [editing,     setEditing]     = useState<Plate | null>(null);
@@ -203,7 +205,7 @@ export default function PlatesManager({ canManage }: { canManage: boolean }) {
             onChange={(e) => setSearch(e.target.value)}
             placeholder={PLATE_SEARCH_FIELDS.find((f) => f.value === searchField)?.placeholder}
             aria-label="Search plates"
-            title="Search (Ctrl+K)"
+            title="Search this page (/)"
             data-global-search
             className={cn(
               'w-full min-h-11 pl-9 pr-11 rounded-xl text-sm',

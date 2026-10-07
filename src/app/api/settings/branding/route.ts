@@ -12,13 +12,14 @@ import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions } from '@/lib/constants/departments';
 import { invalidateBrandingCache } from '@/lib/branding';
+import { deptKeyOf } from '@/lib/identity';
 
 async function requireSuperAdmin() {
   const supabase = await createServerSupabaseClient();
   const user = await getClaimsUser(supabase);
   if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) } as const;
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms?.isSuperAdmin) {
     return { error: NextResponse.json({ error: 'Only Admin can change company settings' }, { status: 403 }) } as const;
   }

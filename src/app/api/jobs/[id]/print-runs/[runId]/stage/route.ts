@@ -21,6 +21,7 @@ import { getDeptPermissions, canDeptSetRunStage } from '@/lib/constants/departme
 import { RUN_STAGES } from '@/lib/constants/runStages';
 import { toMonthKey } from '@/lib/utils';
 import type { PrintRunStage } from '@/lib/types';
+import { deptKeyOf } from '@/lib/identity';
 
 type Params = { params: Promise<{ id: string; runId: string }> };
 
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms) return NextResponse.json({ error: 'Invalid department in token' }, { status: 403 });
 
   const body: { new_stage?: PrintRunStage; notes?: string; qc_remark?: string } = await request.json();
@@ -99,16 +100,25 @@ export async function POST(request: NextRequest, { params }: Params) {
     runUpdate.qc_remark = qcRemark;
   }
 
+  // Only from the stage we read: two people advancing the same run at once
+  // would otherwise both move it — and both count its dispatch.
   const { data: updatedRun, error: updateError } = await admin
     .from('print_runs')
     .update(runUpdate)
     .eq('id', runId)
+    .eq('current_stage', run.current_stage)
     .select()
-    .single();
+    .maybeSingle();
 
   if (updateError) {
     console.error('[POST print-run stage] update run:', updateError);
     return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+  if (!updatedRun) {
+    return NextResponse.json(
+      { error: 'Someone else just moved this run — refresh to see where it is now' },
+      { status: 409 }
+    );
   }
 
   // ── On dispatch: complete the linked schedule + job bookkeeping ──
@@ -135,23 +145,21 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     if (!alreadyCounted) {
-      const { data: job } = await admin
-        .from('jobs')
-        .select('dispatched_qty, total_qty_dispatched, label_qty, delivery_date')
-        .eq('id', id)
-        .single();
+      // Both totals move together, in one statement (add_job_dispatched,
+      // migration 073): no read-add-write, so a dispatch recorded at the
+      // same moment can't be lost. The run itself is already Dispatched —
+      // the labels left — so a refusal here is logged, not undone.
+      const { data: totals, error: addError } = await admin
+        .rpc('add_job_dispatched', { p_job_id: id, p_qty: run.qty_this_run })
+        .single<{ dispatched_qty: number; total_qty_dispatched: number; label_qty: number | null }>();
+      if (addError) console.error('[POST print-run stage] add dispatched qty:', addError);
 
-      if (job) {
-        // Both totals move together — the schedule path and the run path
-        // used to update different fields, which made the portals disagree.
-        const newDispatchedQty = (job.dispatched_qty ?? 0) + run.qty_this_run;
-        await admin
-          .from('jobs')
-          .update({
-            dispatched_qty:       newDispatchedQty,
-            total_qty_dispatched: (job.total_qty_dispatched ?? 0) + run.qty_this_run,
-          })
-          .eq('id', id);
+      const { data: job } = totals
+        ? await admin.from('jobs').select('label_qty, delivery_date').eq('id', id).single()
+        : { data: null };
+
+      if (job && totals) {
+        const newDispatchedQty = totals.dispatched_qty;
 
         await admin.from('job_status_logs').insert({
           job_id:          id,

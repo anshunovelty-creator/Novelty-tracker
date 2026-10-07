@@ -33,10 +33,9 @@ interface Props {
 }
 
 const selectCls =
-  'w-full rounded-lg border border-black/[0.12] bg-white px-3 py-2 text-sm ' +
-  'text-[var(--glass-ink)] min-h-[44px] ' +
-  'focus:outline-none focus:ring-2 focus:ring-[var(--brand-accent)] focus:border-transparent ' +
-  'disabled:opacity-50 disabled:cursor-not-allowed';
+  'w-full min-h-11 rounded-[10px] border border-brand-border bg-brand-surface-alt px-2.5 text-sm font-semibold ' +
+  'text-brand-ink focus:border-brand-primary focus:bg-white focus:outline-none ' +
+  'focus:shadow-[0_0_0_4px_rgba(16,85,63,0.12)] disabled:cursor-not-allowed disabled:opacity-50';
 
 export default function PrintingUnitEdit({
   jobId,
@@ -98,15 +97,36 @@ export default function PrintingUnitEdit({
   // A job can hold a unit that belongs to the other method (deliberate override).
   const unitMismatch = assignedUnit && assignedUnit.printing_method !== method;
 
+  const notice =
+    saving ? null
+    : error ? <p className="text-xs text-brand-danger">{error}</p>
+    // Only legacy rows can land here — since the method became
+    // unit-derived, no form can create this state. Reassigning the
+    // unit rewrites the method and clears it.
+    : unitMismatch ? (
+      <p className="text-xs text-brand-warning">
+        Recorded as {method} but {assignedUnit.name} runs {assignedUnit.printing_method}. Pick the unit again to correct it.
+      </p>
+    )
+    : units.length === 0 ? <p className="text-xs text-brand-muted">No printing units yet — an Admin must add one.</p>
+    : null;
+
+  // Departments that can't change the unit just read it.
+  if (!canEdit) {
+    return (
+      <div className="flex flex-col gap-1">
+        <span className="text-[15px] font-semibold text-brand-ink">
+          {assignedUnit ? `${assignedUnit.name} · ${assignedUnit.printing_method}` : 'Unassigned'}
+        </span>
+        {notice}
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-2">
-      <div>
-        <label
-          htmlFor={`printing-unit-${jobId}`}
-          className="block text-xs font-medium text-[var(--glass-muted)] mb-1"
-        >
-          Printing Unit
-        </label>
+    <div className="flex flex-col gap-1">
+      <label htmlFor={`printing-unit-${jobId}`} className="sr-only">Printing unit</label>
+      <div className="relative">
         <select
           id={`printing-unit-${jobId}`}
           className={selectCls}
@@ -119,45 +139,18 @@ export default function PrintingUnitEdit({
             save({ printing_unit_id: next });
           }}
         >
-          <option value="">— Unassigned —</option>
+          <option value="">Unassigned</option>
           {units.map((u) => (
             <option key={u.id} value={u.id}>
               {u.name} · {u.printing_method}
             </option>
           ))}
         </select>
-      </div>
-
-      <div aria-live="polite" className="min-h-[18px]">
         {saving && (
-          <p className="flex items-center gap-1.5 text-xs text-[var(--glass-muted)]">
-            <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
-            Saving…
-          </p>
-        )}
-        {!saving && error && (
-          <p className="text-xs text-red-600">{error}</p>
-        )}
-        {/* Only legacy rows can land here — since the method became
-            unit-derived, no form can create this state. Reassigning the
-            unit rewrites the method and clears it. */}
-        {!saving && !error && unitMismatch && (
-          <p className="text-xs text-amber-700">
-            This job is recorded as {method} but sits on {assignedUnit.name},
-            which runs {assignedUnit.printing_method}. Pick the unit again to correct it.
-          </p>
-        )}
-        {!saving && !error && units.length === 0 && (
-          <p className="text-xs text-[var(--glass-muted)]">
-            No printing units configured — an Admin must add one.
-          </p>
-        )}
-        {!canEdit && (
-          <p className="text-xs text-[var(--glass-muted)]">
-            Only Prepress, Production or Admin can change the printing unit.
-          </p>
+          <Loader2 className="absolute right-8 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-brand-muted" aria-label="Saving" />
         )}
       </div>
+      <div aria-live="polite">{notice}</div>
     </div>
   );
 }

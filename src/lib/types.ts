@@ -19,6 +19,8 @@ import type { ShadeCardStatus, MakingStatus } from './constants/shadeCards';
 export interface Member {
   id: string;
   email: string;
+  /** The @username Admin set (src/lib/username.ts); derived for older logins. */
+  username: string;
   department: Department | null;
   created_at: string;
   last_sign_in_at: string | null;
@@ -72,6 +74,10 @@ export interface Job {
   job_stage_timestamps?: { stage: Stage }[];
   // Present when fetched with the print_runs join — multi-cycle orders.
   print_runs?: PrintRun[];
+  // Present when fetched with the job_separations(...) join: the Job
+  // Separation line this job was made from (at most one — empty for a job
+  // added directly). The dashboard table reads its rate and material.
+  job_separations?: Pick<JobSeparation, 'rate' | 'unit' | 'material_name'>[];
 }
 
 // ── label_stock ──────────────────────────────────────────────
@@ -417,6 +423,8 @@ export interface NoteFeedItem extends StageComment {
   pm_code: string | null;
   po_number: string;
   party: string;
+  /** The job's stage now — where a note written from the drawer is filed. */
+  job_status?: string;
   /** Has the calling user marked this note read? See migration 017_note_reads. */
   read: boolean;
 }
@@ -528,6 +536,8 @@ export interface MachineQueueItem {
     job_name:  string | null;
     party:     string;
     label_qty: number | null;
+    // 1–5, on the live board only (GET /api/machines)
+    urgent_priority?: number | null;
   } | null;
   // joined machine info (history rows)
   machines?: { name: string; location: string | null } | null;
@@ -684,6 +694,8 @@ export interface PendingDispatchNotification {
 export interface PendingDispatchGroup {
   party: string;
   items: PendingDispatchNotification[];
+  /** Contacts with an email on file for this party (party_contacts). */
+  contact_count?: number;
 }
 
 // Status change payload — sent to /api/jobs/[id]/status
@@ -699,6 +711,7 @@ export interface StatusChangePayload {
   // Partial Dispatch: what Dispatch confirms is physically left on the shelf.
   // Omitted → the route falls back to (label_qty − dispatched_qty).
   stock_remaining_qty?: number;
+  stock_remaining_location?: string;   // rack for that balance
   // Dispatched: surplus printed beyond the order. 0 or omitted → no extras.
   extra_label_qty?: number;
   extra_label_location?: string;
@@ -719,6 +732,8 @@ export interface BomMaterial {
   // ₹ per square metre. 0 means "not entered yet": the material is listed
   // but a job can't be priced with it — see materialExpense() in lib/bom.ts.
   rate_per_sqm:  number;
+  /** Costed jobs using it (GET /api/bom-materials). */
+  used_by?:      number;
   is_active:     boolean;
   created_by:    string | null;
   updated_by:    string | null;
@@ -855,6 +870,8 @@ export interface PaperStockMovement {
   id:                string;
   roll_id:           string;
   roll_ref:          string | null;
+  material_name?:    string | null;   // joined for the store-wide Activity feed
+  width_mm?:         number | null;
   kind:              PaperStockMovementKind;
   meters:            number;          // signed: + into stock, − out
   job_separation_id: string | null;

@@ -27,7 +27,7 @@ const TABS: { value: Tab; label: string }[] = [
   { value: 'materials', label: 'Materials' },
 ];
 
-export default function BomTabs({ canDecide, canManageStock }: { canDecide: boolean; canManageStock: boolean }) {
+export default function BomTabs({ canDecide, canManageStock, canSeeTotals }: { canDecide: boolean; canManageStock: boolean; canSeeTotals: boolean }) {
   // Costing first for everyone — "is this order worth taking" is the
   // question the section exists to answer; the Requests badge flags the
   // rest.
@@ -39,7 +39,8 @@ export default function BomTabs({ canDecide, canManageStock }: { canDecide: bool
 
   return (
     <div className="space-y-4">
-      <div role="tablist" aria-label="Bill of Material section" className="inline-flex items-center gap-1 rounded-xl border border-black/[0.08] bg-white p-1">
+      {/* Underline tabs — the same grammar as DiesTabs and the dashboard. */}
+      <div role="tablist" aria-label="Bill of Material section" className="flex gap-7 overflow-x-auto overflow-y-hidden border-b border-brand-border">
         {TABS.map((t) => (
           <button
             key={t.value}
@@ -48,19 +49,16 @@ export default function BomTabs({ canDecide, canManageStock }: { canDecide: bool
             aria-selected={tab === t.value}
             onClick={() => setTab(t.value)}
             className={cn(
-              'inline-flex items-center gap-1.5 min-h-9 px-3.5 rounded-lg text-sm font-medium transition-colors',
+              'flex h-12 shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-0.5 text-sm transition-colors',
               tab === t.value
-                ? 'bg-brand-primary text-white'
-                : 'text-[var(--glass-muted)] hover:text-[var(--glass-ink)] hover:bg-black/[0.04]',
+                ? 'border-brand-ink font-semibold text-brand-ink'
+                : 'border-transparent font-medium text-brand-muted hover:text-brand-ink',
             )}
           >
             {t.label}
             {t.value === 'requests' && pending > 0 && (
               <span
-                className={cn(
-                  'inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums',
-                  tab === t.value ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800',
-                )}
+                className="rounded-full bg-brand-sunken px-[7px] py-px font-mono text-xs font-medium tabular-nums text-brand-warning"
                 aria-label={`${pending} awaiting`}
               >
                 {pending}
@@ -70,9 +68,9 @@ export default function BomTabs({ canDecide, canManageStock }: { canDecide: bool
         ))}
       </div>
 
-      {tab === 'costing'   && <BomCostingTable canDecide={canDecide} />}
+      {tab === 'costing'   && <BomCostingTable canDecide={canDecide} canSeeTotals={canSeeTotals} />}
       {tab === 'requests'  && <BomRequestsList canDecide={canDecide} canManageStock={canManageStock} />}
-      {tab === 'inventory' && <PaperStockManager canManage={canManageStock} />}
+      {tab === 'inventory' && <PaperStockManager canManage={canManageStock} canSeeTotals={canSeeTotals} />}
       {tab === 'materials' && <BomMaterialsManager canManage={canDecide} />}
     </div>
   );

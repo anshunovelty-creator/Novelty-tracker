@@ -63,10 +63,10 @@ export default function MachineUtilisationReport({ initial }: { initial: Report 
     <div className="glass rounded-xl p-5">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-[var(--glass-ink)]">
-            Machine utilisation
+          <h2 className="text-base font-semibold text-brand-ink">
+            Utilisation
           </h2>
-          <p className="mt-0.5 text-xs text-[var(--glass-muted)]">
+          <p className="mt-0.5 text-[13px] text-brand-muted">
             Actual run times from every completed job on the machine board.
           </p>
         </div>

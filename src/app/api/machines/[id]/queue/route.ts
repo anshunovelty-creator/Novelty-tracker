@@ -2,6 +2,8 @@
 // ============================================================
 // POST — queue a job on this machine (Production/Admin), appended at the
 // end of the sequence, with optional estimated start/finish times.
+// PUT  — reorder the waiting jobs in one go ({ order: [itemId, …] }), for
+// the Machines page's drag-to-reorder. The printing job is not part of it.
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -9,6 +11,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { requireDept } from '@/lib/api/machineBoard';
 import { canDeptManageMachineBoard } from '@/lib/constants/departments';
 import { estimateFinishIso } from '@/lib/machineSpeed';
+import { sameMembers } from '@/lib/machineQueue';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -133,4 +136,61 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   return NextResponse.json({ item });
+}
+
+export async function PUT(request: NextRequest, { params }: Params) {
+  const { id: machineId } = await params;
+  const auth = await requireDept();
+  if ('error' in auth) return auth.error;
+  if (!canDeptManageMachineBoard(auth.perms)) {
+    return NextResponse.json(
+      { error: 'Only Production or Admin can update machine queues' },
+      { status: 403 }
+    );
+  }
+
+  const body  = await request.json().catch(() => ({}));
+  const order = Array.isArray(body.order) && body.order.every((x: unknown) => typeof x === 'string')
+    ? (body.order as string[])
+    : null;
+  if (!order) {
+    return NextResponse.json({ error: 'order must be a list of queue item ids' }, { status: 400 });
+  }
+
+  const admin = createAdminClient();
+  const { data: queued, error: readErr } = await admin
+    .from('machine_queue_items')
+    .select('id, position')
+    .eq('machine_id', machineId)
+    .eq('status', 'queued')
+    .order('position');
+  if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 });
+
+  const current = queued ?? [];
+  // Someone else started, removed or added a job since this screen loaded.
+  // Refuse rather than guess — the page refetches and shows the real queue.
+  if (!sameMembers(order, current.map((q) => q.id))) {
+    return NextResponse.json(
+      { error: 'The queue changed while you were reordering — it has been refreshed' },
+      { status: 409 }
+    );
+  }
+
+  // Reuse the slots the queue already holds, so the waiting jobs keep their
+  // place relative to the one printing; only who sits in each slot changes.
+  const slots = current.map((q) => q.position);
+  const moves = order
+    .map((id, i) => ({ id, position: slots[i] }))
+    .filter(({ id, position }) => current.find((q) => q.id === id)?.position !== position);
+
+  for (const m of moves) {
+    const { error } = await admin
+      .from('machine_queue_items')
+      .update({ position: m.position })
+      .eq('id', m.id)
+      .eq('machine_id', machineId);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ reordered: moves.length });
 }

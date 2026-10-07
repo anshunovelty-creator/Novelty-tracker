@@ -26,6 +26,7 @@ import type { DeptPermissions } from '@/lib/constants/departments';
 import type { Machine, MachineQueueItem } from '@/lib/types';
 import { ConfirmModal } from './modals';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { StateChip } from '@/components/ui/StateChip';
 
 type AvailableJob = {
   id:        string;
@@ -501,12 +502,11 @@ function MachineCard({
           <MachineRate machine={machine} canManage={canManage} busy={busy} mutate={mutate} />
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          <span className={cn(
-            'text-[11px] font-medium px-2 py-0.5 rounded-full',
-            machine.is_active ? 'bg-emerald-400/15 text-emerald-200' : 'bg-red-400/15 text-red-200'
-          )}>
-            {machine.is_active ? 'Working' : 'Not working'}
-          </span>
+          <StateChip
+            label={machine.is_active ? 'Working' : 'Not working'}
+            dot={machine.is_active ? '#059669' : '#B91C1C'}
+            className="mr-1 text-xs"
+          />
           {/* Opens this machine's room display — the read-only screen projected
               in its production room. */}
           <Link

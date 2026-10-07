@@ -29,7 +29,10 @@ const PAGE_SIZE = 1000;
 async function fetchAll<T>(
   client:  SupabaseClient<any>,
   table:   string,
-  orderBy: string
+  orderBy: string,
+  // The table's unique key, ordered last so pages never skip or repeat a
+  // row. 'id' for every table except bom_costings, keyed by its job.
+  keyColumn = 'id',
 ): Promise<T[]> {
   const rows: T[] = [];
 
@@ -37,9 +40,9 @@ async function fetchAll<T>(
     const { data, error } = await client
       .from(table)
       .select('*')
-      // id breaks ties, so a row can never be skipped or repeated across pages
+      // the key breaks ties, so a row can never be skipped or repeated across pages
       .order(orderBy, { ascending: true })
-      .order('id', { ascending: true })
+      .order(keyColumn, { ascending: true })
       .range(from, from + PAGE_SIZE - 1);
 
     if (error) throw new Error(`Failed to read ${table}: ${error.message}`);
@@ -377,7 +380,7 @@ export async function buildExportFiles(client: SupabaseClient<any>): Promise<Exp
     fetchAll<RegisterAccount>(client,   'register_accounts',        'created_at'),
     fetchAll<RegisterDeal>(client,      'register_deals',           'created_at'),
     fetchAll<RegisterActivity>(client,  'register_activities',      'created_at'),
-    fetchAll<BomCostingRaw>(client,       'bom_costings',             'updated_at'),
+    fetchAll<BomCostingRaw>(client,       'bom_costings',             'updated_at', 'job_separation_id'),
     fetchAll<BomMaterialRequest>(client,  'bom_material_requests',    'created_at'),
     fetchAll<BomMaterial>(client,         'bom_materials',            'name'),
     fetchAll<PrepressTodo>(client,      'prepress_todos',           'created_at'),

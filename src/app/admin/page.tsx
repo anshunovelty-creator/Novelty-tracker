@@ -5,8 +5,8 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions } from '@/lib/constants/departments';
 import { redirect } from 'next/navigation';
-import DashboardSummaryCard from '@/components/admin/DashboardSummaryCard';
 import DashboardBoard from '@/components/admin/DashboardBoard';
+import { deptKeyOf } from '@/lib/identity';
 
 export default async function AdminPage() {
   const supabase = await createServerSupabaseClient();
@@ -14,54 +14,22 @@ export default async function AdminPage() {
   const user = await getClaimsUser(supabase);
   if (!user) redirect('/login');
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms) redirect('/login');
 
   // Fetch initial jobs (server-side for first paint)
-  // job_stage_timestamps(stage) join powers the ✓ marks in the status dropdown
+  // job_stage_timestamps(stage) join powers the stage control's step count and tick bar
   const { data: jobs } = await supabase
     .from('jobs')
-    .select('*, job_stage_timestamps(stage), printing_units(id, name, printing_method)')
+    .select('*, job_stage_timestamps(stage), printing_units(id, name, printing_method), job_separations(rate, unit, material_name)')
     .eq('is_closed', false)
     .order('delivery_date', { ascending: true, nullsFirst: false });
 
-  // Fetch dashboard summary directly from DB (avoids auth-cookie issue with internal fetch)
-  const today    = new Date();
-  const weekOut  = new Date(today); weekOut.setDate(weekOut.getDate() + 6);
-  const monthStart = today.toISOString().slice(0, 7) + '-01'; // 'YYYY-MM-01'
-  const nextMonth  = new Date(today.getFullYear(), today.getMonth() + 1, 1).toISOString().slice(0, 10);
-
-  const [activeRes, holdRes, weekRes, dispatchedRes] = await Promise.all([
-    supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('is_closed', false),
-    supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('status', 'On Hold').eq('is_closed', false),
-    supabase.from('jobs').select('id', { count: 'exact', head: true })
-      .eq('is_closed', false)
-      .gte('delivery_date', today.toISOString().slice(0, 10))
-      .lte('delivery_date', weekOut.toISOString().slice(0, 10)),
-    supabase.from('job_status_logs').select('id', { count: 'exact', head: true })
-      .eq('status', 'Dispatched')
-      .gte('changed_at', monthStart)
-      .lt('changed_at', nextMonth),
-  ]);
-
-  const summary = {
-    total_active:           activeRes.count     ?? 0,
-    on_hold_count:          holdRes.count        ?? 0,
-    due_this_week:          weekRes.count        ?? 0,
-    dispatched_this_month:  dispatchedRes.count  ?? 0,
-    on_time_delivery_rate:  null, // loaded via /api/analytics on demand
-  };
-
   return (
-    <div className="space-y-6">
-      {/* Dashboard summary */}
-      <DashboardSummaryCard summary={summary} />
-
-      {/* Machine board, toolbar (Manage Printing Units / Show-Hide Machine
-          Board / Add Job), and the jobs table — coordinated together since
-          the toolbar's middle and right buttons control state that lives in
-          the other two. */}
+    <>
+      {/* Page header, machines strip + board, and the jobs table with its
+          view tabs (Needs attention / Due this week / All active / Closed). */}
       <DashboardBoard dept={perms} jobs={jobs ?? []} />
-    </div>
+    </>
   );
 }

@@ -18,6 +18,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, invalidateDeptCache } from '@/lib/constants/departments';
+import { deptKeyOf } from '@/lib/identity';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -26,7 +27,7 @@ async function requireSuperAdmin() {
   const user = await getClaimsUser(supabase);
   if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) } as const;
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms?.isSuperAdmin) {
     return { error: NextResponse.json({ error: 'Only the super-admin department can manage departments' }, { status: 403 }) } as const;
   }
@@ -59,41 +60,29 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     update.all_stages = body.all_stages;
   }
 
-  if (Object.keys(update).length > 0) {
-    const { error } = await admin.from('departments').update(update).eq('id', id);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  // One transaction (save_department, migration 073): the row update and
+  // each permission set's full replace land together or not at all. These
+  // used to be separate delete-then-insert requests, unchecked — a failure
+  // between them left the department with no permissions.
+  // Only a dimension the client actually sent is replaced (null = leave it),
+  // so a save from a UI that only shows the feature grid doesn't wipe out
+  // stage grants nobody looked at this time.
+  const strings = (v: unknown): string[] | null =>
+    Array.isArray(v) ? v.filter((x: unknown): x is string => typeof x === 'string') : null;
 
-  // Full-replace pattern for each permission dimension: only touch a
-  // dimension if the client actually sent it, so a save from a UI that
-  // only shows the feature grid doesn't wipe out stage grants nobody
-  // looked at this time.
-  if (Array.isArray(body.features)) {
-    const features = body.features.filter((f: unknown): f is string => typeof f === 'string');
-    await admin.from('department_feature_permissions').delete().eq('department_id', id);
-    if (features.length) {
-      await admin.from('department_feature_permissions').insert(
-        features.map((feature_key: string) => ({ department_id: id, feature_key }))
-      );
-    }
-  }
-  if (Array.isArray(body.stages)) {
-    const stages = body.stages.filter((s: unknown): s is string => typeof s === 'string');
-    await admin.from('department_stage_permissions').delete().eq('department_id', id);
-    if (stages.length) {
-      await admin.from('department_stage_permissions').insert(
-        stages.map((stage: string) => ({ department_id: id, stage }))
-      );
-    }
-  }
-  if (Array.isArray(body.run_stages)) {
-    const runStages = body.run_stages.filter((r: unknown): r is string => typeof r === 'string');
-    await admin.from('department_run_stage_permissions').delete().eq('department_id', id);
-    if (runStages.length) {
-      await admin.from('department_run_stage_permissions').insert(
-        runStages.map((run_stage: string) => ({ department_id: id, run_stage }))
-      );
-    }
+  const { error: saveError } = await admin.rpc('save_department', {
+    p_department_id: id,
+    p_update:        update,
+    p_features:      strings(body.features),
+    p_stages:        strings(body.stages),
+    p_run_stages:    strings(body.run_stages),
+  });
+  if (saveError) {
+    const notFound = saveError.message.includes('DEPARTMENT_NOT_FOUND');
+    return NextResponse.json(
+      { error: notFound ? 'Department not found' : `Nothing was saved: ${saveError.message}` },
+      { status: notFound ? 404 : 500 },
+    );
   }
 
   invalidateDeptCache();

@@ -9,6 +9,7 @@ import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions } from '@/lib/constants/departments';
 import JobDetailClient from '@/components/admin/JobDetailClient';
 import type { Job } from '@/lib/types';
+import { deptKeyOf } from '@/lib/identity';
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -21,7 +22,7 @@ export default async function JobDetailPage({ params }: Props) {
   const user = await getClaimsUser(supabase);
   if (!user) redirect('/login');
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms) redirect('/login');
 
   const { data: job, error } = await supabase

@@ -60,7 +60,6 @@ export default function BomMaterialsManager({ canManage }: Props) {
   const fitRef = useFitToViewport<HTMLDivElement>();
   const queryClient = useQueryClient();
 
-  const [adding,    setAdding]    = useState(false);
   const [addDraft,  setAddDraft]  = useState<Draft>(blankDraft());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<Draft>(blankDraft());
@@ -139,7 +138,6 @@ export default function BomMaterialsManager({ canManage }: Props) {
       if (!res.ok) { toast.error(data.error ?? 'Failed to add material'); return; }
       toast.success(`${body.name} added`);
       setAddDraft(blankDraft());
-      setAdding(false);
       refresh();
     } catch {
       toast.error('Network error');
@@ -191,8 +189,8 @@ export default function BomMaterialsManager({ canManage }: Props) {
   }
 
   const columns = canManage
-    ? ['Material', 'Specification', '₹ / m²', 'Updated', 'Actions']
-    : ['Material', 'Specification', '₹ / m²', 'Updated'];
+    ? ['Material', 'Specification', '₹ / m²', 'Used by', 'Updated', 'Actions']
+    : ['Material', 'Specification', '₹ / m²', 'Used by', 'Updated'];
 
   return (
     <div className="space-y-3">
@@ -219,41 +217,10 @@ export default function BomMaterialsManager({ canManage }: Props) {
             Show retired ({retiredCount})
           </label>
         )}
-        {canManage && (
-          <Button intent="primary" icon={adding ? X : Plus} onClick={() => { setAdding((o) => !o); setAddDraft(blankDraft()); }}>
-            {adding ? 'Cancel' : 'Add material'}
-          </Button>
-        )}
       </div>
 
-      {adding && canManage && (
-        <div className="rounded-xl glass p-4">
-          <h3 className="text-sm font-semibold text-[var(--glass-ink)]">New material</h3>
-          <div className="mt-3 grid gap-2 sm:grid-cols-[2fr_2fr_1fr_auto] sm:items-end">
-            <Field label="Name">
-              <WithExample example="Chromo Paper 80gsm">
-                  <input autoFocus value={addDraft.name} onChange={(e) => setAddDraft({ ...addDraft, name: e.target.value })}
-                       onKeyDown={(e) => { if (e.key === 'Enter') add(); }} className={cn(inputClass, 'w-full')} />
-              </WithExample>
-            </Field>
-            <Field label="Specification (optional)">
-              <WithExample example="gsm / micron / finish">
-                  <input value={addDraft.specification} onChange={(e) => setAddDraft({ ...addDraft, specification: e.target.value })}
-                       onKeyDown={(e) => { if (e.key === 'Enter') add(); }} className={cn(inputClass, 'w-full')} />
-              </WithExample>
-            </Field>
-            <Field label="₹ per m²">
-              <input type="number" min="0" step="any" inputMode="decimal" value={addDraft.rate}
-                     onChange={(e) => setAddDraft({ ...addDraft, rate: e.target.value })}
-                     onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
-                     className={cn(inputClass, 'w-full font-mono tabular-nums text-right')} />
-            </Field>
-            <Button intent="primary" icon={Check} busy={busyId === 'new'} onClick={add}>Add</Button>
-          </div>
-        </div>
-      )}
-
-      <div className="rounded-xl glass overflow-hidden">
+      <div className="flex flex-wrap items-start gap-4">
+      <div className="min-w-0 flex-[999_1_560px] rounded-xl glass overflow-hidden">
         <div ref={fitRef} className="table-scroll-wrapper relative max-h-[70vh] overflow-y-auto">
           <table className="w-full min-w-[640px] border-collapse text-sm">
             <thead>
@@ -316,6 +283,7 @@ export default function BomMaterialsManager({ canManage }: Props) {
                                  onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(m); if (e.key === 'Escape') setEditingId(null); }}
                                  aria-label="Rate per square metre" className={cn(inputClass, 'min-h-9 w-full font-mono tabular-nums text-right')} />
                         </td>
+                        <td className="px-3 py-1.5 font-mono text-xs">{usedByLabel(m.used_by)}</td>
                         <td className="px-3 py-1.5 text-xs">{formatNumericDate(m.updated_at)}</td>
                         <td className="px-3 py-1.5 text-right whitespace-nowrap">
                           <div className="inline-flex items-center gap-1.5">
@@ -339,6 +307,7 @@ export default function BomMaterialsManager({ canManage }: Props) {
                             </span>
                           )}
                         </td>
+                        <td className="px-3 py-1.5 font-mono text-xs whitespace-nowrap text-[var(--glass-muted)]">{usedByLabel(m.used_by)}</td>
                         <td className="px-3 py-1.5 text-xs whitespace-nowrap text-[var(--glass-muted)]">
                           {formatNumericDate(m.updated_at)}
                           {m.updated_by && <span className="block truncate max-w-[160px]">{m.updated_by}</span>}
@@ -364,9 +333,11 @@ export default function BomMaterialsManager({ canManage }: Props) {
                                           onClick={() => patch(m, { is_active: true }, `${m.name} restored`)}
                                           aria-label={`Restore ${m.name}`} title="Restore to the dropdown" />
                                 )}
-                                <Button intent="danger" size="sm" icon={Trash2} disabled={busy}
-                                        onClick={() => setConfirmDeleteId(m.id)}
-                                        aria-label={`Delete ${m.name}`} title="Delete — only if no job is costed with it" />
+                                {!(m.used_by ?? 0) && (
+                                  <Button intent="danger" size="sm" icon={Trash2} disabled={busy}
+                                          onClick={() => setConfirmDeleteId(m.id)}
+                                          aria-label={`Delete ${m.name}`} title="Delete — no job is costed with it" />
+                                )}
                               </div>
                             )}
                           </td>
@@ -380,8 +351,42 @@ export default function BomMaterialsManager({ canManage }: Props) {
           </table>
         </div>
       </div>
+
+      {/* New material — beside the list, always ready, for Admin. */}
+      {canManage && (
+        <form
+          onSubmit={(e) => { e.preventDefault(); add(); }}
+          className="flex flex-[1_1_300px] flex-col gap-3 rounded-xl border border-brand-border bg-white p-4 shadow-[0_2px_8px_rgba(12,42,32,0.04)]"
+        >
+          <h3 className="text-base font-semibold text-brand-ink">New material</h3>
+          <Field label="Name">
+            <input value={addDraft.name} onChange={(e) => setAddDraft({ ...addDraft, name: e.target.value })}
+                   placeholder="Chromo paper" className={cn(inputClass, 'w-full')} />
+          </Field>
+          <Field label="Specification (optional)">
+            <input value={addDraft.specification} onChange={(e) => setAddDraft({ ...addDraft, specification: e.target.value })}
+                   placeholder="80 gsm, semi-gloss" className={cn(inputClass, 'w-full')} />
+          </Field>
+          <Field label="Rate per square metre (₹)">
+            <input type="number" min="0" step="any" inputMode="decimal" value={addDraft.rate}
+                   onChange={(e) => setAddDraft({ ...addDraft, rate: e.target.value })}
+                   className={cn(inputClass, 'w-full font-mono tabular-nums')} />
+          </Field>
+          <Button type="submit" intent="primary" icon={Plus} busy={busyId === 'new'}>Add material</Button>
+          <p className="text-xs leading-normal text-[var(--glass-muted)]">
+            A material used by any job can only be retired, not deleted — old costings keep their rate.
+          </p>
+        </form>
+      )}
+      </div>
     </div>
   );
+}
+
+/** "14 jobs", "1 job", "—" while unknown. */
+function usedByLabel(n: number | undefined) {
+  if (n === undefined) return '—';
+  return `${n} ${n === 1 ? 'job' : 'jobs'}`;
 }
 
 const inputClass =

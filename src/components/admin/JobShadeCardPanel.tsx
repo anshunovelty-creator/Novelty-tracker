@@ -11,8 +11,8 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { Palette, ExternalLink } from 'lucide-react';
 import { cn, formatNumericDate } from '@/lib/utils';
-import { SHADE_CARD_STATUS_COLORS, MAKING_STATUS_COLORS,
-         type ShadeCardStatus, type MakingStatus } from '@/lib/constants/shadeCards';
+import { type ShadeCardStatus, type MakingStatus, SHADE_CARD_STATUS_DOT, MAKING_STATUS_DOT } from '@/lib/constants/shadeCards';
+import { StateChip } from '@/components/ui/StateChip';
 
 type MatchedCard = {
   id:                string;
@@ -90,18 +90,8 @@ export default function JobShadeCardPanel({ pmCode, party, product }: Props) {
                 <span className="font-medium text-[var(--glass-ink)]">
                   {c.shade_card_number ? `#${c.shade_card_number}` : c.product_name}
                 </span>
-                <span className={cn('px-2 py-0.5 rounded-md text-xs font-medium',
-                  SHADE_CARD_STATUS_COLORS[c.status]?.bg,
-                  SHADE_CARD_STATUS_COLORS[c.status]?.text,
-                  SHADE_CARD_STATUS_COLORS[c.status]?.border)}>
-                  {c.status}
-                </span>
-                <span className={cn('px-2 py-0.5 rounded-md text-xs font-medium',
-                  MAKING_STATUS_COLORS[c.making_status]?.bg,
-                  MAKING_STATUS_COLORS[c.making_status]?.text,
-                  MAKING_STATUS_COLORS[c.making_status]?.border)}>
-                  {c.making_status}
-                </span>
+                <StateChip label={c.status} dot={SHADE_CARD_STATUS_DOT[c.status]} />
+                <StateChip label={c.making_status} dot={MAKING_STATUS_DOT[c.making_status]} />
                 {c.approval_date && (
                   <span className="text-xs text-[var(--glass-muted)] font-mono">
                     approved {formatNumericDate(c.approval_date)}

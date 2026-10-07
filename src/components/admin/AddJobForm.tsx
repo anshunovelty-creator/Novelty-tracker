@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { X } from 'lucide-react';
 import { cn, formatQty, formatShortDate } from '@/lib/utils';
 import type { DeptPermissions } from '@/lib/constants/departments';
 import type { AddJobFormData, ScheduledReleaseInput, JobType, PrintingUnit, LabelStock, Job } from '@/lib/types';
@@ -56,7 +57,9 @@ type Props = {
 
 export type AddJobFormHandle = { open: () => void };
 
-const JOB_TYPES = ['New', 'Repeat', 'Artwork Changed'] as const;
+// Repeat first and preselected: most orders are reruns of an existing label,
+// so New is the one to pick deliberately.
+const JOB_TYPES = ['Repeat', 'New', 'Artwork Changed'] as const;
 const INITIAL_STAGES = [
   'PO Received',
   'Artwork Pending',
@@ -70,7 +73,7 @@ const EMPTY_FORM: AddJobFormData = {
   party:                '',
   job_name:             '',
   label_qty:            null,
-  job_type:             'New',
+  job_type:             'Repeat',
   po_date:              '',
   delivery_date:        '',
   status:               'PO Received',
@@ -278,13 +281,18 @@ const AddJobForm = React.forwardRef<AddJobFormHandle, Props>(function AddJobForm
 
   return (
     <div className="glass rounded-xl p-6 mb-4">
-      <div className="flex items-center justify-between mb-5">
-        <h2 className="text-base font-semibold text-[var(--glass-ink)]">Add New Job</h2>
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-xl font-semibold tracking-[-0.01em] text-[var(--glass-ink)]">Add job</h2>
+          <span className="text-[13px] text-[var(--glass-muted)]">A job card number is given on save.</span>
+        </div>
         <button
+          type="button"
           onClick={() => { setIsOpen(false); onCancel?.(); }}
-          className="text-[var(--glass-muted)] hover:text-[var(--glass-ink)] text-sm"
+          aria-label="Close"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-black/[0.05] text-[var(--glass-ink)] hover:bg-black/[0.08]"
         >
-          Cancel
+          <X className="h-[18px] w-[18px]" aria-hidden="true" />
         </button>
       </div>
 
@@ -296,6 +304,25 @@ const AddJobForm = React.forwardRef<AddJobFormHandle, Props>(function AddJobForm
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Job type first: it decides which stages the job will go through. */}
+        <div className="flex flex-col gap-2">
+          <div role="radiogroup" aria-label="Job type" className="flex gap-2">
+            {JOB_TYPES.map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="radio"
+                aria-checked={form.job_type === t}
+                onClick={() => set('job_type', t)}
+                className={segCls(form.job_type === t)}
+              >
+                {t === 'Artwork Changed' ? 'Artwork changed' : t}
+              </button>
+            ))}
+          </div>
+          <p className="text-[13px] text-[var(--glass-muted)]">{JOB_TYPE_HINT[form.job_type]}</p>
+        </div>
+
         {/* Row 1: PO + PM code + Party */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Field label="PO Number *">
@@ -368,8 +395,8 @@ const AddJobForm = React.forwardRef<AddJobFormHandle, Props>(function AddJobForm
           <ShelfStockCallout match={stockMatch} orderQty={form.label_qty} />
         )}
 
-        {/* Row 2: Job name + Label qty + Job type */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* Row 2: Job name + Label qty */}
+        <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr] gap-3">
           <Field label="Job Name">
             <input
               value={form.job_name ?? ''}
@@ -388,17 +415,6 @@ const AddJobForm = React.forwardRef<AddJobFormHandle, Props>(function AddJobForm
               />
             </WithUnit>
           </Field>
-          <Field label="Job Type">
-            <select
-              value={form.job_type}
-              onChange={(e) => set('job_type', e.target.value as typeof form.job_type)}
-              className={inputCls}
-            >
-              {JOB_TYPES.map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-          </Field>
         </div>
 
         {/* Row 2b: Printing unit.
@@ -406,24 +422,36 @@ const AddJobForm = React.forwardRef<AddJobFormHandle, Props>(function AddJobForm
              Offset, Unit-2 Flexo), so the unit already determines it. The
              server reads the method off the chosen unit; the option labels
              show it so the floor can see what they are picking. */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Printing Unit">
-            <select
-              value={form.printing_unit_id ?? ''}
-              onChange={(e) => set('printing_unit_id', e.target.value || null)}
-              className={inputCls}
-              disabled={units.length === 0}
-            >
-              <option value="">
-                {units.length === 0 ? 'No units configured' : 'Not assigned yet'}
-              </option>
-              {units.map((u) => (
-                <option key={u.id} value={u.id}>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium uppercase tracking-wide text-[var(--glass-muted)]">Printing unit</span>
+          {units.length === 0 ? (
+            <p className="text-sm text-[var(--glass-muted)]">No units configured — the job can be assigned later.</p>
+          ) : (
+            <div role="radiogroup" aria-label="Printing unit" className="flex flex-wrap gap-2">
+              {units.map((u, i) => (
+                <button
+                  key={u.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={form.printing_unit_id === u.id}
+                  onClick={() => set('printing_unit_id', u.id)}
+                  className={cn(segCls(form.printing_unit_id === u.id), 'min-w-[160px]')}
+                >
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brand-primary font-mono text-[11px] font-semibold text-white">{i + 1}</span>
                   {u.name} · {u.printing_method}
-                </option>
+                </button>
               ))}
-            </select>
-          </Field>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={!form.printing_unit_id}
+                onClick={() => set('printing_unit_id', null)}
+                className={cn(segCls(!form.printing_unit_id), 'min-w-[140px]')}
+              >
+                Decide later
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Row 3: PO date + Delivery date + Initial status */}
@@ -457,38 +485,40 @@ const AddJobForm = React.forwardRef<AddJobFormHandle, Props>(function AddJobForm
           </Field>
         </div>
 
-        {/* Row 4: Urgent toggle */}
-        <div className="flex items-center gap-4 flex-wrap">
-          <label className="flex items-center gap-2 cursor-pointer">
+        {/* Row 4: Urgent + priority. Priority only means something on an
+             urgent job, so it is greyed out until Urgent is ticked. */}
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          <label className="flex min-h-11 cursor-pointer items-center gap-2.5">
             <input
               type="checkbox"
               checked={form.urgent}
-              onChange={(e) => set('urgent', e.target.checked)}
-              className="w-4 h-4 accent-emerald-400"
+              onChange={(e) => { set('urgent', e.target.checked); if (!e.target.checked) set('urgent_priority', null); }}
+              className="h-5 w-5 accent-brand-primary"
             />
-            <span className="text-sm font-medium text-[var(--glass-ink)]">Urgent</span>
+            <span className="text-sm font-semibold text-[var(--glass-ink)]">Urgent</span>
           </label>
-
-          {form.urgent && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-[var(--glass-muted)]">Priority:</span>
-              {[1, 2, 3, 4, 5].map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => set('urgent_priority', p)}
-                  className={cn(
-                    'w-8 h-8 rounded-full text-xs font-mono font-medium transition-colors',
-                    form.urgent_priority === p
-                      ? 'bg-brand-primary text-white'
-                      : 'bg-white/[0.06] border border-white/10 text-[var(--glass-muted)] hover:text-[var(--glass-ink)]'
-                  )}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-          )}
+          <div role="radiogroup" aria-label="Priority, 1 is highest" className={cn('flex items-center gap-2', !form.urgent && 'opacity-40')}>
+            <span className="mr-1 text-xs font-medium uppercase tracking-wide text-[var(--glass-muted)]">Priority</span>
+            {[1, 2, 3, 4, 5].map((p) => (
+              <button
+                key={p}
+                type="button"
+                role="radio"
+                aria-checked={form.urgent_priority === p}
+                aria-label={`Priority ${p}`}
+                disabled={!form.urgent}
+                onClick={() => set('urgent_priority', p)}
+                className={cn(
+                  'h-11 w-11 rounded-lg border font-mono text-sm font-semibold transition-colors',
+                  form.urgent_priority === p
+                    ? 'border-[#b91c1c] bg-[#b91c1c] text-white'
+                    : 'border-[var(--field-border)] bg-white text-[var(--glass-ink)] hover:border-[#C9D6CF]',
+                )}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Row 5: Notes */}
@@ -579,7 +609,7 @@ const AddJobForm = React.forwardRef<AddJobFormHandle, Props>(function AddJobForm
           <button
             type="button"
             onClick={() => { setIsOpen(false); onCancel?.(); }}
-            className="px-4 py-2 text-sm text-[var(--glass-muted)] hover:text-[var(--glass-ink)] transition-colors"
+            className="min-h-11 rounded-[10px] border border-[var(--field-border)] bg-white px-4 text-sm font-medium text-[var(--glass-ink)] transition-colors hover:bg-black/[0.03]"
           >
             Cancel
           </button>
@@ -587,9 +617,9 @@ const AddJobForm = React.forwardRef<AddJobFormHandle, Props>(function AddJobForm
             type="submit"
             loading={loading}
             loadingStages={['Saving job…', 'Creating timeline…', 'Almost done…']}
-            className="px-5 py-2 rounded-lg text-sm font-medium bg-brand-primary text-white hover:bg-brand-primary/90 transition-colors disabled:opacity-50"
+            className="min-h-11 rounded-[10px] bg-brand-primary px-5 text-sm font-semibold text-white transition-colors hover:bg-brand-primary-hover disabled:opacity-50"
           >
-            Add Job
+            Create job
           </LoadingButton>
         </div>
       </form>
@@ -600,6 +630,19 @@ const AddJobForm = React.forwardRef<AddJobFormHandle, Props>(function AddJobForm
 export default AddJobForm;
 
 // ── Helpers ──────────────────────────────────────────────────
+
+/** One option in a segmented choice — the selected one gets the 2px brand border. */
+const segCls = (on: boolean) => cn(
+  'flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm text-[var(--glass-ink)] transition-colors',
+  on ? 'border-2 border-brand-primary bg-[#F4F8F5] font-semibold' : 'border border-[var(--field-border)] bg-white font-medium hover:border-[#C9D6CF]',
+);
+
+/** What each job type changes about the pipeline, said once under the choice. */
+const JOB_TYPE_HINT: Record<(typeof JOB_TYPES)[number], string> = {
+  'New':             'Goes through every stage, sample print and shade card included.',
+  'Repeat':          'Repeat skips Sample Printing and both shade card stages.',
+  'Artwork Changed': 'Same label, new artwork — goes through every stage again.',
+};
 
 const inputCls = cn(
   'w-full px-3.5 py-2.5 rounded-xl text-sm bg-[var(--field-bg)] border border-[var(--field-border)]',

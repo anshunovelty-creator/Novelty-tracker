@@ -11,6 +11,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptManageJobSeparation } from '@/lib/constants/departments';
 import { parseDateRange, rangeOrClause, parseLimit, type DateRange } from '@/lib/jobSeparationQuery';
 import { containsPattern, orContains } from '@/lib/search';
+import { deptKeyOf } from '@/lib/identity';
 
 // Optional free text: blank means "not recorded", not an empty string.
 function text(value: unknown): string | null {
@@ -61,6 +62,23 @@ export async function GET(request: NextRequest) {
   const field  = searchParams.get('field')?.trim();
   const range: DateRange = parseDateRange(searchParams.get('range'));
   const limit = parseLimit(searchParams.get('limit'));
+
+  // ?sr_nos=AUG26-1,AUG26-7 — exact rows by Sr No, whatever their date: how
+  // the Prepress to-do turns its #tags into links. Typed tags may be lower
+  // case, so both spellings are asked for.
+  const srNos = searchParams.get('sr_nos');
+  if (srNos !== null) {
+    const wanted = Array.from(new Set(
+      srNos.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 50).flatMap((s) => [s, s.toUpperCase()]),
+    ));
+    if (wanted.length === 0) return NextResponse.json({ job_separations: [], hasMore: false });
+    const { data, error } = await supabase
+      .from('job_separations')
+      .select('id, sr_no, party, po_no, pm_code, material_name, linked_job_id, linked_job_card_number, cancelled_at')
+      .in('sr_no', wanted);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ job_separations: data ?? [], hasMore: false });
+  }
 
   let query = supabase
     .from('job_separations')
@@ -113,7 +131,7 @@ export async function POST(request: NextRequest) {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
 
   if (!canDeptManageJobSeparation(perms)) {

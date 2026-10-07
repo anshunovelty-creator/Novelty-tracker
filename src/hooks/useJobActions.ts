@@ -17,6 +17,10 @@ import { canDeptOverridePOClosed, canDeptConfirmSlitting } from '@/lib/constants
 import type { Job } from '@/lib/types';
 import type { DeptPermissions } from '@/lib/constants/departments';
 import type { Stage } from '@/lib/constants/stages';
+import { NOT_YOUR_STAGE } from '@/lib/stageBlocked';
+import { JOBS_CHANGED_EVENT } from '@/lib/constants/events';
+import { enqueue, isNetworkFailure, newRequestId, statusHeaders } from '@/lib/offlineQueue';
+import { showNotYourStage } from '@/components/admin/NotYourStageToast';
 
 export type JobModalState =
   | { type: 'none' }
@@ -27,6 +31,7 @@ export type JobModalState =
   | { type: 'full_dispatch' }
   | { type: 'close_po' }
   | { type: 'revert'; targetStage: Stage }
+  | { type: 'slitting' }
   | { type: 'delete' };
 
 export type StatusPayload = {
@@ -39,6 +44,7 @@ export type StatusPayload = {
   // Label stock — see StatusChangePayload. Dispatch confirms what stays on
   // the shelf at a partial dispatch, and reports surplus at a full dispatch.
   stock_remaining_qty?:   number;
+  stock_remaining_location?: string;
   extra_label_qty?:       number;
   extra_label_location?:  string;
   extra_label_remark?:    string;
@@ -65,20 +71,22 @@ export function useJobActions({ job, dept, onJobUpdated, onJobDeleted }: Params)
     setSubmitting(true);
     setModal({ type: 'none' });
 
+    // One key for this change, made before the first send: if the answer is
+    // lost and the change is queued, the replay carries the same key and the
+    // server won't apply it a second time (e.g. a Partial Dispatch's qty).
+    const requestId = newRequestId();
+
     try {
       const res = await fetch(`/api/jobs/${job.id}/status`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: statusHeaders(requestId),
         body:    JSON.stringify(payload),
       });
       const data = await res.json();
 
       if (res.status === 409 && data.error === 'PREREQUISITE_MISSING') {
-        setPendingPayload({
-          new_status:     payload.new_status,
-          remark:         payload.remark,
-          qty_dispatched: payload.qty_dispatched,
-        });
+        // Keep the whole body (qty, stock, rack, vehicle) for the Admin override retry.
+        setPendingPayload({ ...payload });
         setModal({
           type:         'warning',
           targetStage:  payload.new_status,
@@ -96,6 +104,23 @@ export function useJobActions({ job, dept, onJobUpdated, onJobDeleted }: Params)
         return;
       }
 
+      if (res.status === 403 && data.code === NOT_YOUR_STAGE) {
+        showNotYourStage({ title: data.error, signedInAs: data.signed_in_as, jobId: job.id });
+        setPendingStage(null);
+        setPendingPayload(null);
+        return;
+      }
+
+      // Someone saved this job in between — refresh the list so the
+      // current stage is what's on screen before they try again.
+      if (res.status === 409 && data.code === 'JOB_CHANGED') {
+        toast.error(data.error);
+        window.dispatchEvent(new Event(JOBS_CHANGED_EVENT));
+        setPendingStage(null);
+        setPendingPayload(null);
+        return;
+      }
+
       if (!res.ok) {
         toast.error(data.error ?? 'Failed to update status');
         return;
@@ -105,8 +130,17 @@ export function useJobActions({ job, dept, onJobUpdated, onJobDeleted }: Params)
       toast.success(`Status updated to "${payload.new_status}"`);
       setPendingStage(null);
       setPendingPayload(null);
-    } catch {
-      toast.error('Network error. Try again.');
+    } catch (err) {
+      // No connection: keep the change on this device and let OfflineBanner
+      // send it when the connection is back, rather than losing it.
+      if (isNetworkFailure(err)) {
+        enqueue({ jobId: job.id, poNumber: job.po_number, payload, requestId });
+        toast(`No connection — ${job.po_number} → ${payload.new_status} saved on this device. It’ll sync automatically.`, { icon: '📶' });
+        setPendingStage(null);
+        setPendingPayload(null);
+      } else {
+        toast.error('Something went wrong. Try again.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -115,21 +149,14 @@ export function useJobActions({ job, dept, onJobUpdated, onJobDeleted }: Params)
   // ── Confirm slitting (Postpress / Admin only) ───────────────
   // Covers the machine-board path, which sets job.status = 'Slitting'
   // directly and bypasses /status — see confirm-slitting/route.ts.
-  async function confirmSlitting() {
+  async function confirmSlitting(rollsSlit: number | null = null) {
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/jobs/${job.id}/confirm-slitting`, { method: 'POST' });
-      const data = await res.json();
-
-      if (!res.ok) {
-        toast.error(data.error ?? 'Failed to confirm slitting');
-        return;
-      }
-
-      onJobUpdated(data.job);
+      const result = await postSlittingConfirmation(job.id, rollsSlit);
+      if ('error' in result) { toast.error(result.error); return; }
+      onJobUpdated(result.job);
+      setModal({ type: 'none' });
       toast.success('Slitting marked complete — QC can proceed');
-    } catch {
-      toast.error('Network error. Try again.');
     } finally {
       setSubmitting(false);
     }
@@ -228,6 +255,12 @@ export function useJobActions({ job, dept, onJobUpdated, onJobDeleted }: Params)
     submitStatusChange({ new_status: target, remark });
   }
 
+  // QC rejected the batch — the job stops on hold with QC's reason.
+  function rejectQC(remark: string) {
+    setPendingStage(null);
+    submitStatusChange({ new_status: 'On Hold', remark });
+  }
+
   // ── Delete job (Admin only) ─────────────────────────────────
   async function handleDelete() {
     setDeleting(true);
@@ -316,6 +349,8 @@ export function useJobActions({ job, dept, onJobUpdated, onJobDeleted }: Params)
     confirmOverride,
     cancelOverride,
     confirmQC,
+    rejectQC,
+    openSlitting: () => setModal({ type: 'slitting' }),
     confirmSlitting,
     canConfirmSlitting,
     handleDelete,
@@ -326,4 +361,33 @@ export function useJobActions({ job, dept, onJobUpdated, onJobDeleted }: Params)
     remainingQty,
     urgencyTint,
   };
+}
+
+/**
+ * POST confirm-slitting, then — when a roll count was given — file it as an
+ * internal note at Slitting (there is no column for it). The note is
+ * best-effort: slitting is confirmed either way.
+ */
+export async function postSlittingConfirmation(
+  jobId: string,
+  rollsSlit: number | null,
+): Promise<{ job: Job } | { error: string }> {
+  try {
+    const res  = await fetch(`/api/jobs/${jobId}/confirm-slitting`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error ?? 'Failed to confirm slitting' };
+    if (rollsSlit) {
+      await fetch(`/api/jobs/${jobId}/comments`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          stage:   'Slitting',
+          comment: `Slitting confirmed — ${rollsSlit.toLocaleString('en-IN')} rolls slit. Cores and winding checked against the job card.`,
+        }),
+      }).catch(() => undefined);
+    }
+    return { job: data.job as Job };
+  } catch {
+    return { error: 'Network error. Try again.' };
+  }
 }

@@ -92,7 +92,7 @@ Same stage names, same Status dots, same numbers in both. Never mix the two on o
 
 ## 3. Type
 
-DM Sans for words, Trispace (tabular numerals) for every job card, PO, PM code, quantity, date and time. One `page-title` per page; cards use `heading`; dialogs `title`. Table headers are `caption`, sentence case — no uppercase headers. `eyebrow` uppercase only for group labels inside lists and menus (TODAY, JOBS, ACTIONS). Quantities use Indian grouping (1,20,000).
+DM Sans for words, Trispace (tabular numerals) for every job card, PO, PM code, quantity, date and time. One `page-title` per page; cards use `heading`; dialogs `title`. Table headers are `caption`, sentence case — no uppercase headers — on the mint `#EDF3EF` row that matches the pinned Sr No column (one rule in globals.css: `.admin-light thead th`). `eyebrow` uppercase only for group labels inside lists and menus (TODAY, JOBS, ACTIONS). Quantities use Indian grouping (1,20,000).
 
 ## 4. Layout
 

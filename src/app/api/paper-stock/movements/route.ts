@@ -2,6 +2,7 @@
 // ============================================================
 // GET /api/paper-stock/movements — the ledger, newest first, for one stock
 //     line (?material_id=&width_mm=) or one roll (?roll_id=). Last 100.
+//     ?recent=1 — the latest 20 across the whole store, for the Activity feed.
 //     bom_use.
 // ============================================================
 
@@ -18,9 +19,11 @@ type RawMovement = {
   note: string | null;
   created_by: string | null;
   created_at: string;
-  roll: { ref: string } | { ref: string }[] | null;
+  roll: RawRoll | RawRoll[] | null;
   job: { sr_no: string | null; party: string } | { sr_no: string | null; party: string }[] | null;
 };
+
+type RawRoll = { ref: string; width_mm?: number; material?: { name: string } | { name: string }[] | null };
 
 function one<T>(v: T | T[] | null): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : v;
@@ -35,16 +38,20 @@ export async function GET(request: NextRequest) {
   const materialId = sp.get('material_id');
   const width = Number(sp.get('width_mm'));
 
+  const recent = sp.get('recent') === '1';
+
   let query = gate.supabase
     .from('paper_stock_movements')
     .select(
       'id, roll_id, kind, meters, job_separation_id, note, created_by, created_at, ' +
-      'roll:paper_rolls!inner(ref, material_id, width_mm), job:job_separations(sr_no, party)'
+      'roll:paper_rolls!inner(ref, material_id, width_mm, material:bom_materials(name)), job:job_separations(sr_no, party)'
     )
     .order('created_at', { ascending: false })
-    .limit(100);
+    .limit(recent ? 20 : 100);
 
-  if (rollId) {
+  if (recent) {
+    // no filter — the whole store
+  } else if (rollId) {
     query = query.eq('roll_id', rollId);
   } else if (materialId && Number.isFinite(width) && width > 0) {
     query = query.eq('roll.material_id', materialId).eq('roll.width_mm', width);
@@ -57,10 +64,13 @@ export async function GET(request: NextRequest) {
 
   const movements: PaperStockMovement[] = ((data ?? []) as unknown as RawMovement[]).map((m) => {
     const job = one(m.job);
+    const roll = one(m.roll);
     return {
       id:                m.id,
       roll_id:           m.roll_id,
-      roll_ref:          one(m.roll)?.ref ?? null,
+      roll_ref:          roll?.ref ?? null,
+      material_name:     one(roll?.material ?? null)?.name ?? null,
+      width_mm:          roll?.width_mm ?? null,
       kind:              m.kind,
       meters:            Number(m.meters),
       job_separation_id: m.job_separation_id,

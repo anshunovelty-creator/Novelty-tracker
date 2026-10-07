@@ -16,6 +16,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptUseBOM } from '@/lib/constants/departments';
 import { materialExpense } from '@/lib/bom';
 import type { BomCosting } from '@/lib/types';
+import { deptKeyOf } from '@/lib/identity';
 
 type Params = { params: Promise<{ jobSeparationId: string }> };
 
@@ -40,7 +41,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms || !canDeptUseBOM(perms)) {
     return NextResponse.json({ error: 'Bill of Material access required' }, { status: 403 });
   }

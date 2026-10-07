@@ -165,12 +165,12 @@ const SLIP_NOUN: Record<SlipKind, string> = {
   address: 'address slip',
 };
 
-/** The tab strip, and the badge under each label. */
+/** The slip-type radios, roll slips first: they are what a run prints most. */
 const TABS: { kind: SlipKind; label: string }[] = [
-  { kind: 'box',     label: 'Box slip' },
   { kind: 'roll',    label: 'Roll slip' },
   { kind: 'roll10',  label: 'Roll slip small' },
   { kind: 'roll12',  label: 'Roll slip mini' },
+  { kind: 'box',     label: 'Box slip' },
   { kind: 'address', label: 'Address slip' },
 ];
 
@@ -208,13 +208,13 @@ function chunk<T>(items: T[], size: number): T[][] {
 }
 
 const FIELD = cn(
-  'w-full min-h-11 px-3 rounded-xl text-sm',
-  'bg-[var(--field-bg)] border border-[var(--field-border)] text-[var(--glass-ink)]',
-  'placeholder:text-[var(--glass-muted)] focus:outline-none',
-  'focus:border-emerald-300/70 focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)] transition-all',
+  'w-full min-h-11 px-3 rounded-[10px] text-[15px]',
+  'bg-white border border-brand-border text-brand-ink',
+  'placeholder:text-brand-faint focus:outline-none',
+  'focus:border-brand-primary focus:shadow-[0_0_0_4px_rgba(16,85,63,0.12)] transition-[border-color,box-shadow]',
 );
 
-const LABEL_CLS = 'block text-xs font-medium text-[var(--glass-muted)] mb-1';
+const LABEL_CLS = 'block text-[10px] font-medium uppercase tracking-[0.025em] text-brand-muted mb-1.5';
 
 /**
  * Today as 'YYYY-MM-DD' in the operator's own timezone.
@@ -308,8 +308,8 @@ function BlockNudge({
 
   const field =
     'w-16 min-h-11 px-2 rounded-lg text-xs text-center tabular-nums ' +
-    'bg-[var(--field-bg)] border border-[var(--field-border)] text-[var(--glass-ink)] ' +
-    'focus:outline-none focus:border-emerald-300/70 transition-colors';
+    'bg-white border border-brand-border text-brand-ink ' +
+    'focus:outline-none focus:border-brand-primary transition-colors';
 
   const axisField = (axis: 'x' | 'y', described: string) => (
     <>
@@ -331,11 +331,11 @@ function BlockNudge({
 
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-xs font-medium text-[var(--glass-muted)]">{label}</span>
+      <span className="text-xs font-medium text-brand-muted">{label}</span>
       {axisField('x', 'right')}
-      <span aria-hidden="true" className="text-xs text-[var(--glass-muted)]">×</span>
+      <span aria-hidden="true" className="text-xs text-brand-muted">×</span>
       {axisField('y', 'down')}
-      <span className="text-xs text-[var(--glass-muted)]">mm</span>
+      <span className="text-xs text-brand-muted">mm</span>
     </div>
   );
 }
@@ -344,7 +344,7 @@ type Props = { canPrintBox: boolean; canPrintRoll: boolean };
 
 export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
   const branding = useBranding();
-  const [kind, setKind] = useState<SlipKind>('box');
+  const [kind, setKind] = useState<SlipKind>('roll');
 
   // ── Job selection, shared by both slips ─────────────────────
   const [search, setSearch] = useState('');
@@ -647,7 +647,6 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
   }
 
   const copies = kind === 'box' ? boxes : kind === 'address' ? addresses : rolls;
-  const unit = kind === 'box' ? 'box' : kind === 'address' ? 'slip' : 'roll';
 
   // Stock consumed, which is what the operator at the printer actually cares
   // about: 5 roll slips is two sheets, not five.
@@ -656,329 +655,332 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
       ? Math.ceil(copies / PER_SHEET[kind])
       : 0;
 
+  /** Arrow keys walk the slip-type radios, as a native radio group would. */
+  function onTypeKey(e: React.KeyboardEvent<HTMLDivElement>) {
+    const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1
+      : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const i = TABS.findIndex((t) => t.kind === kind);
+    const next = TABS[(i + step + TABS.length) % TABS.length].kind;
+    setKind(next);
+    e.currentTarget.querySelector<HTMLButtonElement>(`[data-kind="${next}"]`)?.focus();
+  }
+
+  const showFields = !!job || kind === 'address';
+  const plural = Number.isInteger(copies) && copies > 1;
+
   return (
-    <div className="space-y-4">
-      {/* ── Which slip ─────────────────────────────────────── */}
-      <div
-        role="tablist"
-        aria-label="Slip type"
-        className="inline-flex flex-wrap rounded-xl border border-[var(--field-border)] p-1 gap-1"
+    <div className="flex flex-wrap items-start gap-5">
+      {/* ── The form: job, slip type, then only what the job cannot know ── */}
+      <section
+        aria-label="Slip details"
+        className="flex min-w-0 flex-[1_1_460px] flex-col gap-5 rounded-2xl border border-brand-border bg-white p-5 shadow-[0_2px_8px_rgba(12,42,32,0.04)] sm:p-6"
       >
-        {TABS.map(({ kind: k, label }) => (
-          <button
-            key={k}
-            role="tab"
-            aria-selected={kind === k}
-            onClick={() => setKind(k)}
-            className={cn(
-              'min-h-9 px-3 rounded-lg text-sm font-medium transition-colors',
-              kind === k
-                ? 'bg-brand-primary text-white'
-                : 'text-[var(--glass-muted)] hover:bg-black/[0.04]',
-            )}
-          >
-            {label}
-            <span className="ml-1.5 text-xs opacity-70">
-              {/* What the operator loads and cuts, not the artwork size. Every
-                  tab prints on the same 6x4 stock; the number is how many come
-                  off one piece of it. */}
-              {PER_SHEET[k] === 1 ? '6″ × 4″' : `${PER_SHEET[k]} per 6″ × 4″`}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {/* ── Job picker ─────────────────────────────────────── */}
-      <div className="relative">
-        <Search
-          className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--glass-muted)]"
-          aria-hidden="true"
-        />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search a job by card no, PO, party or job name"
-          aria-label="Search for a job to print slips for"
-          className={cn(FIELD, 'pl-9 pr-11')}
-        />
-        <SearchClearButton value={search} onClear={() => setSearch('')} />
-        {results.length > 0 && (
-          <ul
-            className="absolute z-20 mt-1 w-full max-h-72 overflow-y-auto rounded-xl border border-[var(--field-border)] bg-white shadow-lg"
-            role="listbox"
-            aria-label="Matching jobs"
-          >
-            {results.map((j) => (
-              <li key={j.id}>
-                <button
-                  type="button"
-                  onClick={() => selectJob(j)}
-                  className="w-full text-left px-3 py-2.5 hover:bg-black/[0.04] transition-colors"
-                >
-                  <span className="block text-sm text-[var(--glass-ink)]">
-                    {j.party} — {j.job_name ?? 'Untitled'}
-                  </span>
-                  <span className="block text-xs text-[var(--glass-muted)] mt-0.5">
-                    {j.job_card_number ?? '—'} · PO {j.po_number}
-                    {j.pm_code ? ` · PM ${j.pm_code}` : ''}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {searching && search.trim().length >= 2 && results.length === 0 && (
-          <p className="mt-1 text-xs text-[var(--glass-muted)]">Searching…</p>
-        )}
-      </div>
-
-      {!job && kind !== 'address' && (
-        <p className="text-sm text-[var(--glass-muted)]">
-          Pick a job and its party, product and PM code fill themselves in.
-          You only enter what the app cannot know.
-        </p>
-      )}
-
-      {/* The address slip needs no job — see the validation in `problem`. */}
-      {(job || kind === 'address') && (
-        <>
-          <div className="rounded-2xl border border-[var(--field-border)] p-4 space-y-3">
-            {job && (
-            <div className="flex items-baseline justify-between gap-3">
-              <p className="text-sm font-medium text-[var(--glass-ink)]">
+        <div>
+          <span className={LABEL_CLS} id="s-job-label">Job</span>
+          {job ? (
+            <div
+              aria-labelledby="s-job-label"
+              className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-brand-primary bg-brand-surface-alt px-3 py-2"
+            >
+              {job.job_card_number && (
+                <span className="font-mono text-sm font-semibold text-brand-ink">{job.job_card_number.toUpperCase()}</span>
+              )}
+              <p className="min-w-0 flex-1 text-sm text-brand-ink">
                 {job.party}
-                <span className="text-[var(--glass-muted)] font-normal">
-                  {' '}· PO {job.po_number}{job.pm_code ? ` · PM ${job.pm_code}` : ''}
+                <span className="text-brand-muted">
+                  {' '}· {job.job_name ?? 'Untitled'} · PO <span className="font-mono">{job.po_number}</span>
+                  {job.pm_code ? <> · PM <span className="font-mono">{job.pm_code}</span></> : ''}
                 </span>
               </p>
               <button
                 type="button"
                 onClick={() => setJob(null)}
-                className="text-xs text-[var(--glass-muted)] underline underline-offset-2 hover:opacity-70"
+                className="min-h-11 px-2 text-[13px] font-semibold text-brand-primary hover:text-brand-primary-hover"
               >
-                Change job
+                Change
               </button>
             </div>
-            )}
-
-            {kind === 'address' ? (
-              <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className={LABEL_CLS} htmlFor="s-to">To address</label>
-                    <textarea
-                      id="s-to"
-                      rows={7}
-                      value={toAddress}
-                      onChange={(e) => setToAddress(e.target.value)}
-                      className={cn(FIELD, 'py-2 leading-relaxed resize-y')}
-                    />
-                  </div>
-                  <div>
-                    <label className={LABEL_CLS} htmlFor="s-from">From address</label>
-                    <textarea
-                      id="s-from"
-                      rows={7}
-                      value={fromAddress}
-                      onChange={(e) => setFromAddress(e.target.value)}
-                      className={cn(FIELD, 'py-2 leading-relaxed resize-y')}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className={LABEL_CLS} htmlFor="s-addresses">Number of slips</label>
-                    <input id="s-addresses" type="number" inputMode="numeric" min={1}
-                      value={addressCount} onChange={(e) => setAddressCount(e.target.value)}
-                      className={FIELD} />
-                  </div>
-                </div>
-                <p className="text-xs text-[var(--glass-muted)]">
-                  Line breaks print exactly as typed. The From address is
-                  pre-filled and only needs changing for a one-off.
-                </p>
-              </>
-            ) : kind === 'box' ? (
-              <>
-                <div>
-                  <label className={LABEL_CLS} htmlFor="s-material">Material name</label>
-                  <input
-                    id="s-material"
-                    value={materialName}
-                    onChange={(e) => setMaterialName(e.target.value)}
-                    className={FIELD}
-                  />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className={LABEL_CLS} htmlFor="s-boxqty">Labels per box</label>
-                    <input id="s-boxqty" type="number" inputMode="numeric" min={1}
-                      value={qtyPerBox} onChange={(e) => setQtyPerBox(e.target.value)} className={FIELD} />
-                  </div>
-                  <div>
-                    <label className={LABEL_CLS} htmlFor="s-boxes">Number of boxes</label>
-                    <input id="s-boxes" type="number" inputMode="numeric" min={1}
-                      value={boxCount} onChange={(e) => setBoxCount(e.target.value)} className={FIELD} />
-                  </div>
-                  <div>
-                    <label className={LABEL_CLS} htmlFor="s-date">Manufacturing date</label>
-                    <input id="s-date" type="date" value={date}
-                      onChange={(e) => setDate(e.target.value)} className={FIELD} />
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
-                <div>
-                  <label className={LABEL_CLS} htmlFor="s-product">Product</label>
-                  <input
-                    id="s-product"
-                    value={product}
-                    onChange={(e) => setProduct(e.target.value)}
-                    className={FIELD}
-                  />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className={LABEL_CLS} htmlFor="s-rollqty">Labels per roll</label>
-                    <input id="s-rollqty" type="number" inputMode="numeric" min={1}
-                      value={qtyPerRoll} onChange={(e) => setQtyPerRoll(e.target.value)} className={FIELD} />
-                  </div>
-                  <div>
-                    <label className={LABEL_CLS} htmlFor="s-rolls">Number of rolls</label>
-                    <input id="s-rolls" type="number" inputMode="numeric" min={1}
-                      value={rollCount} onChange={(e) => setRollCount(e.target.value)} className={FIELD} />
-                  </div>
-                  <div>
-                    <label className={LABEL_CLS} htmlFor="s-rolldate">Date</label>
-                    <input id="s-rolldate" type="date" value={date}
-                      onChange={(e) => setDate(e.target.value)} className={FIELD} />
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className={LABEL_CLS} htmlFor="s-direction">Winding direction</label>
-                    <WithExample example="#4">
-                        <input id="s-direction" value={direction}
-                        onChange={(e) => setDirection(e.target.value)}
-                        className={FIELD} />
-                    </WithExample>
-                  </div>
-                  <div>
-                    <label className={LABEL_CLS} htmlFor="s-operator">Operator</label>
-                    <input id="s-operator" value={operator}
-                      onChange={(e) => setOperator(e.target.value)}
-                      className={FIELD} />
-                  </div>
-                </div>
-              </>
-            )}
-
-            <p className="text-xs text-[var(--glass-muted)]">
-              {sheets > 0
-                ? isRollKind(kind)
-                  ? `${copies} slip${copies > 1 ? 's' : ''} — one per roll, ${PER_SHEET[kind]} to a 6″ × 4″ sheet, so ${sheets} sheet${sheets > 1 ? 's' : ''} of stock.`
-                  : kind === 'address'
-                    ? `${copies} identical slip${copies > 1 ? 's' : ''} will print — ${sheets} sheet${sheets > 1 ? 's' : ''} of stock.`
-                    : `${copies} identical slip${copies > 1 ? 's' : ''} will print — one per box.`
-                : `Enter how many ${unit}s to print a slip for each.`}
-            </p>
-          </div>
-
-          {/* ── Preview, at true physical size ─────────────── */}
-          <div>
-            <div className="flex items-baseline justify-between gap-3 mb-2">
-              <h2 className="text-sm font-medium text-[var(--glass-ink)]">Preview</h2>
-              <p className="text-xs text-[var(--glass-muted)]">
-                One 6″ × 4″ sheet, actual size — slip is {SLIP_SIZE[kind].w} × {SLIP_SIZE[kind].h} mm
-              </p>
+          ) : (
+            <div className="relative">
+              <Search
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-muted"
+                aria-hidden="true"
+              />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Card no, PO, party or job name"
+                aria-labelledby="s-job-label"
+                className={cn(FIELD, 'pl-9 pr-11')}
+              />
+              <SearchClearButton value={search} onClear={() => setSearch('')} />
+              {results.length > 0 && (
+                <ul
+                  className="absolute z-20 mt-1 w-full max-h-72 overflow-y-auto rounded-xl border border-brand-border bg-white shadow-[0_12px_32px_rgba(12,42,32,0.12)]"
+                  role="listbox"
+                  aria-label="Matching jobs"
+                >
+                  {results.map((j) => (
+                    <li key={j.id}>
+                      <button
+                        type="button"
+                        onClick={() => selectJob(j)}
+                        className="w-full min-h-11 text-left px-3 py-2.5 hover:bg-brand-surface-hover transition-colors"
+                      >
+                        <span className="block text-sm text-brand-ink">
+                          {j.party} — {j.job_name ?? 'Untitled'}
+                        </span>
+                        <span className="block text-xs text-brand-muted mt-0.5">
+                          <span className="font-mono">{j.job_card_number ?? '—'}</span> · PO <span className="font-mono">{j.po_number}</span>
+                          {j.pm_code ? <> · PM <span className="font-mono">{j.pm_code}</span></> : ''}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {searching && search.trim().length >= 2 && results.length === 0 && (
+                <p className="mt-1 text-xs text-brand-muted">Searching…</p>
+              )}
             </div>
-            {/* The preview is a whole sheet, not a lone slip: what matters at
-                the printer is what comes out of it. For rolls that means
-                seeing the tiling, and seeing the blanks on a short sheet. */}
-            <div className="overflow-x-auto rounded-2xl border border-[var(--field-border)] bg-[#EEF1F5] p-4">
-              <div
-                className="shadow-sm rounded-[3mm] overflow-hidden mx-auto bg-white"
-                style={{
-                  width: `${SHEET.w}mm`,
-                  height: `${SHEET.h}mm`,
-                  display: 'grid',
-                  ...sheetGrid(kind),
-                }}
-              >
-                {Array.from(
-                  { length: Math.min(copies > 0 ? copies : 1, PER_SHEET[kind]) },
-                  (_, i) => renderSlip(kind, preview, i, true),
+          )}
+        </div>
+
+        <div>
+          <span className={LABEL_CLS} id="s-type-label">Slip type</span>
+          <div
+            role="radiogroup"
+            aria-labelledby="s-type-label"
+            onKeyDown={onTypeKey}
+            className="flex flex-wrap gap-2"
+          >
+            {TABS.map(({ kind: k, label }) => (
+              <button
+                key={k}
+                type="button"
+                role="radio"
+                data-kind={k}
+                aria-checked={kind === k}
+                tabIndex={kind === k ? 0 : -1}
+                onClick={() => setKind(k)}
+                className={cn(
+                  'min-h-11 rounded-full border px-3.5 text-sm font-medium transition-colors',
+                  kind === k
+                    ? 'border-brand-ink bg-brand-ink text-white'
+                    : 'border-brand-border bg-white text-brand-ink hover:bg-brand-surface-alt',
                 )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {!showFields && (
+          <p className="text-sm text-brand-muted">
+            Pick a job and its party, product and PM code fill themselves in.
+            You only enter what the app cannot know.
+          </p>
+        )}
+
+        {showFields && kind === 'address' && (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className={LABEL_CLS} htmlFor="s-to">To address</label>
+                <textarea
+                  id="s-to"
+                  rows={7}
+                  value={toAddress}
+                  onChange={(e) => setToAddress(e.target.value)}
+                  className={cn(FIELD, 'py-2 leading-relaxed resize-y')}
+                />
+              </div>
+              <div>
+                <label className={LABEL_CLS} htmlFor="s-from">From address</label>
+                <textarea
+                  id="s-from"
+                  rows={7}
+                  value={fromAddress}
+                  onChange={(e) => setFromAddress(e.target.value)}
+                  className={cn(FIELD, 'py-2 leading-relaxed resize-y')}
+                />
+              </div>
+              <div>
+                <label className={LABEL_CLS} htmlFor="s-addresses">Number of slips</label>
+                <input id="s-addresses" type="number" inputMode="numeric" min={1}
+                  value={addressCount} onChange={(e) => setAddressCount(e.target.value)}
+                  className={cn(FIELD, 'font-mono')} />
               </div>
             </div>
-            {kind === 'roll' && (
-              <p className="mt-2 text-xs text-[var(--glass-muted)]">
-                Six to a sheet, cut apart along the borders. The QR opens this
-                job&rsquo;s live tracking page for the client.
-              </p>
-            )}
-            {(kind === 'roll10' || kind === 'roll12') && (
-              <p className="mt-2 text-xs text-[var(--glass-muted)]">
-                {PER_SHEET[kind]} to a sheet, cut apart along the borders. Too
-                small to carry the tracking QR — use the 6-up roll slip when
-                the client needs to scan it. A product name longer than the
-                row is cut off with an ellipsis rather than wrapped.
-              </p>
-            )}
-            {kind === 'address' && (
-              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
-                <p className="text-xs text-[var(--glass-muted)]">
-                  One to a sheet, no cutting. Drag either block in the preview
-                  to reposition it, or type an exact offset.
-                </p>
-                <div className="flex flex-wrap items-center gap-3">
-                  <BlockNudge
-                    label="To"
-                    offset={toOffset}
-                    onChange={(o) => setToOffset(clampOffset(o))}
-                  />
-                  <BlockNudge
-                    label="From"
-                    offset={fromOffset}
-                    onChange={(o) => setFromOffset(clampOffset(o))}
-                  />
-                  {(toOffset.x || toOffset.y || fromOffset.x || fromOffset.y) ? (
-                    <button
-                      type="button"
-                      onClick={() => { setToOffset(NO_OFFSET); setFromOffset(NO_OFFSET); }}
-                      className="min-h-11 px-2 text-xs text-[var(--glass-muted)] underline underline-offset-2 hover:opacity-70"
-                    >
-                      Reset positions
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            )}
-          </div>
+            <p className="text-xs text-brand-muted">
+              Line breaks print exactly as typed. The From address is
+              pre-filled and only needs changing for a one-off.
+            </p>
+          </>
+        )}
 
-          {/* ── Actions ────────────────────────────────────── */}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              intent="primary"
-              icon={Printer}
-              disabled={!canPrint || !!problem}
-              onClick={handlePrint}
-              title={problem ?? undefined}
-            >
-              Print {Number.isInteger(copies) && copies > 1 ? `${copies} slips` : 'slip'}
-            </Button>
-            <Button intent="ghost" onClick={handleTestPrint}>
-              Print one to test
-            </Button>
-            {!canPrint && (
-              <p className="text-xs text-[var(--glass-muted)]">
-                Your department can view slips but not print them.
-              </p>
+        {showFields && kind === 'box' && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <label className={LABEL_CLS} htmlFor="s-material">Material name</label>
+              <input
+                id="s-material"
+                value={materialName}
+                onChange={(e) => setMaterialName(e.target.value)}
+                className={FIELD}
+              />
+            </div>
+            <div>
+              <label className={LABEL_CLS} htmlFor="s-boxqty">Labels per box</label>
+              <input id="s-boxqty" type="number" inputMode="numeric" min={1}
+                value={qtyPerBox} onChange={(e) => setQtyPerBox(e.target.value)} className={cn(FIELD, 'font-mono')} />
+            </div>
+            <div>
+              <label className={LABEL_CLS} htmlFor="s-boxes">Number of boxes</label>
+              <input id="s-boxes" type="number" inputMode="numeric" min={1}
+                value={boxCount} onChange={(e) => setBoxCount(e.target.value)} className={cn(FIELD, 'font-mono')} />
+            </div>
+            <div>
+              <label className={LABEL_CLS} htmlFor="s-date">Manufacturing date</label>
+              <input id="s-date" type="date" value={date}
+                onChange={(e) => setDate(e.target.value)} className={cn(FIELD, 'font-mono')} />
+            </div>
+          </div>
+        )}
+
+        {showFields && isRollKind(kind) && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <label className={LABEL_CLS} htmlFor="s-product">Product</label>
+              <input
+                id="s-product"
+                value={product}
+                onChange={(e) => setProduct(e.target.value)}
+                className={FIELD}
+              />
+            </div>
+            <div>
+              <label className={LABEL_CLS} htmlFor="s-direction">Winding direction</label>
+              <WithExample example="#4">
+                <input id="s-direction" value={direction}
+                  onChange={(e) => setDirection(e.target.value)}
+                  className={FIELD} />
+              </WithExample>
+            </div>
+            <div>
+              <label className={LABEL_CLS} htmlFor="s-rollqty">Labels per roll</label>
+              <input id="s-rollqty" type="number" inputMode="numeric" min={1}
+                value={qtyPerRoll} onChange={(e) => setQtyPerRoll(e.target.value)} className={cn(FIELD, 'font-mono')} />
+            </div>
+            <div>
+              <label className={LABEL_CLS} htmlFor="s-rolls">Number of rolls</label>
+              <input id="s-rolls" type="number" inputMode="numeric" min={1}
+                value={rollCount} onChange={(e) => setRollCount(e.target.value)} className={cn(FIELD, 'font-mono')} />
+            </div>
+            <div>
+              <label className={LABEL_CLS} htmlFor="s-rolldate">Date</label>
+              <input id="s-rolldate" type="date" value={date}
+                onChange={(e) => setDate(e.target.value)} className={cn(FIELD, 'font-mono')} />
+            </div>
+            <div className="sm:col-span-2">
+              <label className={LABEL_CLS} htmlFor="s-operator">Operator</label>
+              <input id="s-operator" value={operator}
+                onChange={(e) => setOperator(e.target.value)}
+                className={FIELD} />
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* ── Preview, at true physical size, and the one action ───── */}
+      <section aria-label="Preview" className="flex min-w-0 flex-[1_1_620px] flex-col gap-3.5">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <h2 className="text-base font-semibold text-brand-ink">Preview</h2>
+          <p className="text-[13px] text-brand-muted">
+            {SLIP_SIZE[kind].w} × {SLIP_SIZE[kind].h} mm
+            {sheets > 0 && (
+              <> · <span className="font-mono">{copies}</span> slip{plural ? 's' : ''} on{' '}
+                <span className="font-mono">{sheets}</span> sheet{sheets > 1 ? 's' : ''}</>
+            )}
+          </p>
+        </div>
+        {/* The preview is a whole sheet, not a lone slip: what matters at
+            the printer is what comes out of it. For rolls that means
+            seeing the tiling, and seeing the blanks on a short sheet. */}
+        <div className="overflow-x-auto rounded-2xl bg-brand-border p-5">
+          <div
+            className="shadow-[0_8px_24px_rgba(0,0,0,0.12)] rounded-[3mm] overflow-hidden mx-auto bg-white"
+            style={{
+              width: `${SHEET.w}mm`,
+              height: `${SHEET.h}mm`,
+              display: 'grid',
+              ...sheetGrid(kind),
+            }}
+          >
+            {Array.from(
+              { length: Math.min(copies > 0 ? copies : 1, PER_SHEET[kind]) },
+              (_, i) => renderSlip(kind, preview, i, true),
             )}
           </div>
-        </>
-      )}
+        </div>
+        <p className="text-xs text-brand-muted">
+          {kind === 'roll' && <>Six to a 6″ × 4″ sheet, cut apart along the borders. The QR opens this job&rsquo;s live tracking page for the client.</>}
+          {(kind === 'roll10' || kind === 'roll12') && (
+            <>{PER_SHEET[kind]} to a 6″ × 4″ sheet, cut apart along the borders. Too
+              small to carry the tracking QR — use the roll slip when the client
+              needs to scan it. A long product name is cut off with an ellipsis.</>
+          )}
+          {kind === 'box' && <>One per box, a full 6″ × 4″ sheet each.</>}
+          {kind === 'address' && <>One to a sheet, no cutting. Drag either block in the preview to reposition it, or type an exact offset.</>}
+        </p>
+        {kind === 'address' && (
+          <div className="flex flex-wrap items-center gap-3">
+            <BlockNudge
+              label="To"
+              offset={toOffset}
+              onChange={(o) => setToOffset(clampOffset(o))}
+            />
+            <BlockNudge
+              label="From"
+              offset={fromOffset}
+              onChange={(o) => setFromOffset(clampOffset(o))}
+            />
+            {(toOffset.x || toOffset.y || fromOffset.x || fromOffset.y) ? (
+              <button
+                type="button"
+                onClick={() => { setToOffset(NO_OFFSET); setFromOffset(NO_OFFSET); }}
+                className="min-h-11 px-2 text-xs text-brand-muted underline underline-offset-2 hover:opacity-70"
+              >
+                Reset positions
+              </button>
+            ) : null}
+          </div>
+        )}
+
+        <button
+          type="button"
+          disabled={!canPrint || !!problem}
+          onClick={handlePrint}
+          title={problem ?? undefined}
+          className="flex h-[52px] items-center justify-center gap-2.5 rounded-xl bg-brand-primary text-base font-semibold text-white transition-colors hover:bg-brand-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Printer className="h-[18px] w-[18px]" aria-hidden="true" />
+          Print {plural ? <><span className="font-mono">{copies}</span> {SLIP_NOUN[kind]}s</> : SLIP_NOUN[kind]}
+        </button>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-brand-muted">
+            {!canPrint
+              ? 'Your department can view slips but not print them.'
+              : problem ?? 'Nothing is saved — the slips go straight to the printer.'}
+          </p>
+          <Button intent="ghost" onClick={handleTestPrint} disabled={!canPrint}>
+            Print one to test
+          </Button>
+        </div>
+      </section>
 
       {/* ── The surface that actually prints ─────────────────── */}
       {/* One .slip-sheet per physical 6"x4" label. A box or address slip

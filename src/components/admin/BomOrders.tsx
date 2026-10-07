@@ -20,6 +20,7 @@ import { cn, formatQty, formatNumericDate } from '@/lib/utils';
 import { formatMeters } from '@/lib/paperStock';
 import type { BomMaterialOrder, BomMaterialRequestWithJob } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
+import { StateChip } from '@/components/ui/StateChip';
 import { ModalShell } from './modals';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -204,7 +205,7 @@ export function BomOrdersList({
               {canManageStock ? (
                 <Button intent="primary" icon={PackagePlus} onClick={() => onReceive(o)}>Receive</Button>
               ) : (
-                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">On order</span>
+                <StateChip label="On order" dot="#0284C7" />
               )}
               {canDecide && <OrderMenu label={`More actions for ${o.ref}`} onCancel={() => onCancel(o)} />}
             </div>

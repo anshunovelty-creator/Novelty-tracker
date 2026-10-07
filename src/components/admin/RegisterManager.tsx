@@ -61,11 +61,13 @@ function fmtShort(iso: string | null): string {
 function daysLate(iso: string): number {
   return Math.round((new Date(todayISO()).getTime() - new Date(iso).getTime()) / 86_400_000);
 }
+// Due-ness is coloured text, not a filled pill (DESIGN.md): red when late
+// or never set, amber for today, muted otherwise.
 function dueChipCls(iso: string | null): string {
-  if (!iso) return 'bg-white text-[var(--glass-muted)] border border-dashed border-[var(--glass-border)]';
-  if (iso < todayISO()) return 'bg-red-100 text-red-800 border border-red-200 font-semibold';
-  if (iso === todayISO()) return 'bg-amber-100 text-amber-800 border border-amber-200 font-semibold';
-  return 'bg-slate-100 text-slate-700 border border-slate-200';
+  if (!iso) return '!px-0 text-brand-danger';
+  if (iso < todayISO()) return '!px-0 text-brand-danger font-semibold';
+  if (iso === todayISO()) return '!px-0 text-brand-warning font-semibold';
+  return '!px-0 text-brand-muted';
 }
 function dueLabel(iso: string | null): string {
   if (!iso) return 'No date';
@@ -78,16 +80,18 @@ function fmtMoney(v: number | null): string {
   return '₹' + v.toLocaleString('en-IN', { maximumFractionDigits: 0 });
 }
 
-const chip = 'inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium whitespace-nowrap';
+const chip = 'inline-flex items-center px-1.5 py-0.5 rounded-md text-xs font-medium whitespace-nowrap';
+// Metadata (owner, stage, value, segment) — neutral, never a state colour.
+const metaChip = 'bg-brand-sunken text-brand-muted';
 const inputCls = cn(
-  'w-full min-h-11 px-3.5 py-2 rounded-xl text-sm bg-[var(--field-bg)] border border-[var(--field-border)]',
-  'text-[var(--glass-ink)] placeholder:text-[var(--glass-muted)]',
-  'focus:outline-none focus:border-emerald-300/70 focus:shadow-[0_0_0_4px_rgba(124,240,190,0.22)] transition-all',
+  'w-full min-h-11 px-3.5 py-2 rounded-[10px] text-sm bg-white border border-brand-border',
+  'text-brand-ink placeholder:text-brand-faint',
+  'focus:outline-none focus:border-brand-primary focus:shadow-[0_0_0_4px_rgba(16,85,63,0.12)] transition-[border-color,box-shadow]',
 );
 const labelCls = 'block text-[11px] font-semibold uppercase tracking-wide text-[var(--glass-muted)] mb-1.5';
-const btnPrimary = 'inline-flex items-center justify-center gap-1.5 min-h-11 px-4 rounded-xl text-sm font-medium bg-brand-primary text-white hover:bg-brand-primary/90 disabled:opacity-40 transition-colors';
+const btnPrimary = 'inline-flex items-center justify-center gap-1.5 min-h-11 px-4 rounded-xl text-sm font-medium bg-brand-primary text-white hover:bg-brand-primary-hover disabled:opacity-40 transition-colors';
 const btnQuiet = 'inline-flex items-center justify-center gap-1.5 min-h-11 px-3 rounded-xl text-sm font-medium border border-[var(--glass-border)] text-[var(--glass-muted)] hover:bg-black/[0.04] hover:text-[var(--glass-ink)] transition-colors';
-const btnDanger = 'inline-flex items-center justify-center gap-1.5 min-h-9 px-3 rounded-lg text-xs font-medium border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 transition-colors disabled:opacity-50';
+const btnDanger = 'inline-flex items-center justify-center gap-1.5 min-h-11 px-3 rounded-[10px] text-xs font-medium border border-brand-border bg-white text-brand-danger hover:bg-red-50 transition-colors disabled:opacity-50';
 
 // ── main component ───────────────────────────────────────────
 export default function RegisterManager() {
@@ -206,17 +210,17 @@ export default function RegisterManager() {
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex flex-col lg:flex-row lg:items-center gap-2">
-        <div className="inline-flex rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-1 gap-1 shrink-0">
+        <div className="flex shrink-0 flex-wrap gap-2">
           {VIEW_TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setView(t.id)}
               aria-current={view === t.id}
               className={cn(
-                'inline-flex items-center gap-1.5 min-h-9 px-3 rounded-lg text-sm font-medium transition-colors',
+                'inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors',
                 view === t.id
-                  ? 'bg-brand-primary text-white'
-                  : 'text-[var(--glass-muted)] hover:text-[var(--glass-ink)] hover:bg-black/[0.04]',
+                  ? 'border-brand-ink bg-brand-ink text-white'
+                  : 'border-brand-border bg-white text-brand-ink hover:bg-brand-surface-alt',
               )}
             >
               <t.icon className="w-4 h-4" aria-hidden="true" />
@@ -329,9 +333,9 @@ function DealRow({ deal, account, onLog, onEdit }: {
         </p>
         <div className="flex flex-wrap gap-1.5 mt-1.5">
           <span className={cn(chip, dueChipCls(deal.next_action_date))}>{dueLabel(deal.next_action_date)}</span>
-          <span className={cn(chip, 'bg-violet-50 text-violet-700 border border-violet-200')}>{deal.owner || '—'}</span>
-          <span className={cn(chip, 'bg-slate-100 text-slate-600 border border-slate-200')}>{s.name}</span>
-          {deal.value !== null && <span className={cn(chip, 'bg-slate-100 text-slate-600 border border-slate-200 font-mono')}>{fmtMoney(deal.value)}</span>}
+          <span className={cn(chip, metaChip)}>{deal.owner || '—'}</span>
+          <span className={cn(chip, metaChip)}>{s.name}</span>
+          {deal.value !== null && <span className={cn(chip, metaChip, 'font-mono')}>{fmtMoney(deal.value)}</span>}
         </div>
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
@@ -420,11 +424,49 @@ function PipelineView({ deals, accountOf, onEdit }: {
   deals: RegisterDeal[]; accountOf: (id: string) => RegisterAccount | undefined;
   onEdit: (d: RegisterDeal) => void;
 }) {
+  // Narrow the board to what needs a move today — the pills count across
+  // every stage, so "Overdue 2" says where to look before the columns do.
+  const [due, setDue] = useState<DueFilter>('all');
   if (deals.length === 0) return <EmptyRegister message="No open enquiries in the pipeline yet." />;
+  const t = todayISO();
+  const match: Record<DueFilter, (d: RegisterDeal) => boolean> = {
+    all:     () => true,
+    today:   (d) => d.next_action_date === t,
+    overdue: (d) => Boolean(d.next_action_date && d.next_action_date < t),
+    unset:   (d) => !d.next_action_date,
+  };
+  const pills: { id: DueFilter; label: string }[] = [
+    { id: 'all', label: 'All open' }, { id: 'today', label: 'Due today' },
+    { id: 'overdue', label: 'Overdue' }, { id: 'unset', label: 'No next date' },
+  ];
+  const shown = deals.filter(match[due]);
   return (
+    <div className="flex flex-col gap-3">
+    <div role="radiogroup" aria-label="Show deals" className="flex flex-wrap gap-2">
+      {pills.map((p) => {
+        const n = deals.filter(match[p.id]).length;
+        const on = due === p.id;
+        return (
+          <button
+            key={p.id}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            onClick={() => setDue(p.id)}
+            className={cn(
+              'flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 text-[13px] font-medium transition-colors',
+              on ? 'border-brand-ink bg-brand-ink text-white' : 'border-brand-border bg-white text-brand-ink hover:bg-brand-surface-alt',
+            )}
+          >
+            {p.label}
+            <span className={cn('font-mono text-xs', on ? 'text-white/75' : p.id === 'overdue' && n > 0 ? 'font-semibold text-red-700' : 'text-brand-muted')}>{n}</span>
+          </button>
+        );
+      })}
+    </div>
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
       {STAGES.map((s) => {
-        const list = deals.filter((d) => d.stage === s.id);
+        const list = shown.filter((d) => d.stage === s.id);
         return (
           <div key={s.id} className="rounded-xl glass overflow-hidden flex flex-col">
             <div className="flex items-center gap-1.5 px-3 py-2.5 border-b border-[var(--glass-border)]">
@@ -446,8 +488,11 @@ function PipelineView({ deals, accountOf, onEdit }: {
         );
       })}
     </div>
+    </div>
   );
 }
+
+type DueFilter = 'all' | 'today' | 'overdue' | 'unset';
 
 // ── Accounts view ────────────────────────────────────────────
 function AccountsView({ accounts, deals, search, onOpen }: {
@@ -470,9 +515,9 @@ function AccountsView({ accounts, deals, search, onOpen }: {
             <h3 className="font-semibold text-sm text-[var(--glass-ink)]">{a.name}</h3>
             <p className="text-xs text-[var(--glass-muted)] mt-1">{a.contact_name || 'No contact named'}{a.contact_role ? ` · ${a.contact_role}` : ''}</p>
             <div className="flex flex-wrap gap-1.5 mt-2.5">
-              <span className={cn(chip, 'bg-slate-100 text-slate-600 border border-slate-200')}>{a.segment || '—'}</span>
-              <span className={cn(chip, 'bg-slate-100 text-slate-600 border border-slate-200')}>{ds.length} open</span>
-              {overdue > 0 && <span className={cn(chip, 'bg-red-100 text-red-800 border border-red-200 font-semibold')}>{overdue} overdue</span>}
+              <span className={cn(chip, metaChip)}>{a.segment || '—'}</span>
+              <span className={cn(chip, metaChip)}>{ds.length} open</span>
+              {overdue > 0 && <span className={cn(chip, '!px-0 font-semibold text-brand-danger')}>{overdue} overdue</span>}
             </div>
           </button>
         );
@@ -502,10 +547,10 @@ function LogView({ activities, accountOf, deals, search }: {
             <span className="text-[11px] font-mono text-[var(--glass-muted)] w-14 shrink-0 pt-0.5">{fmtShort(x.date)}</span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <span className={cn(chip, 'bg-slate-100 text-slate-600 border border-slate-200')}>{x.type}</span>
+                <span className={cn(chip, metaChip)}>{x.type}</span>
                 <strong className="text-sm text-[var(--glass-ink)]">{a?.name ?? '—'}</strong>
                 {d && <span className="text-xs text-[var(--glass-muted)]">{d.title}</span>}
-                <span className={cn(chip, 'bg-violet-50 text-violet-700 border border-violet-200')}>{x.by || '—'}</span>
+                <span className={cn(chip, metaChip)}>{x.by || '—'}</span>
               </div>
               {x.note && <p className="text-xs text-[var(--glass-muted)] mt-1">{x.note}</p>}
             </div>
@@ -910,8 +955,8 @@ function AccountDetailModal({ account, deals, activities, onClose, onEditAccount
                   <button key={d.id} onClick={() => onOpenDeal(d)} className="w-full text-left flex items-center gap-2 rounded-lg border border-[var(--glass-border)] px-3 py-2 hover:border-emerald-300/70 transition-colors">
                     <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', s.dot)} aria-hidden="true" />
                     <span className="text-xs font-medium text-[var(--glass-ink)] flex-1 truncate">{d.title}</span>
-                    <span className={cn(chip, d.status === 'won' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : d.status === 'lost' ? 'bg-slate-100 text-slate-700 border border-slate-200' : dueChipCls(d.next_action_date))}>
-                      {d.status === 'open' ? dueLabel(d.next_action_date) : d.status.toUpperCase()}
+                    <span className={cn(chip, d.status === 'won' ? '!px-0 font-semibold text-brand-success' : d.status === 'lost' ? '!px-0 text-brand-muted' : dueChipCls(d.next_action_date))}>
+                      {d.status === 'open' ? dueLabel(d.next_action_date) : d.status === 'won' ? 'Won' : 'Lost'}
                     </span>
                   </button>
                 );
@@ -928,7 +973,7 @@ function AccountDetailModal({ account, deals, activities, onClose, onEditAccount
                 <div key={x.id} className="flex gap-2 text-xs">
                   <span className="font-mono text-[var(--glass-muted)] w-12 shrink-0">{fmtShort(x.date)}</span>
                   <div className="min-w-0">
-                    <span className={cn(chip, 'bg-slate-100 text-slate-600 border border-slate-200')}>{x.type}</span>{' '}
+                    <span className={cn(chip, metaChip)}>{x.type}</span>{' '}
                     {x.note && <span className="text-[var(--glass-muted)]">{x.note}</span>}
                   </div>
                 </div>

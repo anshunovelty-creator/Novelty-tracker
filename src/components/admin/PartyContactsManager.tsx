@@ -56,8 +56,8 @@ export default function PartyContactsManager({ canEdit }: { canEdit: boolean }) 
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
         {!loading && (
-          <p className="text-sm text-[var(--glass-muted)]">
-            <strong className="text-[var(--glass-ink)]">{contacts.length}</strong>
+          <p className="text-sm text-brand-muted">
+            <strong className="text-brand-ink">{contacts.length}</strong>
             {' '}{contacts.length === 1 ? 'contact' : 'contacts'} on file
           </p>
         )}
@@ -78,34 +78,34 @@ export default function PartyContactsManager({ canEdit }: { canEdit: boolean }) 
       {loading ? (
         <div className="space-y-2" aria-hidden="true">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-16 rounded-xl bg-black/[0.04]" />
+            <div key={i} className="h-16 rounded-xl bg-brand-sunken" />
           ))}
         </div>
       ) : contacts.length === 0 ? (
-        <div className="flex flex-col items-center justify-center text-center rounded-xl border border-black/[0.08] bg-white px-4 py-12">
-          <ContactIcon className="w-6 h-6 text-[var(--glass-muted)]" aria-hidden="true" />
-          <p className="text-sm font-medium text-[var(--glass-ink)] mt-3">No party contacts yet.</p>
-          <p className="text-xs text-[var(--glass-muted)] mt-1">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-brand-border bg-white px-4 py-12 text-center">
+          <ContactIcon className="w-6 h-6 text-brand-muted" aria-hidden="true" />
+          <p className="text-sm font-medium text-brand-ink mt-3">No party contacts yet.</p>
+          <p className="text-xs text-brand-muted mt-1">
             No party will get a dispatch email until it has one here.
           </p>
         </div>
       ) : (
-        <ul className="space-y-2">
+        <ul className="divide-y divide-brand-border overflow-hidden rounded-2xl border border-brand-border bg-white shadow-[0_2px_8px_rgba(12,42,32,0.04)]">
           {contacts.map((contact) => (
             <li
               key={contact.id}
-              className="rounded-xl border border-black/[0.08] bg-white p-4 flex flex-col sm:flex-row sm:items-center gap-3"
+              className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:px-5"
             >
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-[var(--glass-ink)]">{contact.party}</p>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 mt-1 text-xs text-[var(--glass-muted)]">
+                <p className="text-[15px] font-semibold text-brand-ink">{contact.party}</p>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 mt-1 text-xs text-brand-muted">
                   {contact.contact_name && <span>{contact.contact_name}</span>}
-                  <span className={contact.email ? undefined : 'text-amber-600'}>
+                  <span className={contact.email ? undefined : 'font-medium text-brand-warning'}>
                     {contact.email ?? 'No email on file'}
                   </span>
                   {contact.whatsapp && <span>WhatsApp: {contact.whatsapp}</span>}
                 </div>
-                <p className="text-xs text-[var(--glass-muted)] mt-1">
+                <p className="text-xs text-brand-muted mt-1">
                   Added <span className="font-mono">{formatAdminDate(contact.created_at)}</span>
                 </p>
               </div>
@@ -118,7 +118,7 @@ export default function PartyContactsManager({ canEdit }: { canEdit: boolean }) 
                     className={cn(
                       'inline-flex items-center justify-center gap-1.5 min-h-11 px-3 rounded-lg',
                       'text-xs font-medium border transition-colors whitespace-nowrap',
-                      'border-black/[0.12] bg-white text-[var(--glass-ink)] hover:bg-black/[0.04]',
+                      'border-brand-border bg-white text-brand-ink hover:bg-brand-surface-alt',
                     )}
                   >
                     <Pencil className="w-4 h-4" aria-hidden="true" />

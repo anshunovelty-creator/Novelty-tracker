@@ -22,6 +22,11 @@ import { useResizablePanel } from '@/hooks/useResizablePanel';
 import PanelResizeHandles from './PanelResizeHandles';
 import { createClient } from '@/lib/supabase/client';
 import type { PrepressTodo, PrepressTodoLog } from '@/lib/types';
+import Link from 'next/link';
+import { format } from 'date-fns';
+import { groupTodos, jobTags, splitTags, tagLink } from '@/lib/prepressTodoView';
+import { useJobSepTagRows, useJobSepTagSearch } from '@/hooks/useJobSepTags';
+import { MentionTextarea } from '@/components/ui/Mention';
 import { SearchClearButton } from '@/components/ui/SearchClearButton';
 
 // prepress_todo_logs is auto-trimmed to its 1000 most recent rows
@@ -52,7 +57,7 @@ export default function PrepressTodoPanel() {
     minWidth: 280,
     minHeight: 320,
     anchorRight: 20,
-    anchorBottom: 96,
+    anchorBottom: 20,
     open,
   });
   const [todos,   setTodos]   = useState<PrepressTodo[]>([]);
@@ -64,6 +69,8 @@ export default function PrepressTodoPanel() {
   const [editValue, setEditValue] = useState('');
   const [confirming, setConfirming] = useState<string | null>(null);
   const [view, setView] = useState<'list' | 'history'>('list');
+  // Checklist tab: what's still to do, or what's been ticked.
+  const [pane, setPane] = useState<'open' | 'done'>('open');
   const [logs, setLogs] = useState<PrepressTodoLog[]>([]);
   const [logTotal, setLogTotal] = useState<number | null>(null);
   const [logsLoading, setLogsLoading] = useState(false);
@@ -72,8 +79,14 @@ export default function PrepressTodoPanel() {
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
-  const newTaskRef = useRef<HTMLTextAreaElement>(null);
-  const editRef = useRef<HTMLTextAreaElement>(null);
+  const newTaskRef = useRef<HTMLTextAreaElement | null>(null);
+  const editRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // #tags: what's being typed after a # (either box), the Job Separation rows
+  // that match it, and the rows every saved tag names so chips can link.
+  const [tagQuery, setTagQuery] = useState<string | null>(null);
+  const tagOptions = useJobSepTagSearch(tagQuery);
+  const tagRows = useJobSepTagRows(todos.flatMap((t) => jobTags(t.task)));
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Read inside the realtime debounce callback below, which only depends on
   // `load` — refs keep it seeing the current view/search without resubscribing
@@ -403,22 +416,130 @@ export default function PrepressTodoPanel() {
     }
   }
 
-  // ── Launcher — stacked above NotesFeed (bottom-5) and MessagesWidget
-  // (bottom-24) so none of the floating widgets overlap. ─────────────
+  const groups    = groupTodos(todos);
+  const openCount = groups.blocking.length + groups.general.length;
+  const doneCount = groups.doneToday.length + groups.doneEarlier.length;
+
+  /** One checklist row: tick box, the task with any #job tags as links, and Edit / Delete. */
+  function renderTask(t: PrepressTodo) {
+    const done = Boolean(t.marked_read_at);
+    if (editingId === t.id) {
+      return (
+        <li key={t.id} className="border-t border-brand-line-soft px-4 py-2.5">
+          <MentionTextarea
+            trigger="#"
+            options={tagOptions}
+            onQueryChange={setTagQuery}
+            inputRef={editRef}
+            value={editValue}
+            onValueChange={setEditValue}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(t); }
+              if (e.key === 'Escape') setEditingId(null);
+            }}
+            onBlur={() => saveEdit(t)}
+            autoFocus
+            rows={2}
+            aria-label={`Edit task "${t.task}"`}
+            className="w-full resize-none rounded-lg border border-brand-primary bg-white px-2.5 py-1.5 text-sm leading-snug text-brand-ink focus:outline-none"
+          />
+        </li>
+      );
+    }
+    return (
+      <li key={t.id} className="group flex items-start gap-3 border-t border-brand-line-soft px-4 py-3 hover:bg-brand-surface-alt">
+        <input
+          type="checkbox"
+          checked={done}
+          onChange={() => toggleRead(t)}
+          disabled={busyId === t.id}
+          aria-label={done ? `Reopen "${t.task}"` : `Done: "${t.task}"`}
+          className="mt-0.5 h-[22px] w-[22px] shrink-0 cursor-pointer rounded-[7px] accent-brand-primary"
+        />
+        <div className="min-w-0 flex-1">
+          <p className={cn('whitespace-pre-wrap break-words text-sm leading-snug', done ? 'text-brand-muted line-through' : 'text-brand-ink')}>
+            {splitTags(t.task).map((part, i) => {
+              if (!part.tag) return <span key={i}>{part.text}</span>;
+              const link = tagLink(part.tag, tagRows);
+              return (
+                <Link
+                  key={i}
+                  href={link.href}
+                  title={link.title}
+                  className={cn(
+                    'mx-0.5 inline-flex rounded-[7px] border px-1.5 font-mono text-[11px] font-semibold no-underline hover:border-brand-primary',
+                    link.known
+                      ? 'border-brand-border bg-[#F1F5F2] text-brand-ink'
+                      : 'border-dashed border-brand-border bg-white text-brand-muted',
+                  )}
+                >
+                  #{part.tag}
+                </Link>
+              );
+            })}
+          </p>
+          <p className="mt-0.5 flex flex-wrap gap-x-2 text-xs text-brand-muted">
+            {done
+              ? <span className="font-mono">{format(new Date(t.marked_read_at!), 'dd MMM, HH:mm')}</span>
+              : <span>added{t.created_by ? ` by ${t.created_by}` : ''} · {formatAdminDate(t.created_at)}</span>}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+          <button
+            type="button"
+            onClick={() => startEdit(t)}
+            disabled={busyId === t.id}
+            aria-label={`Edit "${t.task}"`}
+            title="Edit"
+            className={cn(iconBtnCls, '!min-h-9 !min-w-9 bg-white')}
+          >
+            <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+          {confirming === t.id ? (
+            <button
+              type="button"
+              onClick={() => remove(t)}
+              onBlur={() => setConfirming((id) => (id === t.id ? null : id))}
+              disabled={busyId === t.id}
+              aria-label={`Confirm deleting "${t.task}"`}
+              title="Click again to permanently delete"
+              className="inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-lg border border-red-300 bg-red-100 px-2.5 text-[11px] font-semibold text-red-800 transition-colors hover:bg-red-200 disabled:opacity-50"
+            >
+              Confirm
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirming(t.id)}
+              disabled={busyId === t.id}
+              aria-label={`Delete "${t.task}"`}
+              title="Delete"
+              className={cn(iconBtnCls, '!min-h-9 !min-w-9 bg-white hover:border-red-200 hover:bg-red-50 hover:text-red-800')}
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          )}
+        </div>
+      </li>
+    );
+  }
+
+  // ── Launcher — stacked above MessagesWidget (bottom-5) so none of the
+  // floating widgets overlap. ─────────────────────────────────────────
   if (!open) {
     return (
       <button
         onClick={handleOpen}
-        aria-label={todos.length > 0 ? `Prepress To-Do, ${todos.length} pending` : 'Prepress To-Do'}
+        aria-label={openCount > 0 ? `Prepress To-Do, ${openCount} open` : 'Prepress To-Do'}
         className={cn(
-          'fixed bottom-[172px] right-5 z-40 h-14 w-14 rounded-full',
+          'admin-fab fixed bottom-24 right-5 z-40 h-14 w-14 rounded-full',
           'bg-brand-primary hover:bg-brand-primary-hover text-white',
           'shadow-lg shadow-black/20 flex items-center justify-center',
           'transition-colors focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/40',
         )}
       >
         <ListChecks className="h-6 w-6" aria-hidden="true" />
-        {!loading && todos.length > 0 && (
+        {!loading && openCount > 0 && (
           <span
             className={cn(
               'absolute -top-1 -right-1 min-w-[22px] h-[22px] px-1 rounded-full',
@@ -426,7 +547,7 @@ export default function PrepressTodoPanel() {
               'ring-2 ring-white',
             )}
           >
-            {todos.length > 99 ? '99+' : todos.length}
+            {openCount > 99 ? '99+' : openCount}
           </span>
         )}
       </button>
@@ -441,7 +562,7 @@ export default function PrepressTodoPanel() {
       style={resizeStyle}
       className={cn(
         'fixed z-50 grid grid-rows-[auto_minmax(0,1fr)_auto]',
-        !resizable && 'bottom-[172px] right-5 w-[min(90vw,320px)] max-h-[min(70vh,460px)]',
+        !resizable && 'admin-fab bottom-24 right-5 w-[min(90vw,320px)] max-h-[min(70vh,460px)]',
         'bg-brand-surface border border-brand-border rounded-2xl',
         'shadow-2xl shadow-black/20 overflow-hidden',
       )}
@@ -478,7 +599,7 @@ export default function PrepressTodoPanel() {
             >
               {view === 'history'
                 ? logTotal !== null ? `${logTotal}/1000 logs` : ''
-                : loading ? '' : todos.length === 0 ? 'All clear' : `${todos.length} pending`}
+                : loading ? '' : openCount === 0 ? 'All clear' : `${openCount} open`}
             </span>
           </div>
         </div>
@@ -511,7 +632,9 @@ export default function PrepressTodoPanel() {
           rather than an abrupt content swap. `inert` on the off-screen pane
           keeps keyboard focus and screen readers from reaching content
           that's translated out of view. motion-reduce drops the animation
-          to an instant cut per DESIGN.md's reduced-motion requirement. */}
+          to an instant cut per DESIGN.md's reduced-motion requirement.
+          React 18 treats `inert` as a plain attribute: "" turns it on
+          (`true` triggers a console warning), hence the cast below. */}
       <div className="relative flex-1 min-h-0 overflow-hidden">
         <div
           className={cn(
@@ -522,124 +645,61 @@ export default function PrepressTodoPanel() {
           <div
             className="w-1/2 h-full shrink-0 overflow-hidden"
             aria-hidden={view === 'history'}
-            inert={view === 'history' ? true : undefined}
+            inert={view === 'history' ? ('' as unknown as boolean) : undefined}
           >
-      <ul className="h-full overflow-y-auto px-2.5 py-2.5 space-y-2">
+      <div className="flex h-full flex-col">
+        {/* Open / Done — a segmented switch, counts in mono. */}
+        <div role="radiogroup" aria-label="Show" className="mx-2.5 mt-2.5 flex shrink-0 gap-0.5 rounded-[10px] bg-brand-sunken p-[3px]">
+          {([['open', 'Open', openCount], ['done', 'Done', doneCount]] as const).map(([id, label, n]) => (
+            <button
+              key={id}
+              type="button"
+              role="radio"
+              aria-checked={pane === id}
+              onClick={() => setPane(id)}
+              className={cn(
+                'h-9 flex-1 rounded-lg text-[13px] transition-colors',
+                pane === id ? 'bg-white font-semibold text-brand-ink shadow-[0_1px_3px_rgba(12,42,32,0.12)]' : 'font-medium text-brand-muted hover:text-brand-ink',
+              )}
+            >
+              {label} · <span className="font-mono">{n}</span>
+            </button>
+          ))}
+        </div>
+      <ul className="min-h-0 flex-1 overflow-y-auto pb-2">
         {loading ? (
-          <li className="space-y-2" aria-hidden="true">
+          <li className="space-y-2 px-2.5 pt-2.5" aria-hidden="true">
             {Array.from({ length: 2 }).map((_, i) => (
               <div key={i} className="h-12 rounded-xl bg-brand-bg" />
             ))}
           </li>
-        ) : todos.length === 0 ? (
-          <li className="px-2 py-8 text-center text-xs text-brand-muted">
-            No pending tasks — add one below.
+        ) : (pane === 'open' ? openCount : doneCount) === 0 ? (
+          <li className="px-4 py-8 text-center text-xs text-brand-muted">
+            {pane === 'open' ? 'Nothing open — add a task below. Type # and a job card to link a job.' : 'Nothing ticked off yet.'}
           </li>
         ) : (
-          todos.map((t) => {
-            const isEditing = editingId === t.id;
-            return (
-              <li
-                key={t.id}
-                className={cn(
-                  'rounded-xl border px-3 py-2 shadow-sm',
-                  t.marked_read_at
-                    ? 'border-emerald-200 bg-emerald-50'
-                    : 'border-amber-200 bg-amber-50',
-                )}
-              >
-                {isEditing ? (
-                  <textarea
-                    ref={editRef}
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        saveEdit(t);
-                      }
-                      if (e.key === 'Escape') setEditingId(null);
-                    }}
-                    onBlur={() => saveEdit(t)}
-                    autoFocus
-                    rows={1}
-                    aria-label={`Edit task "${t.task}"`}
-                    className={cn(
-                      'w-full min-h-9 max-h-28 px-2 py-1 rounded-lg text-xs bg-white border border-amber-300',
-                      'text-brand-ink resize-none overflow-y-auto leading-snug',
-                      'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
-                    )}
-                  />
-                ) : (
-                  <>
-                    <p className="text-xs text-brand-ink break-words leading-snug whitespace-pre-wrap">{t.task}</p>
-                    <div className="mt-1.5 flex items-center justify-end gap-1">
-                      <button
-                        type="button"
-                        onClick={() => startEdit(t)}
-                        disabled={busyId === t.id}
-                        aria-label={`Edit "${t.task}"`}
-                        title="Edit"
-                        className={cn(iconBtnCls, '!min-h-9 !min-w-9 bg-white')}
-                      >
-                        <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
-                      </button>
-
-                      {confirming === t.id ? (
-                        <button
-                          type="button"
-                          onClick={() => remove(t)}
-                          onBlur={() => setConfirming((id) => (id === t.id ? null : id))}
-                          disabled={busyId === t.id}
-                          aria-label={`Confirm deleting "${t.task}"`}
-                          title="Click again to permanently delete"
-                          className="inline-flex items-center justify-center min-h-9 px-2.5 rounded-lg border border-red-300 bg-red-100 text-red-800 hover:bg-red-200 disabled:opacity-50 transition-colors text-[11px] font-semibold whitespace-nowrap"
-                        >
-                          Confirm
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setConfirming(t.id)}
-                          disabled={busyId === t.id}
-                          aria-label={`Delete "${t.task}"`}
-                          title="Delete"
-                          className={cn(iconBtnCls, '!min-h-9 !min-w-9 bg-white hover:bg-red-50 hover:border-red-200 hover:text-red-800')}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-                        </button>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => toggleRead(t)}
-                        disabled={busyId === t.id}
-                        aria-label={t.marked_read_at ? `Unmark "${t.task}" as read` : `Mark "${t.task}" as read`}
-                        aria-pressed={Boolean(t.marked_read_at)}
-                        title={t.marked_read_at ? 'Marked read — click to undo' : 'Mark as read'}
-                        className={cn(
-                          'inline-flex items-center justify-center min-h-9 min-w-9 rounded-lg border transition-colors disabled:opacity-50',
-                          t.marked_read_at
-                            ? 'border-emerald-400 bg-emerald-500 text-white hover:bg-emerald-600'
-                            : 'border-emerald-300/60 bg-emerald-400/20 text-emerald-700 hover:bg-emerald-400/30',
-                        )}
-                      >
-                        <Check className="w-3.5 h-3.5" aria-hidden="true" />
-                      </button>
-                    </div>
-                  </>
-                )}
-              </li>
-            );
-          })
+          (pane === 'open'
+            ? [['Blocking a job', groups.blocking], ['General', groups.general]] as const
+            : [['Done today', groups.doneToday], ['Done earlier', groups.doneEarlier]] as const
+          ).filter(([, list]) => list.length > 0).map(([title, list]) => (
+            <li key={title}>
+              <h3 className="flex justify-between px-4 pb-1.5 pt-3.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-brand-muted">
+                <span>{title}</span><span className="font-mono">{list.length}</span>
+              </h3>
+              <ul>
+                {list.map((t) => renderTask(t))}
+              </ul>
+            </li>
+          ))
         )}
       </ul>
+      </div>
           </div>
 
           <div
             className="w-1/2 h-full shrink-0 flex flex-col overflow-hidden"
             aria-hidden={view === 'list'}
-            inert={view === 'list' ? true : undefined}
+            inert={view === 'list' ? ('' as unknown as boolean) : undefined}
           >
             <div className="flex items-center gap-1.5 px-2.5 pt-2.5 shrink-0">
               <div className="relative flex-1">
@@ -748,21 +808,25 @@ export default function PrepressTodoPanel() {
           onSubmit={addTask}
           className="flex items-end gap-2 px-3 py-2.5 border-t border-brand-border bg-brand-surface shrink-0"
         >
-          <textarea
-            ref={newTaskRef}
+          <MentionTextarea
+            trigger="#"
+            options={tagOptions}
+            onQueryChange={setTagQuery}
+            inputRef={newTaskRef}
+            wrapperClassName="flex-1"
             value={newTask}
-            onChange={(e) => setNewTask(e.target.value)}
+            onValueChange={setNewTask}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 e.currentTarget.form?.requestSubmit();
               }
             }}
-            placeholder="Add a task…"
+            placeholder="Add a task… type # to link a job"
             aria-label="Add a checklist task"
             rows={1}
             className={cn(
-              'flex-1 min-h-11 max-h-28 px-3.5 py-2.5 rounded-2xl text-sm bg-brand-bg border border-brand-border',
+              'min-h-11 max-h-28 px-3.5 py-2.5 rounded-2xl text-sm bg-brand-bg border border-brand-border',
               'text-brand-ink placeholder:text-brand-muted resize-none overflow-y-auto leading-snug',
               'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
             )}

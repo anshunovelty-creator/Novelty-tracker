@@ -3,7 +3,7 @@
 // ============================================================
 // Floating launcher for team messaging — same FAB stack as NotesFeed,
 // PrepressTodoPanel and MeterCalculatorPanel (bottom-right, 76px rhythm),
-// stacked directly above NotesFeed's chat FAB (bottom-5) since both are
+// in the bottom slot (bottom-5) — notes open from the header now — since both are
 // global, layout-mounted widgets every login sees. Previously lived as a
 // small icon in AdminHeader; moved here so it's thumb-reachable and never
 // buried among the header's other controls (PRODUCT.md principle 4,
@@ -89,9 +89,9 @@ export default function MessagesWidget({ userEmail, isSuperAdmin }: Props) {
     setOpen(true);
   }
 
-  // ── Launcher — stacked above NotesFeed's chat FAB (bottom-5) so the
+  // ── Launcher — the bottom slot (bottom-5), now that notes open from the header; the
   // two never overlap; PrepressTodoPanel and MeterCalculatorPanel shift
-  // up one slot each (bottom-[172px] / bottom-[248px]) to make room. ──
+  // panels above sit one slot up each (bottom-24 / bottom-[172px]). ──
   if (!open) {
     return (
       <button
@@ -100,7 +100,7 @@ export default function MessagesWidget({ userEmail, isSuperAdmin }: Props) {
         onFocus={preloadDrawer}
         aria-label={unread > 0 ? `Messages, ${unread} unread` : 'Messages'}
         className={cn(
-          'fixed bottom-24 right-5 z-40 h-14 w-14 rounded-full',
+          'admin-fab fixed bottom-5 right-5 z-40 h-14 w-14 rounded-full',
           'bg-brand-primary hover:bg-brand-primary-hover text-white',
           'shadow-lg shadow-black/20 flex items-center justify-center',
           'transition-colors focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/40',

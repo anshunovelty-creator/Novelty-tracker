@@ -10,19 +10,20 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { getDeptPermissions, canDeptManageRegister } from '@/lib/constants/departments';
 import RegisterManager from '@/components/admin/RegisterManager';
+import { deptKeyOf } from '@/lib/identity';
 
 export default async function RegisterPage() {
   const supabase = await createServerSupabaseClient();
   const user = await getClaimsUser(supabase);
   if (!user) redirect('/login');
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!canDeptManageRegister(perms)) redirect('/admin');
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-[var(--glass-ink)]">Follow-ups</h1>
+        <h1 className="text-[30px] font-semibold leading-9 tracking-[-0.025em] text-brand-ink">Follow-ups</h1>
         <p className="text-sm text-[var(--glass-muted)] mt-1">
           Customer accounts, enquiries, and follow-up history — Admin only.
         </p>

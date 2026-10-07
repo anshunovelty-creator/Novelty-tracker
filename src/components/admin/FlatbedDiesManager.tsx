@@ -11,6 +11,8 @@
 
 import dynamic from 'next/dynamic';
 import { useState, useEffect, useMemo } from 'react';
+import { useUrlSearch } from '@/hooks/useUrlSearch';
+import SizeToleranceToggle, { canUseTolerance, SIZE_TOLERANCE_MM } from './SizeToleranceToggle';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { Search, Plus, Pencil, Trash2, Scissors, ArrowUp, ArrowDown } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -130,7 +132,9 @@ function buildFlatbedDieExportColumns(srNoMap: Map<string, number>): CsvColumn<F
 
 export default function FlatbedDiesManager({ canManage }: { canManage: boolean }) {
   const [search,      setSearch]      = useState('');
+  useUrlSearch(setSearch);
   const [searchField, setSearchField] = useState('all');
+  const [nearSize,    setNearSize]    = useState(false);
   const [sortField,   setSortField]   = useState<SortField>('created_at');
   const [sortDir,     setSortDir]     = useState<SortDir>('asc');
   const [adding,      setAdding]      = useState(false);
@@ -157,13 +161,16 @@ export default function FlatbedDiesManager({ canManage }: { canManage: boolean }
     return () => clearTimeout(timer);
   }, [search]);
 
+  const tolerance = nearSize && canUseTolerance(debouncedSearch, searchField) ? SIZE_TOLERANCE_MM : 0;
+
   const flatbedDiesQuery = useQuery({
-    queryKey: ['flatbed-dies', debouncedSearch, searchField],
+    queryKey: ['flatbed-dies', debouncedSearch, searchField, tolerance],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (debouncedSearch) {
         params.set('search', debouncedSearch);
         if (searchField !== 'all') params.set('field', searchField);
+        if (tolerance) params.set('tol', String(tolerance));
       }
       const res  = await fetch(`/api/flatbed-dies?${params.toString()}`);
       const data = await res.json();
@@ -264,7 +271,7 @@ export default function FlatbedDiesManager({ canManage }: { canManage: boolean }
             onChange={(e) => setSearch(e.target.value)}
             placeholder={FLATBED_DIE_SEARCH_FIELDS.find((f) => f.value === searchField)?.placeholder}
             aria-label="Search flatbed dies"
-            title="Search (Ctrl+K)"
+            title="Search this page (/)"
             data-global-search
             className={cn(
               'w-full min-h-11 pl-9 pr-11 rounded-xl text-sm',
@@ -275,6 +282,8 @@ export default function FlatbedDiesManager({ canManage }: { canManage: boolean }
           />
           <SearchClearButton value={search} onClear={() => setSearch('')} />
         </div>
+
+        <SizeToleranceToggle on={nearSize} onChange={setNearSize} enabled={canUseTolerance(search, searchField)} />
 
         <CsvExportButton rows={flatbedDies} columns={exportColumns} filename="flatbed-dies" />
 

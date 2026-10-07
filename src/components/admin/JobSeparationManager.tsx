@@ -10,9 +10,12 @@
 
 import dynamic from 'next/dynamic';
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useUrlSearch } from '@/hooks/useUrlSearch';
+import { useRefetchOnChange } from '@/hooks/useRefetchOnChange';
+import { freeShelfByPm, shelfOffer, type ShelfLot } from '@/lib/shelfMatch';
 import Link from 'next/link';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { Search, Plus, Pencil, Copy, Ban, SplitSquareHorizontal, ArrowUp, ArrowDown, Users, FilePlus2 } from 'lucide-react';
+import { Search, Plus, Pencil, Copy, Ban, SplitSquareHorizontal, ArrowUp, ArrowDown, Users, FilePlus2, Package } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatQty, formatNumericDate, formatJobCardNumber } from '@/lib/utils';
 import { compareValues, type SortDir, type SortKind } from '@/lib/sort';
@@ -37,14 +40,16 @@ const AddJobSeparationModal = dynamic(() => import('./AddJobSeparationModal'), {
 // treated as the same product/label name here). Delivery Date and Job Type
 // have no Job Separation source, so they're left for the team to fill in
 // after reviewing the prefilled form.
-function jobPrefillFromRow(row: JobSeparation): Partial<AddJobFormData> {
+// `qty` overrides the line's quantity — "Make job for 29,000" when part of
+// the order can come off the shelf.
+function jobPrefillFromRow(row: JobSeparation, qty?: number | null): Partial<AddJobFormData> {
   return {
     party:      row.party,
     po_number:  row.po_no ?? '',
     po_date:    row.po_date ?? '',
     pm_code:    row.pm_code ?? '',
     job_name:   row.material_name ?? '',
-    label_qty:  row.quantity,
+    label_qty:  qty ?? row.quantity,
   };
 }
 
@@ -58,10 +63,6 @@ const JOB_SEPARATION_COLUMNS = [
 ] as const;
 const JOB_SEPARATION_COLS = JOB_SEPARATION_COLUMNS.length;
 
-// How often the list quietly re-fetches so a row someone else just added
-// shows up without a manual refresh. Loose on purpose — this is a reference
-// worksheet, not a wall display — and paused while the tab isn't visible.
-const POLL_MS = 30_000;
 
 // Mirrors DEFAULT_LIMIT in src/app/api/job-separations/route.ts. "Current
 // month" (400-700 rows) fits in one page today; "All data" won't once it
@@ -175,6 +176,8 @@ type Props = { canManage: boolean; canManageTodo: boolean; canUseMeterCalculator
 
 export default function JobSeparationManager({ canManage, canManageTodo, canUseMeterCalculator, canSeeTotal, dept }: Props) {
   const [search,      setSearch]      = useState('');
+  // Opened with ?q= (the jobs table's "Look in Job Separation", Ctrl K): pre-fill the search.
+  useUrlSearch(setSearch);
   const [searchField, setSearchField] = useState('all');
   const [range,       setRange]       = useState<DateRangeOption>('month');
   const [sortField,   setSortField]   = useState<SortField>('created_at');
@@ -199,6 +202,23 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
   // Set when "Add Job" is used on a row — opens AddJobForm prefilled,
   // submitting to that row's create-job endpoint instead of a fresh POST.
   const [addingJobFrom, setAddingJobFrom] = useState<JobSeparation | null>(null);
+  // Set alongside addingJobFrom by the shelf callout: the quantity left to
+  // print once the shelf's free labels are used. null = the line's own qty.
+  const [addingQty, setAddingQty] = useState<number | null>(null);
+
+  // Free labels on the shelf, by PM code — read once, for the "on shelf"
+  // chips and the "Use shelf stock before printing" callout. A department
+  // that can't see stock gets a 403 here and simply no hints.
+  const shelfQuery = useQuery({
+    queryKey: ['stock', 'free-shelf'],
+    queryFn: async () => {
+      const res = await fetch('/api/stock');
+      if (!res.ok) return [] as ShelfLot[];
+      return ((await res.json()).stock ?? []) as ShelfLot[];
+    },
+    staleTime: 60_000,
+  });
+  const shelf = useMemo(() => freeShelfByPm(shelfQuery.data ?? []), [shelfQuery.data]);
   // The row a Cancel Job prompt is open for — cancelling always asks for a
   // reason, never a bare confirm, since it can't be undone afterward.
   const [cancellingRow, setCancellingRow] = useState<JobSeparation | null>(null);
@@ -244,10 +264,11 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
       };
     },
     placeholderData: keepPreviousData,
-    // Quiet background refresh — refetchInterval already skips firing while
-    // the tab isn't visible, matching the old manual visibilitychange logic.
-    refetchInterval: POLL_MS,
   });
+  // A row someone else just added shows up without a manual refresh: every
+  // 30 s the page asks whether job_separations changed (a few bytes) and
+  // re-downloads the list only if it did. Paused while the tab is hidden.
+  useRefetchOnChange(['job_separations'], [['job-separations']]);
   const rows    = rowsQuery.data?.rows ?? EMPTY_ROWS;
   const hasMore = rowsQuery.data?.hasMore ?? false;
   const loading = rowsQuery.isLoading;
@@ -290,6 +311,7 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
         : old
     );
     setAddingJobFrom(null);
+    setAddingQty(null);
   }
 
   const sortedRows = useMemo(
@@ -412,7 +434,7 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
             onChange={(e) => setSearch(e.target.value)}
             placeholder={JOB_SEPARATION_SEARCH_FIELDS.find((f) => f.value === searchField)?.placeholder}
             aria-label="Search job separation"
-            title="Search (Ctrl+K)"
+            title="Search this page (/)"
             data-global-search
             className={cn(
               'w-full min-h-11 pl-9 pr-11 rounded-xl text-sm',
@@ -473,6 +495,46 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
           )}
         </div>
       )}
+
+      {/* Shelf before press: the first line with no job whose PM code has
+          free labels on a rack. Printing the full order would waste them. */}
+      {(() => {
+        const hit = sortedRows.map((row) => ({ row, offer: shelfOffer(row, shelf) })).find((x) => x.offer);
+        if (!hit || !hit.offer) return null;
+        const { row, offer } = hit;
+        const where = offer.locations.length ? ` on rack ${offer.locations.join(', ')}` : ' on the shelf';
+        return (
+          <div role="status" className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#FDE68A] bg-[#FFFBEB] px-4 py-3">
+            <Package className="h-5 w-5 shrink-0 text-brand-warning" aria-hidden="true" />
+            <div className="min-w-0 flex-1 text-sm text-brand-ink">
+              <p className="font-semibold">Use shelf stock before printing</p>
+              <p className="text-brand-muted">
+                {row.sr_no ? `${row.sr_no} · ` : ''}{row.party} wants <span className="font-mono">{formatQty(row.quantity)}</span> of{' '}
+                <span className="font-mono">{row.pm_code}</span> — <span className="font-mono font-semibold text-brand-ink">{formatQty(offer.onShelf)}</span> are already{where}.{' '}
+                {offer.printQty > 0
+                  ? <>Print only <span className="font-mono font-semibold text-brand-ink">{formatQty(offer.printQty)}</span>.</>
+                  : 'The shelf covers the whole order.'}
+              </p>
+            </div>
+            {offer.printQty > 0 && dept ? (
+              <button
+                type="button"
+                onClick={() => { setAddingQty(offer.printQty); setAddingJobFrom(row); }}
+                className="inline-flex min-h-11 items-center rounded-[10px] bg-brand-primary px-4 text-sm font-semibold text-white hover:bg-brand-primary-hover"
+              >
+                Make job for {formatQty(offer.printQty)}
+              </button>
+            ) : (
+              <Link
+                href={`/admin/stock?q=${encodeURIComponent(row.pm_code ?? '')}`}
+                className="inline-flex min-h-11 items-center rounded-[10px] border border-brand-border bg-white px-3.5 text-sm font-medium text-brand-ink hover:bg-brand-surface-hover"
+              >
+                Open label stock
+              </Link>
+            )}
+          </div>
+        );
+      })()}
 
       {loading ? (
         <>
@@ -594,6 +656,11 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
                         <SpecField label="PO No" value={row.po_no} mono wrapIfLong />
                         <SpecField label="PO Date" value={formatNumericDate(row.po_date)} mono />
                         <SpecField label="PM Code" value={row.pm_code} mono />
+                        {shelfOffer(row, shelf) && (
+                          <div className="col-span-2 sm:col-span-3 lg:col-span-4 -mt-1">
+                            <ShelfChip offer={shelfOffer(row, shelf)} pm={row.pm_code} />
+                          </div>
+                        )}
                         <SpecField label="Quantity" value={row.quantity !== null ? formatQty(row.quantity) : null} mono />
                         <SpecField label="Rate" value={formatMoney(row.rate)} mono />
                         <SpecField label="Artwork Status" value={row.job_status} />
@@ -628,7 +695,7 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
                           </Link>
                         ) : (
                           <button
-                            onClick={() => setAddingJobFrom(row)}
+                            onClick={() => { setAddingQty(null); setAddingJobFrom(row); }}
                             aria-label={`Add a Job from the job separation row for ${row.party}`}
                             className={cn(
                               'inline-flex items-center justify-center gap-1.5 min-h-11 px-3 rounded-lg',
@@ -751,6 +818,7 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
                         <td className="px-3 py-1.5 w-[200px] min-w-0 whitespace-normal align-top border-r border-white/8">
                           <p className={cn('font-mono text-[13px] font-bold tracking-wide', !isCancelled && 'text-[var(--glass-ink)]')}>{row.pm_code || '—'}</p>
                           <p className={cn('text-xs mt-0.5 break-words', !isCancelled && 'text-[var(--glass-muted)]')}>{row.material_name || '—'}</p>
+                          <ShelfChip offer={shelfOffer(row, shelf)} pm={row.pm_code} />
                         </td>
                         <td className="px-3 py-1.5 whitespace-nowrap align-top border-r border-white/8">
                           <p className={cn('font-mono text-[13px] font-bold tracking-wide', !isCancelled && 'text-[var(--glass-ink)]')}>{row.quantity !== null ? formatQty(row.quantity) : '—'}</p>
@@ -815,7 +883,7 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
                                 </Link>
                               ) : (
                                 <button
-                                  onClick={() => setAddingJobFrom(row)}
+                                  onClick={() => { setAddingQty(null); setAddingJobFrom(row); }}
                                   aria-label={`Add a Job from the job separation row for ${row.party}`}
                                   title="Add Job"
                                   className={cn(
@@ -908,16 +976,16 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
       {addingJobFrom && dept && (
         <div
           className="fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto bg-black/40 p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) setAddingJobFrom(null); }}
+          onClick={(e) => { if (e.target === e.currentTarget) { setAddingJobFrom(null); setAddingQty(null); } }}
         >
           <div className="w-full max-w-2xl my-8">
             <AddJobForm
               key={addingJobFrom.id}
               dept={dept}
-              prefillData={jobPrefillFromRow(addingJobFrom)}
+              prefillData={jobPrefillFromRow(addingJobFrom, addingQty)}
               sourceJobSeparationId={addingJobFrom.id}
               onSuccess={(job) => handleJobAdded(addingJobFrom, job)}
-              onCancel={() => setAddingJobFrom(null)}
+              onCancel={() => { setAddingJobFrom(null); setAddingQty(null); }}
             />
           </div>
         </div>
@@ -963,5 +1031,18 @@ function EmptyState({ hasSearch, range }: { hasSearch: boolean; range: DateRange
             : 'Try "All data" if you expected to see older rows here.'}
       </p>
     </div>
+  );
+}
+
+/** "11,000 on shelf" under a PM code, linking to that stock. */
+function ShelfChip({ offer, pm }: { offer: ReturnType<typeof shelfOffer>; pm: string | null }) {
+  if (!offer) return null;
+  return (
+    <Link
+      href={`/admin/stock?q=${encodeURIComponent(pm ?? '')}`}
+      className="mt-1 inline-flex min-h-7 items-center gap-1 rounded-lg border border-[#FDE68A] bg-[#FFFBEB] px-2 text-[11px] font-semibold text-brand-warning hover:border-[#FCD34D]"
+    >
+      <span className="font-mono">{formatQty(offer.onShelf)}</span> on shelf
+    </Link>
   );
 }

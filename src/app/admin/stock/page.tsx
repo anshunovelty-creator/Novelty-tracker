@@ -12,6 +12,7 @@ import { getClaimsUser } from '@/lib/supabase/claims';
 import { redirect } from 'next/navigation';
 import { getDeptPermissions, canDeptManageStock, canDeptViewStock } from '@/lib/constants/departments';
 import LabelStockManager from '@/components/admin/LabelStockManager';
+import { deptKeyOf } from '@/lib/identity';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,14 +26,14 @@ export default async function LabelStockPage() {
   const user = await getClaimsUser(supabase);
   if (!user) redirect('/login');
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!canDeptViewStock(perms)) redirect('/admin');
 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-[var(--glass-ink)]">Label Stock</h1>
-        <p className="text-sm text-[var(--glass-muted)] mt-0.5">
+        <h1 className="text-[30px] font-semibold leading-9 tracking-[-0.025em] text-brand-ink">Label Stock</h1>
+        <p className="mt-1.5 max-w-[72ch] text-sm text-brand-muted">
           Printed labels currently on the shelf. Balances land here on a partial
           dispatch, surplus is added at full dispatch, and marking a row
           dispatched moves it out.

@@ -24,6 +24,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptManagePrepressTodo } from '@/lib/constants/departments';
 import { toCsv, csvTimestamp, istDateStamp, type CsvColumn } from '@/lib/export/csv';
 import type { PrepressTodoLog } from '@/lib/types';
+import { deptKeyOf } from '@/lib/identity';
 
 const ACTION_LABELS: Record<PrepressTodoLog['action'], string> = {
   created:   'Added',
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const perms = await getDeptPermissions(user.user_metadata?.department);
+  const perms = await getDeptPermissions(deptKeyOf(user));
   if (!perms) return NextResponse.json({ error: 'Invalid department' }, { status: 403 });
 
   if (!canDeptManagePrepressTodo(perms)) {

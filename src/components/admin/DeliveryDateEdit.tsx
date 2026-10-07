@@ -1,7 +1,7 @@
 'use client';
 // src/components/admin/DeliveryDateEdit.tsx
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pencil, Check, X } from 'lucide-react';
 import { cn, formatNumericDate, getDeliveryCountdown } from '@/lib/utils';
 import { canDeptEditDeliveryDate } from '@/lib/constants/departments';
@@ -13,12 +13,33 @@ type Props = {
   deliveryDate: string | null;
   dept:         DeptPermissions;
   onUpdated:    (newDate: string | null) => void;
+  /** Neutral date, no countdown colour — for callers that print the
+   *  delivery state on a line of their own (JobRow), which also knows
+   *  that a dispatched job is no longer "late". */
+  plain?:       boolean;
 };
 
-export default function DeliveryDateEdit({ jobId, deliveryDate, dept, onUpdated }: Props) {
+export default function DeliveryDateEdit({ jobId, deliveryDate, dept, onUpdated, plain = false }: Props) {
   const [editing,  setEditing]  = useState(false);
   const [value,    setValue]    = useState(deliveryDate ?? '');
   const [loading,  setLoading]  = useState(false);
+  // Where focus goes back to after Cancel or Escape, so a keyboard user
+  // isn't dropped at the top of the page.
+  const editButton  = useRef<HTMLButtonElement>(null);
+  const returnFocus = useRef(false);
+
+  useEffect(() => {
+    if (!editing && returnFocus.current) {
+      returnFocus.current = false;
+      editButton.current?.focus();
+    }
+  }, [editing]);
+
+  function cancel() {
+    returnFocus.current = true;
+    setEditing(false);
+    setValue(deliveryDate ?? '');
+  }
 
   const canEdit = canDeptEditDeliveryDate(dept);
 
@@ -47,7 +68,12 @@ export default function DeliveryDateEdit({ jobId, deliveryDate, dept, onUpdated 
 
   if (editing) {
     return (
-      <div className="flex items-center gap-1.5">
+      // Escape cancels, like the app's other popovers. Stopped here so it
+      // doesn't also close a dialog or menu the editor sits inside.
+      <div
+        className="flex items-center gap-1.5"
+        onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel(); } }}
+      >
         <input
           type="date"
           value={value}
@@ -69,7 +95,7 @@ export default function DeliveryDateEdit({ jobId, deliveryDate, dept, onUpdated 
           <Check className="w-4 h-4" aria-hidden="true" />
         </button>
         <button
-          onClick={() => { setEditing(false); setValue(deliveryDate ?? ''); }}
+          onClick={cancel}
           aria-label="Cancel editing delivery date"
           className="p-1 rounded text-[var(--glass-muted)] hover:text-[var(--glass-ink)] hover:bg-white/10 transition-colors"
         >
@@ -84,6 +110,7 @@ export default function DeliveryDateEdit({ jobId, deliveryDate, dept, onUpdated 
   const countdown = getDeliveryCountdown(deliveryDate);
   const dateTone =
     !deliveryDate                 ? 'text-[var(--glass-muted)]'
+    : plain                       ? 'text-[13px] text-[var(--glass-ink)]'
     : countdown.color === 'red'   ? 'text-red-600 font-semibold'
     : countdown.color === 'amber' ? 'text-amber-700 font-semibold'
     : 'text-[var(--glass-ink)]';
@@ -98,6 +125,7 @@ export default function DeliveryDateEdit({ jobId, deliveryDate, dept, onUpdated 
       </span>
       {canEdit && (
         <button
+          ref={editButton}
           onClick={() => setEditing(true)}
           aria-label="Edit delivery date"
           title="Edit delivery date"

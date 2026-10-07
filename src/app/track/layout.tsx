@@ -11,7 +11,8 @@ import { getBranding } from '@/lib/branding';
 export async function generateMetadata(): Promise<Metadata> {
   const branding = await getBranding();
   return {
-    title: `Order Tracking | ${branding.shortName}`,
+    // The root layout's title template adds " | <shortName>" itself.
+    title: 'Order Tracking',
     description: `Track your label printing order status with ${branding.name}.`,
     robots: { index: true, follow: false },
   };

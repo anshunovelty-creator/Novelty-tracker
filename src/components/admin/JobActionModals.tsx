@@ -17,7 +17,11 @@ import {
   FullDispatchModal,
   ClosePOModal,
   ConfirmModal,
+  ConfirmSlittingModal,
+  partialDispatchPayload,
+  fullDispatchPayload,
 } from './modals';
+import { canDeptSetStage } from '@/lib/constants/departments';
 
 type Props = {
   job:     Job;
@@ -44,6 +48,8 @@ export default function JobActionModals({ job, dept, actions }: Props) {
 
       {modal.type === 'revert' && (
         <RevertStageModal
+          job={job}
+          completedStages={Array.from(actions.completedSet)}
           currentStage={job.status}
           targetStage={modal.targetStage}
           onCancel={actions.cancelOverride}
@@ -55,6 +61,7 @@ export default function JobActionModals({ job, dept, actions }: Props) {
 
       {modal.type === 'on_hold' && (
         <OnHoldModal
+          job={job}
           onCancel={actions.closeModal}
           onConfirm={(remark) =>
             actions.submitStatusChange({ new_status: 'On Hold', remark })
@@ -64,38 +71,41 @@ export default function JobActionModals({ job, dept, actions }: Props) {
 
       {modal.type === 'qc' && (
         <QCModal
+          job={job}
           onCancel={actions.closeQCModal}
           onConfirm={actions.confirmQC}
+          onReject={canDeptSetStage(dept, 'On Hold', job.printing_method) ? actions.rejectQC : undefined}
         />
       )}
 
       {modal.type === 'partial_dispatch' && (
         <PartialDispatchModal
+          job={job}
           remaining={actions.remainingQty}
           onCancel={actions.closeModal}
-          onConfirm={(qty, stockRemaining) =>
-            actions.submitStatusChange({
-              new_status:          'Partial Dispatch',
-              qty_dispatched:      qty,
-              stock_remaining_qty: stockRemaining,
-            })
-          }
+          onConfirm={(d) => {
+            actions.submitStatusChange(partialDispatchPayload(d));
+          }}
         />
       )}
 
       {modal.type === 'full_dispatch' && (
         <FullDispatchModal
+          job={job}
           remaining={actions.remainingQty}
           onCancel={actions.closeModal}
-          onConfirm={(extraQty, location, remark) =>
-            actions.submitStatusChange({
-              new_status: 'Dispatched',
-              // 0 is the "no extras" answer — the route ignores it.
-              extra_label_qty:      extraQty,
-              extra_label_location: location || undefined,
-              extra_label_remark:   remark   || undefined,
-            })
-          }
+          onConfirm={(d) => {
+            actions.submitStatusChange(fullDispatchPayload(d));
+          }}
+        />
+      )}
+
+      {modal.type === 'slitting' && (
+        <ConfirmSlittingModal
+          job={job}
+          busy={actions.submitting}
+          onCancel={actions.closeModal}
+          onConfirm={actions.confirmSlitting}
         />
       )}
 
