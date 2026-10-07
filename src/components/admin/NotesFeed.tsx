@@ -34,6 +34,8 @@ import { filterNotes, groupByDay, mentions, type NotesTab } from '@/lib/notesVie
 import { useTeamDirectory } from '@/hooks/useReferenceData';
 import { MentionText, MentionTextarea } from '@/components/ui/Mention';
 import { initials } from '@/lib/team';
+import { notify } from '@/lib/notify';
+import { DesktopNotificationsToggle } from '@/components/ui/DesktopNotificationsToggle';
 import type { NoteFeedItem } from '@/lib/types';
 
 const POLL_MS  = 60_000;
@@ -83,7 +85,6 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
   const [unread,         setUnread]         = useState(0);
   const [tab,            setTab]            = useState<NotesTab>('unread');
   const [error,          setError]          = useState(false);
-  const [canPush,        setCanPush]        = useState<NotificationPermission | 'unsupported'>('unsupported');
   // Ids marked read locally but not yet confirmed by the next poll.
   const [optimisticRead, setOptimisticRead] = useState<Set<string>>(new Set());
   // Composer
@@ -111,10 +112,6 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
   const notifiedIdRef = useRef<string | null>(null);
 
   useEffect(() => { openRef.current = open; }, [open]);
-
-  useEffect(() => {
-    if ('Notification' in window) setCanPush(Notification.permission);
-  }, []);
 
   const poll = useCallback(async () => {
     try {
@@ -163,23 +160,24 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
         }
       }
 
-      // Desktop notification: only for someone else's note, only when the
-      // drawer is shut, and never for the backlog present at page load.
+      // Chime + pop-up (src/lib/notify): only for someone else's note, not
+      // while the drawer is open in front of you, and never for the backlog
+      // present at page load.
       if (
         newest &&
         !isFirstPoll &&
         newest.id !== notifiedIdRef.current &&
         newest.created_by_email !== userEmail &&
-        !openRef.current &&
-        'Notification' in window &&
-        Notification.permission === 'granted'
+        !(openRef.current && document.visibilityState === 'visible')
       ) {
         const job = newest.job_name || newest.po_number;
         const who = nameOfRef.current(newest.created_by_email) || newest.created_by;
         const forMe = mentions(newest.comment, myNamesRef.current);
-        new Notification(forMe ? `${who} mentioned you — ${job}` : `${who} — ${job}`, {
-          body: newest.comment,
-          tag:  newest.id, // collapses duplicates if several tabs are open
+        notify({
+          id:     newest.id,
+          title:  forMe ? `${who} mentioned you — ${job}` : `${who} — ${job}`,
+          body:   newest.comment,
+          onOpen: () => window.dispatchEvent(new Event(NOTES_OPEN_EVENT)),
         });
       }
       if (newest) notifiedIdRef.current = newest.id;
@@ -283,11 +281,6 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
   useEffect(() => {
     window.dispatchEvent(new CustomEvent<number>(NOTES_UNREAD_EVENT, { detail: unread }));
   }, [unread]);
-
-  async function togglePush() {
-    if (!('Notification' in window) || canPush !== 'default') return;
-    setCanPush(await Notification.requestPermission());
-  }
 
   const isRead  = useCallback((n: NoteFeedItem) => n.read || optimisticRead.has(n.id), [optimisticRead]);
   // A note tags me when it names my username or my department.
@@ -398,22 +391,7 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
               );
             })}
           </div>
-          {canPush !== 'unsupported' && (
-            <label className="flex min-h-9 items-center justify-between text-[13px] text-brand-muted">
-              Desktop notifications
-              {canPush === 'denied' ? (
-                <span className="text-xs">Blocked in this browser’s settings</span>
-              ) : (
-                <input
-                  type="checkbox"
-                  checked={canPush === 'granted'}
-                  disabled={canPush === 'granted'}
-                  onChange={togglePush}
-                  className="h-5 w-5 accent-brand-primary"
-                />
-              )}
-            </label>
-          )}
+          <DesktopNotificationsToggle />
         </div>
 
         {/* Feed */}

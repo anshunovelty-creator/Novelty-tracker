@@ -17,12 +17,14 @@
 // ============================================================
 
 import dynamic from 'next/dynamic';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MessageCircle } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import { requestOpen, subscribeActiveWidget } from '@/lib/floatingWidgetCoordinator';
+import { notify } from '@/lib/notify';
+import { useTeamDirectory } from '@/hooks/useReferenceData';
 
 // Loaded on first open, not with every admin page — the drawer only renders
 // once the launcher is used. preloadDrawer warms the chunk on hover/focus so
@@ -44,6 +46,15 @@ type Props = {
 export default function MessagesWidget({ userEmail, isSuperAdmin }: Props) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  // Thread to land on when the drawer is opened from a message alert.
+  const [openOn, setOpenOn] = useState<string | null>(null);
+  const { nameOf } = useTeamDirectory();
+
+  // Refs so the Realtime handler below reads current values without
+  // re-subscribing the channel.
+  const openRef = useRef(open);
+  const nameOfRef = useRef(nameOf);
+  useEffect(() => { openRef.current = open; nameOfRef.current = nameOf; });
 
   const { data: unread = 0 } = useQuery({
     queryKey: ['messages', 'unread-count'],
@@ -66,8 +77,20 @@ export default function MessagesWidget({ userEmail, isSuperAdmin }: Props) {
     const supabase = createClient();
     const channel = supabase
       .channel('messages_changes')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
         queryClient.invalidateQueries({ queryKey: ['messages'] });
+
+        // Chime + pop-up for someone else's message — not while the drawer
+        // is open in front of you, where the message is already on screen.
+        const m = payload.new as { id: string; conversation_id: string; sender_email: string; body: string };
+        if (m.sender_email === userEmail) return;
+        if (openRef.current && document.visibilityState === 'visible') return;
+        notify({
+          id:     m.id,
+          title:  `${nameOfRef.current(m.sender_email) || m.sender_email} sent you a message`,
+          body:   m.body,
+          onOpen: () => { requestOpen('messages'); setOpenOn(m.conversation_id); setOpen(true); },
+        });
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'conversation_participants' }, () => {
         queryClient.invalidateQueries({ queryKey: ['messages'] });
@@ -75,7 +98,7 @@ export default function MessagesWidget({ userEmail, isSuperAdmin }: Props) {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [queryClient]);
+  }, [queryClient, userEmail]);
 
   useEffect(() => {
     if (!open) return;
@@ -86,6 +109,7 @@ export default function MessagesWidget({ userEmail, isSuperAdmin }: Props) {
 
   function handleOpen() {
     requestOpen('messages');
+    setOpenOn(null);
     setOpen(true);
   }
 
@@ -124,9 +148,11 @@ export default function MessagesWidget({ userEmail, isSuperAdmin }: Props) {
 
   return (
     <MessagesDrawer
+      key={openOn ?? 'list'}
       userEmail={userEmail}
       isSuperAdmin={isSuperAdmin}
       onClose={() => setOpen(false)}
+      initialConversationId={openOn}
     />
   );
 }

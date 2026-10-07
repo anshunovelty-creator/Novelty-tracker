@@ -9,6 +9,7 @@ import { usernameOf } from '@/lib/username';
 import NotesFeed from '@/components/admin/NotesFeed';
 import OfflineBanner from '@/components/admin/OfflineBanner';
 import MessagesWidget from '@/components/admin/MessagesWidget';
+import { NotificationPrompt } from '@/components/ui/DesktopNotificationsToggle';
 import QueryProvider from '@/components/providers/QueryProvider';
 import { deptKeyOf, appMetaOf } from '@/lib/identity';
 
@@ -54,6 +55,7 @@ export default async function AdminLayout({
             NotesFeed/PrepressTodoPanel/MeterCalculatorPanel. */}
         <NotesFeed deptName={perms.displayName} deptKey={perms.key} userEmail={user.email ?? ''} username={usernameOf(appMetaOf(user), user.email)} />
         <MessagesWidget userEmail={user.email ?? ''} isSuperAdmin={perms.isSuperAdmin} />
+        <NotificationPrompt />
       </div>
     </QueryProvider>
   );

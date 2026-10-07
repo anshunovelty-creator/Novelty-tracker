@@ -24,11 +24,14 @@ import type { ConversationDetail, ConversationSummary } from '@/lib/types';
 import { useTeamDirectory, type DirectoryPerson } from '@/hooks/useReferenceData';
 import { MentionText, MentionTextarea } from '@/components/ui/Mention';
 import { initials } from '@/lib/team';
+import { DesktopNotificationsToggle } from '@/components/ui/DesktopNotificationsToggle';
 
 type Props = {
   userEmail:    string;
   isSuperAdmin: boolean;
   onClose:      () => void;
+  /** Open on this thread — set when the drawer is opened from a message alert. */
+  initialConversationId?: string | null;
 };
 
 function relativeTime(iso: string | null): string {
@@ -78,9 +81,9 @@ function otherParticipants(c: { participants: { member_email: string }[] }, user
   return c.participants.filter((p) => p.member_email !== userEmail).map((p) => p.member_email);
 }
 
-export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose }: Props) {
+export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose, initialConversationId = null }: Props) {
   const queryClient = useQueryClient();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialConversationId);
   const [draft,       setDraft]     = useState('');
   const [listQuery,   setListQuery] = useState('');
   const [sending,     setSending]   = useState(false);
@@ -343,6 +346,7 @@ export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose }: Pro
               className="min-w-0 flex-1 bg-transparent text-sm text-brand-ink outline-none placeholder:text-brand-muted"
             />
           </label>
+          <DesktopNotificationsToggle />
         </div>
 
         <ul className="flex-1 overflow-y-auto">
