@@ -3,6 +3,7 @@ import React from 'react';
 import type { Metadata } from 'next';
 import { DM_Sans, Trispace } from 'next/font/google';
 import { Toaster } from 'react-hot-toast';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 import { getBranding } from '@/lib/branding';
 import { BrandingProvider } from '@/components/brand/BrandingProvider';
 import './globals.css';
@@ -60,6 +61,7 @@ export default async function RootLayout({
             }}
           />
         </BrandingProvider>
+        <SpeedInsights />
       </body>
     </html>
   );
