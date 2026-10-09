@@ -68,7 +68,8 @@ import AddressSlipLabel, {
   type BlockOffset,
   type AddressSlipLabelData,
 } from './AddressSlipLabel';
-import type { Job } from '@/lib/types';
+import type { Job, JobSeparation } from '@/lib/types';
+import { slipSourceFromJob, slipSourceFromSeparation, separationsToOffer, type SlipSource } from '@/lib/slipSource';
 import { useBranding } from '@/components/brand/BrandingProvider';
 import { SearchClearButton } from '@/components/ui/SearchClearButton';
 import { WithExample } from '@/components/ui/FieldAffix';
@@ -348,9 +349,11 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
 
   // ── Job selection, shared by both slips ─────────────────────
   const [search, setSearch] = useState('');
-  const [results, setResults] = useState<Job[]>([]);
+  // Matches from both places a slip can come from: jobs, and Job Separation
+  // rows that may not be jobs yet (see src/lib/slipSource.ts).
+  const [results, setResults] = useState<{ jobs: SlipSource[]; separations: SlipSource[] }>({ jobs: [], separations: [] });
   const [searching, setSearching] = useState(false);
-  const [job, setJob] = useState<Job | null>(null);
+  const [job, setJob] = useState<SlipSource | null>(null);
 
   // The date is shared too: it is the same physical packing day whichever
   // slip is being printed (MFG DATE on the box, under SUPPLIER on the roll).
@@ -360,6 +363,10 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
   const [materialName, setMaterialName] = useState('');
   const [qtyPerBox, setQtyPerBox] = useState('');
   const [boxCount, setBoxCount] = useState('1');
+  // Box and roll slips: leave the quantity (and, on a box slip, the box
+  // count) blank to fill in by hand. The count field then only says how
+  // many slips to print.
+  const [blankQty, setBlankQty] = useState(false);
 
   // ── Roll-slip fields ────────────────────────────────────────
   const [product, setProduct] = useState('');
@@ -405,19 +412,32 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
   useEffect(() => {
     const term = search.trim();
     if (term.length < 2) {
-      setResults([]);
+      setResults({ jobs: [], separations: [] });
       return;
     }
     const t = setTimeout(async () => {
       setSearching(true);
+      const q = encodeURIComponent(term);
+      // Either lookup may fail on its own; it then just contributes nothing,
+      // rather than flashing an error toast on every keystroke over a flaky
+      // shop-floor link.
+      const get = async <T,>(url: string, key: string): Promise<T[]> => {
+        try {
+          const res = await fetch(url);
+          return res.ok ? ((await res.json())[key] ?? []) : [];
+        } catch { return []; }
+      };
       try {
-        const res = await fetch(`/api/jobs?search=${encodeURIComponent(term)}`);
-        const data = await res.json();
-        setResults(res.ok ? (data.jobs ?? []).slice(0, 8) : []);
-      } catch {
-        // A failed lookup leaves results alone rather than flashing an error
-        // toast on every keystroke over a flaky shop-floor link.
-        setResults([]);
+        const [jobs, seps] = await Promise.all([
+          get<Job>(`/api/jobs?search=${q}`, 'jobs'),
+          // Every date, not just this month: the row being packed may be old.
+          get<JobSeparation>(`/api/job-separations?search=${q}&range=all&limit=8`, 'job_separations'),
+        ]);
+        const shown = jobs.slice(0, 8);
+        setResults({
+          jobs:        shown.map(slipSourceFromJob),
+          separations: separationsToOffer(seps, new Set(shown.map((j) => j.id))).map(slipSourceFromSeparation),
+        });
       } finally {
         setSearching(false);
       }
@@ -425,10 +445,10 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
     return () => clearTimeout(t);
   }, [search]);
 
-  function selectJob(j: Job) {
+  function selectJob(j: SlipSource) {
     setJob(j);
     setSearch('');
-    setResults([]);
+    setResults({ jobs: [], separations: [] });
     // Prefill everything the job already knows — the whole point of this page.
     // The sample slips pack an order into one unit, so that is the default
     // shape; the operator corrects it when the consignment actually splits.
@@ -469,17 +489,17 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
     if (!date) return 'Date is required';
     if (kind === 'box') {
       if (!materialName.trim()) return 'Material name is required';
-      if (!Number.isInteger(boxQty) || boxQty <= 0) return 'Quantity per box must be a whole number';
-      if (!Number.isInteger(boxes) || boxes <= 0) return 'Number of boxes must be a whole number';
+      if (!blankQty && (!Number.isInteger(boxQty) || boxQty <= 0)) return 'Quantity per box must be a whole number';
+      if (!Number.isInteger(boxes) || boxes <= 0) return blankQty ? 'Number of slips must be a whole number' : 'Number of boxes must be a whole number';
       if (boxes > 200) return 'That would print more than 200 slips';
     } else {
       if (!product.trim()) return 'Product is required';
-      if (!Number.isInteger(rollQty) || rollQty <= 0) return 'Quantity per roll must be a whole number';
+      if (!blankQty && (!Number.isInteger(rollQty) || rollQty <= 0)) return 'Quantity per roll must be a whole number';
       if (!Number.isInteger(rolls) || rolls <= 0) return 'Number of rolls must be a whole number';
       if (rolls > 500) return 'That would print more than 500 slips';
     }
     return null;
-  }, [job, date, kind, materialName, boxQty, boxes, product, rollQty, rolls,
+  }, [job, date, kind, materialName, boxQty, boxes, product, rollQty, rolls, blankQty,
       toAddress, fromAddress, addresses]);
 
   const boxPreview: BoxSlipLabelData = {
@@ -487,13 +507,15 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
     pmCode: job?.pm_code ?? null,
     qtyPerBox: Number.isFinite(boxQty) && boxQty > 0 ? boxQty : 0,
     boxCount: Number.isFinite(boxes) && boxes > 0 ? boxes : 1,
+    blankQty,
     mfgDate: date,
   };
 
   const compactPreview: RollSlipCompactLabelData = {
     product: product.trim() || 'PRODUCT',
     pmCode: job?.pm_code ?? null,
-    qtyPerRoll: Number.isFinite(rollQty) && rollQty > 0 ? rollQty : 0,
+    // 0 prints an empty QUANTITY cell — what a blank slip wants.
+    qtyPerRoll: !blankQty && Number.isFinite(rollQty) && rollQty > 0 ? rollQty : 0,
     direction: direction.trim() || null,
     operator: operator.trim() || null,
     slipDate: date,
@@ -509,7 +531,8 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
   const rollPreview: RollSlipLabelData = {
     product: product.trim() || 'PRODUCT',
     pmCode: job?.pm_code ?? null,
-    qtyPerRoll: Number.isFinite(rollQty) && rollQty > 0 ? rollQty : 0,
+    // 0 prints an empty QUANTITY cell — what a blank slip wants.
+    qtyPerRoll: !blankQty && Number.isFinite(rollQty) && rollQty > 0 ? rollQty : 0,
     direction: direction.trim() || null,
     operator: operator.trim() || null,
     slipDate: date,
@@ -638,6 +661,8 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
   function handleTestPrint() {
     if (kind === 'address') {
       if (!toAddress.trim()) { toast.error('Enter a To address first'); return; }
+    } else if (blankQty) {
+      // A blank slip has nothing to check.
     } else if (kind === 'box') {
       if (!Number.isInteger(boxQty) || boxQty <= 0) { toast.error('Enter a quantity per box first'); return; }
     } else if (!Number.isInteger(rollQty) || rollQty <= 0) {
@@ -687,10 +712,13 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
               {job.job_card_number && (
                 <span className="font-mono text-sm font-semibold text-brand-ink">{job.job_card_number.toUpperCase()}</span>
               )}
+              {job.from === 'separation' && (
+                <span className="rounded-md bg-brand-sunken px-1.5 py-0.5 text-xs font-medium text-brand-muted">Job Separation</span>
+              )}
               <p className="min-w-0 flex-1 text-sm text-brand-ink">
                 {job.party}
                 <span className="text-brand-muted">
-                  {' '}· {job.job_name ?? 'Untitled'} · PO <span className="font-mono">{job.po_number}</span>
+                  {' '}· {job.job_name ?? 'Untitled'} · PO <span className="font-mono">{job.po_number ?? '—'}</span>
                   {job.pm_code ? <> · PM <span className="font-mono">{job.pm_code}</span></> : ''}
                 </span>
               </p>
@@ -711,37 +739,43 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Card no, PO, party or job name"
+                placeholder="Card / Sr no, PO, party, PM code or job name"
                 aria-labelledby="s-job-label"
                 className={cn(FIELD, 'pl-9 pr-11')}
               />
               <SearchClearButton value={search} onClear={() => setSearch('')} />
-              {results.length > 0 && (
-                <ul
-                  className="absolute z-20 mt-1 w-full max-h-72 overflow-y-auto rounded-xl border border-brand-border bg-white shadow-[0_12px_32px_rgba(12,42,32,0.12)]"
-                  role="listbox"
-                  aria-label="Matching jobs"
+              {(results.jobs.length > 0 || results.separations.length > 0) && (
+                <div
+                  className="absolute z-20 mt-1 w-full max-h-80 overflow-y-auto rounded-xl border border-brand-border bg-white py-1 shadow-[0_12px_32px_rgba(12,42,32,0.12)]"
                 >
-                  {results.map((j) => (
-                    <li key={j.id}>
-                      <button
-                        type="button"
-                        onClick={() => selectJob(j)}
-                        className="w-full min-h-11 text-left px-3 py-2.5 hover:bg-brand-surface-hover transition-colors"
-                      >
-                        <span className="block text-sm text-brand-ink">
-                          {j.party} — {j.job_name ?? 'Untitled'}
-                        </span>
-                        <span className="block text-xs text-brand-muted mt-0.5">
-                          <span className="font-mono">{j.job_card_number ?? '—'}</span> · PO <span className="font-mono">{j.po_number}</span>
-                          {j.pm_code ? <> · PM <span className="font-mono">{j.pm_code}</span></> : ''}
-                        </span>
-                      </button>
-                    </li>
+                  {([['Jobs', results.jobs], ['Job Separation', results.separations]] as const).map(([group, list]) => list.length > 0 && (
+                    <div key={group}>
+                      <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-brand-muted">{group}</p>
+                      <ul role="listbox" aria-label={`Matching ${group}`}>
+                        {list.map((j) => (
+                          <li key={`${j.from}-${j.id}`}>
+                            <button
+                              type="button"
+                              onClick={() => selectJob(j)}
+                              className="w-full min-h-11 text-left px-3 py-2.5 hover:bg-brand-surface-hover transition-colors"
+                            >
+                              <span className="block text-sm text-brand-ink">
+                                {j.party} — {j.job_name ?? 'Untitled'}
+                              </span>
+                              <span className="block text-xs text-brand-muted mt-0.5">
+                                <span className="font-mono">{j.job_card_number ?? '—'}</span> · PO <span className="font-mono">{j.po_number ?? '—'}</span>
+                                {j.pm_code ? <> · PM <span className="font-mono">{j.pm_code}</span></> : ''}
+                                {j.from === 'separation' && j.label_qty ? <> · Qty <span className="font-mono">{j.label_qty.toLocaleString('en-IN')}</span></> : ''}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   ))}
-                </ul>
+                </div>
               )}
-              {searching && search.trim().length >= 2 && results.length === 0 && (
+              {searching && search.trim().length >= 2 && results.jobs.length === 0 && results.separations.length === 0 && (
                 <p className="mt-1 text-xs text-brand-muted">Searching…</p>
               )}
             </div>
@@ -822,6 +856,25 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
           </>
         )}
 
+        {showFields && kind !== 'address' && (
+          <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-brand-border px-3 py-2 hover:bg-brand-surface-hover">
+            <input
+              type="checkbox"
+              checked={blankQty}
+              onChange={(e) => setBlankQty(e.target.checked)}
+              className="h-5 w-5 shrink-0 accent-[#10553F]"
+            />
+            <span className="text-sm">
+              <span className="font-medium text-brand-ink">Leave quantity blank</span>
+              <span className="block text-xs text-brand-muted">
+                {kind === 'box'
+                  ? 'Prints “_____ X _____ BOX” to fill in by hand.'
+                  : 'Prints an empty quantity box to fill in by hand.'}
+              </span>
+            </span>
+          </label>
+        )}
+
         {showFields && kind === 'box' && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
@@ -835,11 +888,11 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
             </div>
             <div>
               <label className={LABEL_CLS} htmlFor="s-boxqty">Labels per box</label>
-              <input id="s-boxqty" type="number" inputMode="numeric" min={1}
-                value={qtyPerBox} onChange={(e) => setQtyPerBox(e.target.value)} className={cn(FIELD, 'font-mono')} />
+              <input id="s-boxqty" type="number" inputMode="numeric" min={1} disabled={blankQty}
+                value={blankQty ? '' : qtyPerBox} onChange={(e) => setQtyPerBox(e.target.value)} className={cn(FIELD, 'font-mono disabled:opacity-50')} />
             </div>
             <div>
-              <label className={LABEL_CLS} htmlFor="s-boxes">Number of boxes</label>
+              <label className={LABEL_CLS} htmlFor="s-boxes">{blankQty ? 'Number of slips' : 'Number of boxes'}</label>
               <input id="s-boxes" type="number" inputMode="numeric" min={1}
                 value={boxCount} onChange={(e) => setBoxCount(e.target.value)} className={cn(FIELD, 'font-mono')} />
             </div>
@@ -872,8 +925,8 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
             </div>
             <div>
               <label className={LABEL_CLS} htmlFor="s-rollqty">Labels per roll</label>
-              <input id="s-rollqty" type="number" inputMode="numeric" min={1}
-                value={qtyPerRoll} onChange={(e) => setQtyPerRoll(e.target.value)} className={cn(FIELD, 'font-mono')} />
+              <input id="s-rollqty" type="number" inputMode="numeric" min={1} disabled={blankQty}
+                value={blankQty ? '' : qtyPerRoll} onChange={(e) => setQtyPerRoll(e.target.value)} className={cn(FIELD, 'font-mono disabled:opacity-50')} />
             </div>
             <div>
               <label className={LABEL_CLS} htmlFor="s-rolls">Number of rolls</label>

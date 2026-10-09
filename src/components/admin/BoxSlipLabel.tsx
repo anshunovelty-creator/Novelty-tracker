@@ -36,6 +36,8 @@ export type BoxSlipLabelData = {
   pmCode: string | null;
   qtyPerBox: number;
   boxCount: number;
+  /** Print the pack size and quantity as blanks to fill in by hand. */
+  blankQty?: boolean;
   /** ISO 'YYYY-MM-DD'. */
   mfgDate: string;
 };
@@ -140,12 +142,14 @@ function Field({
  */
 export default function BoxSlipLabel({ data }: { data: BoxSlipLabelData }) {
   const branding = useBranding();
-  const { materialName, pmCode, qtyPerBox, boxCount, mfgDate } = data;
+  const { materialName, pmCode, qtyPerBox, boxCount, blankQty, mfgDate } = data;
 
   // The two lines the original states differently for the same fact: PACK
-  // SIZE spells out the total, QUANTITY stops at the multiplication.
-  const packSize = `${num(qtyPerBox)} X ${num(boxCount)} BOX =${num(qtyPerBox * boxCount)}`;
-  const quantity = `${num(qtyPerBox)} X ${num(boxCount)} BOX`;
+  // SIZE spells out the total, QUANTITY stops at the multiplication. A blank
+  // slip keeps the same shape with gaps to write in, for cartons packed
+  // before the count is known.
+  const packSize = blankQty ? '_____ X _____ BOX = _______' : `${num(qtyPerBox)} X ${num(boxCount)} BOX =${num(qtyPerBox * boxCount)}`;
+  const quantity = blankQty ? '_____ X _____ BOX' : `${num(qtyPerBox)} X ${num(boxCount)} BOX`;
 
   return (
     <div
