@@ -430,6 +430,8 @@ export interface NoteFeedItem extends Omit<StageComment, 'job_id' | 'stage'> {
   job_status?: string;
   /** Has the calling user marked this note read? See migration 017_note_reads. */
   read: boolean;
+  /** The note this one replies to, quoted above it (migration 078). */
+  reply_to: { id: string; comment: string; created_by: string; created_by_email: string | null } | null;
 }
 
 // ── dispatch_schedules ────────────────────────────────────────

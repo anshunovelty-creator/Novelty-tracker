@@ -9,8 +9,11 @@
 // The composer defaults to no job: a general note for the team
 // (POST /api/notes, migration 077). Searching attaches a job instead, and the
 // note is filed on it at the job's current stage (POST /api/jobs/[id]/comments).
-// Reply picks the note's job (or none) and tags its author; "Mentions me"
-// finds notes that tag you or your department.
+// Chat order, WhatsApp-style: oldest at the top, newest at the bottom, and
+// the list stays pinned to the bottom unless you've scrolled up to read.
+// Reply quotes the note (reply_to_id, migration 078) and picks its job (or
+// none); tapping a quote jumps to the original. "Mentions me" finds notes
+// that tag you or your department, and replies to your notes.
 //
 // Read state is per user, synced across devices (POST /api/notes/read, see
 // migration 017_note_reads). The old single localStorage "last seen"
@@ -21,9 +24,9 @@
 // safety net for a dropped socket.
 // ============================================================
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { X, Send } from 'lucide-react';
+import { X, Send, Reply, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
@@ -51,6 +54,8 @@ type Props = {
   userEmail: string;
   /** The signed-in user's @username — a note tagging it counts as a mention. */
   username:  string;
+  /** Admin can delete any note for everyone (DELETE /api/notes/[id]). */
+  isAdmin:   boolean;
 };
 
 /** Legacy pre-017 marker, kept only long enough to migrate it once. */
@@ -82,7 +87,7 @@ const TABS: { id: NotesTab; label: string }[] = [
   { id: 'mentions', label: 'Mentions me' },
 ];
 
-export default function NotesFeed({ deptName, deptKey, userEmail, username }: Props) {
+export default function NotesFeed({ deptName, deptKey, userEmail, username, isAdmin }: Props) {
   const [open,           setOpen]           = useState(false);
   const [notes,          setNotes]          = useState<NoteFeedItem[]>([]);
   const [unread,         setUnread]         = useState(0);
@@ -96,6 +101,15 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
   const [jobHits,  setJobHits]  = useState<PickedJob[]>([]);
   const [jobActive, setJobActive] = useState(0);
   const [draft,   setDraft]   = useState('');
+  const [replyTo, setReplyTo] = useState<NoteFeedItem | null>(null);
+  // The original a quote was tapped for: scrolled to and briefly highlighted.
+  const [flashId, setFlashId] = useState<string | null>(null);
+  // Admin's "Delete for everyone?" step, and the note being deleted.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId,      setDeletingId]      = useState<string | null>(null);
+  const listRef  = useRef<HTMLDivElement | null>(null);
+  // Is the list scrolled to (near) the bottom? Then new notes keep it there.
+  const pinnedRef = useRef(true);
   const [posting, setPosting] = useState(false);
   const draftRef = useRef<HTMLTextAreaElement | null>(null);
   const titleId  = useId();
@@ -178,8 +192,9 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
       ) {
         const job = newest.job_name || newest.po_number;
         const who = nameOfRef.current(newest.created_by_email) || newest.created_by;
+        const repliedToMe = newest.reply_to?.created_by_email === userEmail;
         const forMe = mentions(newest.comment, myNamesRef.current);
-        const head = forMe ? `${who} mentioned you` : who;
+        const head = repliedToMe ? `${who} replied to you` : forMe ? `${who} mentioned you` : who;
         notify({
           id:     newest.id,
           title:  job ? `${head} — ${job}` : head,
@@ -195,25 +210,24 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
     }
   }, [userEmail]);
 
-  const handleMarkRead = useCallback(async (note: NoteFeedItem) => {
-    setOptimisticRead((prev) => new Set(prev).add(note.id));
-    if (note.created_by_email !== userEmail) {
-      setUnread((u) => Math.max(0, u - 1));
-    }
+  /** The unread divider's "Mark all read": every unread note from someone else, at once. */
+  const handleMarkAllRead = useCallback(async (list: NoteFeedItem[]) => {
+    const ids = list.map((n) => n.id);
+    if (ids.length === 0) return;
+    setOptimisticRead((prev) => new Set([...Array.from(prev), ...ids]));
+    setUnread((u) => Math.max(0, u - ids.length));
     try {
-      await markNotesRead([note.id]);
+      await markNotesRead(ids);
     } catch {
       toast.error('Could not mark as read — try again');
       setOptimisticRead((prev) => {
         const next = new Set(prev);
-        next.delete(note.id);
+        for (const id of ids) next.delete(id);
         return next;
       });
-      if (note.created_by_email !== userEmail) {
-        setUnread((u) => u + 1);
-      }
+      setUnread((u) => u + ids.length);
     }
-  }, [userEmail]);
+  }, []);
 
   // Poll while the tab is visible; catch up immediately on refocus. A tab
   // opened in the background (middle-click, restored session) loads once and
@@ -239,13 +253,13 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
     };
   }, [poll]);
 
-  // Realtime nudge: a new stage comment anywhere re-runs the same poll, so
+  // Realtime nudge: a new (or admin-deleted) stage comment anywhere re-runs the same poll, so
   // unread counts and the read-state join stay computed server-side.
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase
       .channel('stage_comments_changes')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'stage_comments' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stage_comments' }, () => {
         poll();
       })
       .subscribe();
@@ -271,6 +285,7 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
   }, [open]);
 
   function handleOpen() {
+    pinnedRef.current = true; // open at the newest note, like a chat
     requestOpen('notes');
     setOpen(true);
     poll(); // fetch fresh on open
@@ -333,8 +348,7 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
       job_name:  note.job_name,
       status:    note.job_status ?? note.stage ?? '',
     } : null);
-    const tag = `@${nameOf(note.created_by_email) || note.created_by} `;
-    setDraft((d) => (d.startsWith(tag) ? d : tag + d));
+    setReplyTo(note);
     requestAnimationFrame(() => {
       const el = draftRef.current;
       if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
@@ -350,12 +364,14 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
       const res = await fetch(job ? `/api/jobs/${job.id}/comments` : '/api/notes', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(job ? { stage: job.status, comment: text } : { comment: text }),
+        body:    JSON.stringify({ ...(job && { stage: job.status }), comment: text, reply_to_id: replyTo?.id }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) { toast.error(body.error ?? 'Could not post the note'); return; }
       setDraft('');
+      setReplyTo(null);
       setTab('all');
+      pinnedRef.current = true; // show your own note at the bottom
       poll();
     } catch {
       toast.error('Network error. Try again.');
@@ -364,12 +380,67 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
     }
   }
 
+  /** Admin: delete a note for everyone. Gone from this drawer at once; the
+   *  realtime nudge takes it off everyone else's. */
+  async function deleteNote(note: NoteFeedItem) {
+    setDeletingId(note.id);
+    try {
+      const res = await fetch(`/api/notes/${note.id}`, { method: 'DELETE' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { toast.error(body.error ?? 'Could not delete the note'); return; }
+      setNotes((prev) => prev
+        .filter((n) => n.id !== note.id)
+        .map((n) => (n.reply_to?.id === note.id ? { ...n, reply_to: null } : n)));
+      if (replyTo?.id === note.id) setReplyTo(null);
+      setConfirmDeleteId(null);
+      toast.success('Note deleted for everyone');
+      poll();
+    } catch {
+      toast.error('Network error. Try again.');
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  /** Tap a quote: show the original, switching to All if this tab hides it. */
+  function jumpTo(id: string) {
+    if (!notes.some((n) => n.id === id)) { toast('That note is older than the last 50.'); return; }
+    if (!visible.some((n) => n.id === id)) setTab('all');
+    setFlashId(id);
+  }
+
+  // Keep the newest note in view while pinned to the bottom: on open, on a
+  // tab switch, and when a note arrives. Before paint, so it never flickers.
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
+  }, [open, tab, notes]);
+
+  useEffect(() => {
+    if (!flashId) return;
+    const el = document.getElementById(`note-${flashId}`);
+    if (el) {
+      pinnedRef.current = false;
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+    }
+    const t = window.setTimeout(() => setFlashId(null), 1600);
+    return () => window.clearTimeout(t);
+  }, [flashId, tab]);
+
+  /** A quoted author: "You" for your own notes, like WhatsApp. */
+  const nameFor = (email: string | null, dept: string) => (email === userEmail ? 'You' : nameOf(email) || dept);
+
   // ── Launcher ────────────────────────────────────────────────
   // None of its own: the header's Notes button (and the phone tab bar's)
   // opens the drawer through NOTES_OPEN_EVENT and carries the badge.
   if (!open) return null;
 
-  const groups = groupByDay(visible);
+  // The feed arrives newest first; a chat reads oldest first.
+  const groups = groupByDay([...visible].reverse());
+  // Someone else's unread notes: the divider sits above the first of them.
+  const unreadList = visible.filter((n) => !isRead(n) && n.created_by_email !== userEmail);
+  const firstUnreadId = unreadList.length ? unreadList[unreadList.length - 1].id : null;
 
   return (
     <>
@@ -409,7 +480,7 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
                   type="button"
                   role="radio"
                   aria-checked={on}
-                  onClick={() => setTab(t.id)}
+                  onClick={() => { pinnedRef.current = true; setTab(t.id); }}
                   className={cn(
                     'h-9 flex-1 rounded-lg text-[13px] transition-colors',
                     on ? 'bg-white font-semibold text-brand-ink shadow-[0_1px_3px_rgba(12,42,32,0.12)]' : 'font-medium text-brand-muted hover:text-brand-ink',
@@ -424,7 +495,14 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
         </div>
 
         {/* Feed */}
-        <div className="flex-1 overflow-y-auto">
+        <div
+          ref={listRef}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+          }}
+          className="flex-1 overflow-y-auto bg-[#F4F7F5] pb-3"
+        >
           {error && notes.length === 0 && (
             <p className="px-6 py-8 text-center text-sm text-brand-danger">Could not load notes. Retrying…</p>
           )}
@@ -441,66 +519,146 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
           )}
 
           {groups.map((g) => (
-            <section key={g.label} aria-label={g.label}>
-              <h3 className="px-6 pb-1.5 pt-4 text-[11px] font-semibold uppercase tracking-[0.06em] text-brand-muted">{g.label}</h3>
-              <ul>
-                {g.notes.map((note) => {
-                  const read = isRead(note);
-                  const mine = note.created_by_email === userEmail;
-                  const who  = nameOf(note.created_by_email) || note.created_by;
+            <section key={g.label} aria-label={g.label} className="flex flex-col">
+              {/* Day chip, pinned while you scroll its day — as in WhatsApp. */}
+              <h3 className="sticky top-2 z-10 mx-auto my-2 rounded-lg bg-white px-3 py-1 text-xs font-medium text-brand-muted shadow-[0_1px_2px_rgba(12,42,32,0.08)]">
+                {g.label}
+              </h3>
+              <ul className="flex flex-col">
+                {g.notes.map((note, i) => {
+                  const mine  = note.created_by_email === userEmail;
+                  const who   = nameOf(note.created_by_email) || note.created_by;
+                  const prev  = g.notes[i - 1];
+                  // A run of notes by one person shows the name and avatar once.
+                  const first = !prev || prev.created_by_email !== note.created_by_email || prev.created_by !== note.created_by || note.id === firstUnreadId;
                   return (
-                    <li key={note.id} className="relative flex gap-3 px-6 py-3.5 hover:bg-[#F8FBF9]">
-                      {!read && !mine && (
-                        <span aria-label="Unread" className="absolute left-2.5 top-6 h-1.5 w-1.5 rounded-full bg-brand-primary" />
-                      )}
-                      <span
-                        aria-hidden="true"
-                        className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[10px] font-mono text-[11px] font-semibold text-white"
-                        style={{ background: avatarColour(who) }}
-                      >
-                        {initials(who)}
-                      </span>
-                      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-brand-muted">
-                          <strong className="text-[13px] text-brand-ink" title={note.created_by_email ?? undefined}>{who}</strong>
-                          {note.job_id ? (
-                            <>
-                              <Link
-                                href={`/admin/jobs/${note.job_id}`}
-                                onClick={() => setOpen(false)}
-                                className="inline-flex items-center rounded-lg border border-brand-border bg-[#F1F5F2] px-2 py-0.5 font-mono text-xs font-semibold text-brand-ink hover:border-brand-primary"
-                              >
-                                {note.po_number}
-                              </Link>
-                              <span>at {note.stage}</span>
-                            </>
-                          ) : (
-                            <span>General</span>
-                          )}
-                          <time dateTime={note.created_at} className="ml-auto font-mono">{format(new Date(note.created_at), 'HH:mm')}</time>
+                    <li key={note.id} className="flex flex-col">
+                      {note.id === firstUnreadId && (
+                        <div className="my-2 flex items-center justify-center gap-2 bg-brand-surface-hover py-1.5 text-xs font-medium text-brand-ink">
+                          <span><span className="font-mono">{unreadList.length}</span> unread {unreadList.length === 1 ? 'note' : 'notes'}</span>
+                          <span aria-hidden="true" className="text-brand-muted">·</span>
+                          <button
+                            type="button"
+                            onClick={() => handleMarkAllRead(unreadList)}
+                            className="min-h-8 rounded-md px-1.5 font-semibold text-brand-primary underline-offset-2 hover:underline"
+                          >
+                            Mark all read
+                          </button>
                         </div>
-                        <p className={cn('break-words text-sm leading-normal', read || mine ? 'text-brand-muted' : 'text-brand-ink')}>
-                          <MentionText text={note.comment} />
-                        </p>
-                        <div className="flex gap-2">
+                      )}
+                      <div
+                        id={`note-${note.id}`}
+                        className={cn(
+                          'flex items-start gap-1.5 px-3 transition-colors duration-500',
+                          first ? 'mt-2' : 'mt-0.5',
+                          mine ? 'justify-end' : 'justify-start',
+                          flashId === note.id && 'bg-brand-surface-hover',
+                        )}
+                      >
+                        {!mine && (first ? (
+                          <span
+                            aria-hidden="true"
+                            className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-mono text-[10px] font-semibold text-white"
+                            style={{ background: avatarColour(who) }}
+                          >
+                            {initials(who)}
+                          </span>
+                        ) : <span aria-hidden="true" className="w-7 shrink-0" />)}
+
+                        <div className={cn('group flex min-w-0 max-w-[84%] items-center gap-0.5', mine && 'flex-row-reverse')}>
+                          <div
+                            className={cn(
+                              'flex min-w-0 flex-col gap-1 rounded-2xl border px-3 pb-1.5 pt-2 shadow-[0_1px_1px_rgba(12,42,32,0.05)]',
+                              mine ? 'border-[#D5E8DC] bg-brand-surface-hover' : 'border-brand-border bg-white',
+                              first && (mine ? 'rounded-tr-md' : 'rounded-tl-md'),
+                            )}
+                          >
+                            {!mine && first && (
+                              <strong className="text-[13px] font-semibold" style={{ color: avatarColour(who) }} title={note.created_by_email ?? undefined}>
+                                {who}
+                              </strong>
+                            )}
+                            {/* The note this replies to — tap to see it in place. */}
+                            {note.reply_to && (
+                              <button
+                                type="button"
+                                onClick={() => jumpTo(note.reply_to!.id)}
+                                aria-label={`Reply to ${nameFor(note.reply_to.created_by_email, note.reply_to.created_by)}: ${note.reply_to.comment}. Show the original note`}
+                                className={cn(
+                                  'flex min-h-11 flex-col items-start justify-center gap-0.5 rounded-lg px-2.5 py-1.5 text-left',
+                                  mine ? 'bg-white/70 hover:bg-white' : 'bg-[#F1F5F2] hover:bg-brand-surface-hover',
+                                )}
+                              >
+                                <span className="text-xs font-semibold text-brand-ink">{nameFor(note.reply_to.created_by_email, note.reply_to.created_by)}</span>
+                                <span className="line-clamp-2 break-words text-xs text-brand-muted">{note.reply_to.comment}</span>
+                              </button>
+                            )}
+                            {note.job_id && (
+                              <span className="flex flex-wrap items-center gap-x-1.5 text-xs text-brand-muted">
+                                <Link
+                                  href={`/admin/jobs/${note.job_id}`}
+                                  onClick={() => setOpen(false)}
+                                  className="font-mono font-semibold text-brand-ink underline decoration-brand-border underline-offset-2 hover:decoration-brand-primary"
+                                >
+                                  {note.po_number}
+                                </Link>
+                                <span>at {note.stage}</span>
+                              </span>
+                            )}
+                            <p className="whitespace-pre-line break-words text-sm leading-normal text-brand-ink">
+                              <MentionText text={note.comment} />
+                              {/* Room for the time, so it tucks in after a short last line. */}
+                              <span aria-hidden="true" className="inline-block w-12" />
+                            </p>
+                            <time dateTime={note.created_at} className="-mt-4 self-end font-mono text-[11px] text-brand-muted">
+                              {format(new Date(note.created_at), 'HH:mm')}
+                            </time>
+                          </div>
                           <button
                             type="button"
                             onClick={() => reply(note)}
-                            className="min-h-8 rounded-lg border border-brand-border bg-white px-2.5 text-xs font-medium text-brand-ink hover:bg-brand-surface-hover"
+                            aria-label={`Reply to ${mine ? 'your note' : who}`}
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-brand-muted transition-opacity hover:bg-white hover:text-brand-ink focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:hover)]:opacity-0"
                           >
-                            Reply
+                            <Reply className="h-4 w-4" aria-hidden="true" />
                           </button>
-                          {!read && !mine && (
+                          {isAdmin && (
                             <button
                               type="button"
-                              onClick={() => handleMarkRead(note)}
-                              className="min-h-8 rounded-lg px-2.5 text-xs font-medium text-brand-muted hover:bg-brand-surface-hover hover:text-brand-ink"
+                              onClick={() => setConfirmDeleteId(note.id)}
+                              aria-label={`Delete ${mine ? 'your note' : `${who}'s note`} for everyone`}
+                              className="-mx-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-brand-muted transition-opacity hover:bg-white hover:text-brand-danger focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:hover)]:opacity-0"
                             >
-                              Mark read
+                              <Trash2 className="h-4 w-4" aria-hidden="true" />
                             </button>
                           )}
                         </div>
                       </div>
+                      {confirmDeleteId === note.id && (
+                        <div
+                          role="alert"
+                          className={cn('mx-3 mt-1 flex w-fit max-w-[84%] flex-col gap-1.5 rounded-xl border border-[#F5C2C2] bg-[#FEF2F2] px-3 py-2 text-xs text-brand-danger', mine ? 'self-end' : 'ml-11 self-start')}
+                        >
+                          <span className="font-medium">Delete for everyone? This can&apos;t be undone.</span>
+                          <span className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => deleteNote(note)}
+                            disabled={deletingId === note.id}
+                            className="min-h-9 rounded-lg bg-brand-danger px-3 font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                          >
+                            {deletingId === note.id ? 'Deleting…' : 'Delete'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="min-h-9 rounded-lg px-2 font-medium text-brand-ink hover:bg-white"
+                          >
+                            Cancel
+                          </button>
+                          </span>
+                        </div>
+                      )}
                     </li>
                   );
                 })}
@@ -511,6 +669,24 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
 
         {/* Composer — a general note by default; search to file it on a job. */}
         <form onSubmit={post} className="flex flex-col gap-2.5 border-t border-brand-line-soft bg-[#F8FBF9] px-4 pb-4 pt-3.5">
+          {replyTo && (
+            <div className="flex items-center gap-2 rounded-lg border border-brand-border bg-white py-1.5 pl-3 pr-1.5">
+              <div className="min-w-0 flex-1">
+                <span className="block text-xs font-semibold text-brand-ink">
+                  Replying to {nameFor(replyTo.created_by_email, replyTo.created_by)}
+                </span>
+                <span className="block truncate text-xs text-brand-muted">{replyTo.comment}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReplyTo(null)}
+                aria-label="Cancel reply"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-brand-muted hover:bg-brand-surface-hover hover:text-brand-ink"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+          )}
           <div className="relative flex items-center gap-2 text-xs text-brand-muted">
             <span className="shrink-0">Job</span>
             {job ? (
@@ -580,19 +756,21 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
               <span className="sr-only">Write a note</span>
               <MentionTextarea
                 inputRef={draftRef}
-                rows={2}
+                rows={1}
                 value={draft}
                 onValueChange={setDraft}
-                onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) post(e); }}
-                placeholder="Write a note… type @ to tag a person or department"
-                className="resize-none rounded-xl border border-brand-border bg-white px-3 py-2.5 text-sm leading-normal text-brand-ink focus:border-brand-primary focus:outline-none"
+                // Enter sends, Shift+Enter starts a new line — as in WhatsApp.
+                // (While the @ list is open, Enter picks a name instead.)
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) post(e); }}
+                placeholder="Type a note · @ to tag someone"
+                className="max-h-32 min-h-11 resize-none rounded-3xl [field-sizing:content] border border-brand-border bg-white px-4 py-2.5 text-sm leading-normal text-brand-ink focus:border-brand-primary focus:outline-none"
               />
             </label>
             <button
               type="submit"
               disabled={posting || !draft.trim()}
               aria-label="Post note"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-primary text-white hover:bg-brand-primary-hover disabled:opacity-40"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-primary text-white hover:bg-brand-primary-hover disabled:opacity-40"
             >
               <Send className="h-[18px] w-[18px]" aria-hidden="true" />
             </button>

@@ -10,6 +10,7 @@ import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions } from '@/lib/constants/departments';
 import { deptKeyOf } from '@/lib/identity';
+import { parseNoteId } from '@/lib/notesView';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -63,6 +64,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       job_id:           id,
       stage:            stage.trim(),
       comment:          comment.trim(),
+      reply_to_id:      parseNoteId(body?.reply_to_id),
       created_by:       perms.key,
       created_by_email: user.email ?? null,
     })

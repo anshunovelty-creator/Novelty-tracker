@@ -40,6 +40,7 @@ type JoinedRow = {
   created_by:       string;
   created_by_email: string | null;
   created_at:       string;
+  reply_to_id:      string | null;
   jobs: {
     job_name:  string | null;
     pm_code:   string | null;
@@ -73,6 +74,7 @@ export async function GET(request: NextRequest) {
       created_by,
       created_by_email,
       created_at,
+      reply_to_id,
       jobs ( job_name, pm_code, po_number, party, status )
     `)
     .order('created_at', { ascending: false })
@@ -96,6 +98,22 @@ export async function GET(request: NextRequest) {
 
   const readIds = new Set((readRows ?? []).map((r: { note_id: string }) => r.note_id));
 
+  // The quoted original of each reply (migration 078). Usually already in
+  // this page; an older one is fetched — one query for all of them.
+  type Quoted = NonNullable<NoteFeedItem['reply_to']>;
+  const quoted = new Map<string, Quoted>(rows.map((r) => [r.id, {
+    id: r.id, comment: r.comment, created_by: r.created_by, created_by_email: r.created_by_email,
+  }]));
+  const missing = Array.from(new Set(rows.map((r) => r.reply_to_id).filter((id): id is string => !!id && !quoted.has(id))));
+  if (missing.length) {
+    const { data: parents, error: parentError } = await supabase
+      .from('stage_comments')
+      .select('id, comment, created_by, created_by_email')
+      .in('id', missing);
+    if (parentError) return NextResponse.json({ error: parentError.message }, { status: 500 });
+    for (const p of (parents ?? []) as Quoted[]) quoted.set(p.id, p);
+  }
+
   // Flatten the join so the client gets one object per note. A general
   // note (no job, migration 077) keeps null job fields; a note whose job
   // row is missing (deleted mid-flight) is dropped rather than rendered
@@ -116,6 +134,7 @@ export async function GET(request: NextRequest) {
       party:            r.jobs?.party ?? null,
       job_status:       r.jobs?.status,
       read:             readIds.has(r.id),
+      reply_to:         r.reply_to_id ? quoted.get(r.reply_to_id) ?? null : null,
     }));
 
   // Unread = notes in this page the caller hasn't marked read, excluding

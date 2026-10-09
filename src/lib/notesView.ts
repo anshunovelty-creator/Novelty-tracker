@@ -7,7 +7,20 @@
 
 export type NotesTab = 'all' | 'unread' | 'mentions';
 
-type NoteLike = { comment: string; created_at: string; created_by_email: string | null };
+type NoteLike = {
+  comment: string;
+  created_at: string;
+  created_by_email: string | null;
+  /** The note this one replies to, if any (migration 078). */
+  reply_to?: { created_by_email: string | null } | null;
+};
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A note id (a UUID) from a request, or null — for reply_to_id and DELETE /api/notes/[id]. */
+export function parseNoteId(v: unknown): string | null {
+  return typeof v === 'string' && UUID.test(v) ? v : null;
+}
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -29,7 +42,8 @@ export function filterNotes<T extends NoteLike>(
   opts: { isRead: (n: T) => boolean; me: string; myNames: readonly string[] },
 ): T[] {
   if (tab === 'unread')   return notes.filter((n) => !opts.isRead(n) && n.created_by_email !== opts.me);
-  if (tab === 'mentions') return notes.filter((n) => mentions(n.comment, opts.myNames));
+  // A reply to one of my notes is addressed to me, tag or not.
+  if (tab === 'mentions') return notes.filter((n) => mentions(n.comment, opts.myNames) || (n.reply_to?.created_by_email === opts.me && n.created_by_email !== opts.me));
   return notes.slice();
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mentions, filterNotes, dayLabel, groupByDay } from './notesView';
+import { mentions, filterNotes, dayLabel, groupByDay, parseNoteId } from './notesView';
 
 const note = (id: string, comment: string, created_at: string, by: string | null = 'a@x.in') =>
   ({ id, comment, created_at, created_by_email: by });
@@ -30,6 +30,13 @@ describe('filterNotes', () => {
   it('all keeps everything', () => {
     expect(filterNotes(notes, 'all', opts)).toHaveLength(3);
   });
+  it('mentions keeps replies to my notes, untagged, but not my own replies', () => {
+    const replies = [
+      { ...note('4', 'done', '2026-10-05T06:00:00Z'), reply_to: { created_by_email: 'me@x.in' } },
+      { ...note('5', 'me again', '2026-10-05T07:00:00Z', 'me@x.in'), reply_to: { created_by_email: 'me@x.in' } },
+    ];
+    expect(filterNotes(replies, 'mentions', opts).map((n) => n.id)).toEqual(['4']);
+  });
 });
 
 describe('days', () => {
@@ -46,5 +53,14 @@ describe('days', () => {
       note('3', '', new Date(2026, 9, 4, 18).toISOString()),
     ], now);
     expect(g.map((x) => [x.label, x.notes.length])).toEqual([['Today', 2], ['Yesterday', 1]]);
+  });
+});
+
+describe('parseNoteId', () => {
+  it('accepts a note id and nothing else', () => {
+    expect(parseNoteId('0b5c6f9e-1d2a-4c3b-9e8f-7a6b5c4d3e2f')).toBe('0b5c6f9e-1d2a-4c3b-9e8f-7a6b5c4d3e2f');
+    expect(parseNoteId('not-a-uuid')).toBeNull();
+    expect(parseNoteId(42)).toBeNull();
+    expect(parseNoteId(undefined)).toBeNull();
   });
 });

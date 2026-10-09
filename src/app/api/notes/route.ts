@@ -1,9 +1,10 @@
 // src/app/api/notes/route.ts
 // ============================================================
-// POST /api/notes  { comment }
+// POST /api/notes  { comment, reply_to_id? }
 //   A general internal note — not on any job (job_id and stage NULL, see
 //   migration 077_general_notes). Notes on a job still go through
-//   POST /api/jobs/[id]/comments, filed at the job's stage.
+//   POST /api/jobs/[id]/comments, filed at the job's stage. reply_to_id
+//   quotes another note (migration 078).
 //
 // Called by: src/components/admin/NotesFeed.tsx (composer, "No job").
 // ============================================================
@@ -14,6 +15,7 @@ import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions } from '@/lib/constants/departments';
 import { deptKeyOf } from '@/lib/identity';
+import { parseNoteId } from '@/lib/notesView';
 
 export async function POST(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -35,6 +37,7 @@ export async function POST(request: NextRequest) {
       job_id:           null,
       stage:            null,
       comment,
+      reply_to_id:      parseNoteId(body?.reply_to_id),
       created_by:       perms.key,
       created_by_email: user.email ?? null,
     })
