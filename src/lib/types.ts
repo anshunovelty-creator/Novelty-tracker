@@ -417,12 +417,15 @@ export interface StageComment {
   created_at: string;
 }
 
-/** A stage comment joined with its job, for the global notes feed. */
-export interface NoteFeedItem extends StageComment {
+/** A stage comment joined with its job, for the global notes feed. A general
+ *  note (migration 077) has no job: job_id, stage and the job fields are null. */
+export interface NoteFeedItem extends Omit<StageComment, 'job_id' | 'stage'> {
+  job_id: string | null;
+  stage: Stage | null;
   job_name: string | null;
   pm_code: string | null;
-  po_number: string;
-  party: string;
+  po_number: string | null;
+  party: string | null;
   /** The job's stage now — where a note written from the drawer is filed. */
   job_status?: string;
   /** Has the calling user marked this note read? See migration 017_note_reads. */

@@ -16,6 +16,7 @@ import { istToday } from '@/lib/jobViews';
 import { addMonths, type Report, type MonthKpis } from '@/lib/reports';
 import { csvTimestamp, csvDate, type CsvColumn } from '@/lib/export/csv';
 import CsvExportButton from './CsvExportButton';
+import { Kpi, type KpiDelta } from '@/components/ui/Kpi';
 
 type DispatchEvent = {
   at: string; status: string; qty: number | null; job_card_number: string | null;
@@ -244,10 +245,8 @@ export default function ReportsView() {
   );
 }
 
-type Delta = { text: string; tone: 'good' | 'bad' | 'muted' };
-
 /** "▲ 4 pts vs Aug" — green when it moved the good way, amber when not. */
-function delta(now: MonthKpis, before: MonthKpis, key: 'onTimeRate' | 'jobsDispatched' | 'medianPoDays', prev: string, unit: string, upIsGood: boolean): Delta {
+function delta(now: MonthKpis, before: MonthKpis, key: 'onTimeRate' | 'jobsDispatched' | 'medianPoDays', prev: string, unit: string, upIsGood: boolean): KpiDelta {
   const a = now[key], b = before[key];
   if (a == null) return { text: 'no full dispatches yet', tone: 'muted' };
   if (b == null) return { text: `nothing to compare in ${monthName(prev)}`, tone: 'muted' };
@@ -255,18 +254,6 @@ function delta(now: MonthKpis, before: MonthKpis, key: 'onTimeRate' | 'jobsDispa
   if (d === 0) return { text: `same as ${monthName(prev)}`, tone: 'muted' };
   const good = d > 0 === upIsGood;
   return { text: `${d > 0 ? '▲' : '▼'} ${Math.abs(d)}${unit} vs ${monthName(prev)}`, tone: good ? 'good' : 'bad' };
-}
-
-function Kpi({ label, value, delta, loading }: { label: string; value: string; delta: Delta | null | undefined; loading: boolean }) {
-  return (
-    <div className="flex min-w-[180px] flex-1 flex-col gap-1 px-5 py-4 [&+&]:border-l [&+&]:border-brand-line-soft">
-      <span className="text-[13px] text-brand-muted">{label}</span>
-      <span className="font-mono text-[26px] font-semibold leading-8 tracking-[-0.02em] text-brand-ink">{loading ? '—' : value}</span>
-      <span className={cn('text-xs', delta?.tone === 'good' ? 'text-brand-success' : delta?.tone === 'bad' ? 'text-brand-warning' : 'text-brand-muted')}>
-        {loading ? ' ' : delta?.text}
-      </span>
-    </div>
-  );
 }
 
 function ExportRow({ title, count, children }: { title: string; count: number | undefined; children: React.ReactNode }) {

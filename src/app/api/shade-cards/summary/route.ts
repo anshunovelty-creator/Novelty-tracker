@@ -1,6 +1,6 @@
 // src/app/api/shade-cards/summary/route.ts
 // ============================================================
-// GET /api/shade-cards/summary — register-wide counts for the KPI tiles.
+// GET /api/shade-cards/summary — register-wide counts for the KPI strip and tab badges.
 // ============================================================
 // Deliberately unfiltered: these describe the state of the whole register,
 // not the current search. The tiles double as filter shortcuts, and "Approved:
@@ -16,16 +16,16 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
+import { istToday } from '@/lib/jobViews';
+import { WITH_PARTY_LATE_DAYS } from '@/lib/shadeCardView';
 
 export type ShadeCardSummary = {
   total:             number;
   approved:          number;
   pending_approval:  number;
-  /** Made and sent, still waiting on the party's answer — the "Waiting on party" tab. */
-  waiting_on_party:  number;
-  /** Card not made yet, whatever its approval state — the "Not made yet" tab. */
-  not_made:          number;
-  rejected:          number;
+  /** Pending cards sent more than WITH_PARTY_LATE_DAYS days ago — the red ages in
+   *  the "With party" column, the cards worth a reminder call. */
+  waiting_late:      number;
   /** Entries created in the last rolling 7×24h — recent intake, not a backlog. */
   added_last_7_days: number;
   /** The exact cutoff the count above used, ISO-8601. The client passes this
@@ -54,17 +54,19 @@ export async function GET() {
   // dates, so it reads correctly over historical rows too.
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  const [total, approved, pending, recent, waiting, notMade, rejected] = await Promise.all([
+  // Late = with the party more than WITH_PARTY_LATE_DAYS whole days, the same
+  // rule as the column (daysWithParty): sent before the IST date that many days ago.
+  const lateCutoff = istToday(new Date(Date.now() - WITH_PARTY_LATE_DAYS * 24 * 60 * 60 * 1000));
+
+  const [total, approved, pending, recent, late] = await Promise.all([
     base(),
     base().eq('status', 'Approved'),
     base().eq('status', 'Pending Approval'),
     base().gte('created_at', sevenDaysAgo),
-    base().eq('status', 'Pending Approval').eq('making_status', 'Already Made'),
-    base().eq('making_status', 'Pending'),
-    base().eq('status', 'Rejected'),
+    base().eq('status', 'Pending Approval').eq('making_status', 'Already Made').lt('sent_to_party_date', lateCutoff),
   ]);
 
-  const failed = [total, approved, pending, recent, waiting, notMade, rejected].find((r) => r.error);
+  const failed = [total, approved, pending, recent, late].find((r) => r.error);
   if (failed?.error) {
     return NextResponse.json({ error: failed.error.message }, { status: 500 });
   }
@@ -73,9 +75,7 @@ export async function GET() {
     total:             total.count    ?? 0,
     approved:          approved.count ?? 0,
     pending_approval:  pending.count  ?? 0,
-    waiting_on_party:  waiting.count  ?? 0,
-    not_made:          notMade.count  ?? 0,
-    rejected:          rejected.count ?? 0,
+    waiting_late:      late.count     ?? 0,
     added_last_7_days: recent.count   ?? 0,
     added_since:       sevenDaysAgo,
   } satisfies ShadeCardSummary);

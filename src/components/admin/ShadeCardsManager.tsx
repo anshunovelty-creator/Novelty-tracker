@@ -24,13 +24,14 @@ import type { SortDir } from '@/lib/sort';
 import { SHADE_CARD_STATUSES, MAKING_STATUSES, SHADE_CARD_STATUS_COLORS, MAKING_STATUS_COLORS, SHADE_CARD_SEARCH_FIELDS, type ShadeCardStatus, type MakingStatus, SHADE_CARD_STATUS_DOT, MAKING_STATUS_DOT } from '@/lib/constants/shadeCards';
 import { StateChip } from '@/components/ui/StateChip';
 import type { ShadeCard } from '@/lib/types';
-import { SHADE_TAB_FILTERS, WITH_PARTY_LATE_DAYS, daysWithParty, withPartyLabel, type ShadeTab } from '@/lib/shadeCardView';
+import { WITH_PARTY_LATE_DAYS, daysWithParty, withPartyLabel } from '@/lib/shadeCardView';
 import type { ShadeCardSummary } from '@/app/api/shade-cards/summary/route';
 import type { ShadeCardModalMode } from './AddShadeCardModal';
 import CsvExportButton from './CsvExportButton';
 import SortableHeaderLabel from './SortableHeaderLabel';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { SearchClearButton } from '@/components/ui/SearchClearButton';
+import { Kpi } from '@/components/ui/Kpi';
 
 // Loaded on first open, not with the page — it only renders when open.
 const AddShadeCardModal = dynamic(() => import('./AddShadeCardModal'), { ssr: false });
@@ -85,6 +86,11 @@ const CSV_COLUMNS: CsvColumn<ShadeCard>[] = [
   { header: 'Updated by',    value: (c) => c.updated_by_name ?? '' },
 ];
 
+const fmt = (n: number) => n.toLocaleString('en-IN');
+
+/** Which KPI card is filtering the list. */
+type KpiFilter = 'pending' | 'approved' | 'all' | 'recent';
+
 type Props = {
   canManage: boolean;
   canDelete: boolean;
@@ -98,10 +104,10 @@ export default function ShadeCardsManager({ canManage, canDelete, className }: P
 
   const [search,  setSearch]  = useState('');
   const [field,   setField]   = useState('all');
-  // The tab is the status filter: Waiting on party leads, because the cards
+  // The KPI cards are the filter. Approval pending leads, because the cards
   // sitting with a party are the ones someone has to chase.
-  const [tab,     setTab]     = useState<ShadeTab>('waiting');
-  const { status, making } = SHADE_TAB_FILTERS[tab];
+  const [filter,  setFilter]  = useState<KpiFilter>('pending');
+  const status = filter === 'pending' ? 'Pending Approval' : filter === 'approved' ? 'Approved' : '';
   const [page,    setPage]    = useState(1);
   const [sort,    setSort]    = useState<SortField>('shade_card_number');
   const [dir,     setDir]     = useState<SortDir>('asc');
@@ -109,27 +115,6 @@ export default function ShadeCardsManager({ canManage, canDelete, className }: P
   const [modal,      setModal]      = useState<{ mode: ShadeCardModalMode; card?: ShadeCard } | null>(null);
   const [confirmId,  setConfirmId]  = useState<string | null>(null);
   const [busyId,     setBusyId]     = useState<string | null>(null);
-
-  const params = new URLSearchParams();
-  if (search) params.set('search', search);
-  if (search && field !== 'all') params.set('field', field);
-  if (status) params.set('status', status);
-  if (making) params.set('making', making);
-  params.set('page', String(page));
-  params.set('sort', sort);
-  params.set('dir', dir);
-
-  const { data, isLoading } = useQuery<ListResponse>({
-    queryKey: ['shade-cards', search, field, status, making, page, sort, dir],
-    queryFn: async () => {
-      const res = await fetch(`/api/shade-cards?${params.toString()}`);
-      if (!res.ok) throw new Error('Failed to load shade cards');
-      return res.json();
-    },
-    // Keeps the previous page on screen while the next one loads, so paging
-    // doesn't blank the table on every click.
-    placeholderData: keepPreviousData,
-  });
 
   // Register-wide counts for the KPI tiles. Keyed under 'shade-cards' so the
   // three existing invalidateQueries({ queryKey: ['shade-cards'] }) calls
@@ -142,6 +127,31 @@ export default function ShadeCardsManager({ canManage, canDelete, className }: P
       if (!res.ok) throw new Error('Failed to load shade card summary');
       return res.json();
     },
+  });
+
+  const params = new URLSearchParams();
+  if (search) params.set('search', search);
+  if (search && field !== 'all') params.set('field', field);
+  if (status) params.set('status', status);
+  // "Last 7 days" filters on the exact cutoff the summary counted, so the
+  // list is the same set as the number on the card (see the summary route).
+  if (filter === 'recent' && summary) params.set('created_from', summary.added_since);
+  params.set('page', String(page));
+  params.set('sort', sort);
+  params.set('dir', dir);
+
+  const { data, isLoading } = useQuery<ListResponse>({
+    queryKey: ['shade-cards', search, field, filter, summary?.added_since, page, sort, dir],
+    queryFn: async () => {
+      const res = await fetch(`/api/shade-cards?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to load shade cards');
+      return res.json();
+    },
+    // The 7-day list waits for the cutoff, or it would briefly show every card.
+    enabled: filter !== 'recent' || Boolean(summary),
+    // Keeps the previous page on screen while the next one loads, so paging
+    // doesn't blank the table on every click.
+    placeholderData: keepPreviousData,
   });
 
   const cards = data?.cards ?? [];
@@ -212,46 +222,57 @@ export default function ShadeCardsManager({ canManage, canDelete, className }: P
     }
   }
 
-  const hasFilters = Boolean(search || tab !== 'all');
+  const hasFilters = Boolean(search || filter !== 'all');
 
-  const TABS: { id: ShadeTab; label: string; count: number | undefined }[] = [
-    { id: 'waiting',  label: 'Waiting on party', count: summary?.waiting_on_party },
-    { id: 'notmade',  label: 'Not made yet',     count: summary?.not_made },
-    { id: 'approved', label: 'Approved',         count: summary?.approved },
-    { id: 'rejected', label: 'Rejected',         count: summary?.rejected },
-    { id: 'all',      label: 'All',              count: summary?.total },
-  ];
+  const pick = (f: KpiFilter) => changeFilter(() => setFilter(f));
 
   return (
     // Flex column rather than space-y so the table can be told to absorb
     // whatever height is left over once the controls and paging have taken
     // theirs — see the page for where that height comes from.
     <div className={cn('flex flex-col gap-3', className)}>
-      {/* ── tabs ─────────────────────────────────────────────── */}
-      {/* Register-wide counts beside each tab; the tab is the status filter. */}
-      <div role="tablist" aria-label="Approval" className="flex shrink-0 gap-1 overflow-x-auto border-b border-brand-border">
-        {TABS.map((t) => {
-          const on = tab === t.id;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              aria-selected={on}
-              onClick={() => changeFilter(() => setTab(t.id))}
-              className={cn(
-                '-mb-px flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 text-sm transition-colors',
-                on ? 'border-brand-primary font-semibold text-brand-ink' : 'border-transparent font-medium text-brand-muted hover:text-brand-ink',
-              )}
-            >
-              {t.label}
-              <span className={cn('font-mono text-xs', on ? 'text-brand-ink' : 'text-brand-muted')}>
-                {t.count?.toLocaleString('en-IN') ?? '—'}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      {/* ── KPI filters ──────────────────────────────────────── */}
+      {/* Register-wide counts, whatever the search; each card filters the
+          list to the cards it counts. */}
+      <section
+        aria-label="Filter shade cards"
+        className="flex shrink-0 flex-wrap overflow-hidden rounded-2xl border border-brand-border bg-white shadow-[0_2px_8px_rgba(12,42,32,0.04)]"
+      >
+        <Kpi
+          label="Approval pending"
+          loading={!summary}
+          value={summary ? fmt(summary.pending_approval) : '—'}
+          delta={summary && (summary.waiting_late > 0
+            ? { text: `${fmt(summary.waiting_late)} with party over ${WITH_PARTY_LATE_DAYS} days`, tone: 'bad' }
+            : { text: `none with party over ${WITH_PARTY_LATE_DAYS} days`, tone: 'good' })}
+          active={filter === 'pending'}
+          onClick={() => pick('pending')}
+        />
+        <Kpi
+          label="Approved"
+          loading={!summary}
+          value={summary ? fmt(summary.approved) : '—'}
+          delta={summary && { text: summary.total ? `${Math.round((summary.approved / summary.total) * 100)}% of all cards` : 'no cards yet', tone: 'muted' }}
+          active={filter === 'approved'}
+          onClick={() => pick('approved')}
+        />
+        <Kpi
+          label="Total shade cards"
+          loading={!summary}
+          value={summary ? fmt(summary.total) : '—'}
+          delta={summary && { text: 'every current card', tone: 'muted' }}
+          active={filter === 'all'}
+          onClick={() => pick('all')}
+        />
+        <Kpi
+          label="Last 7 days added"
+          loading={!summary}
+          value={summary ? fmt(summary.added_last_7_days) : '—'}
+          delta={summary && { text: `new since ${formatNumericDate(summary.added_since)}`, tone: 'muted' }}
+          active={filter === 'recent'}
+          onClick={() => pick('recent')}
+        />
+      </section>
 
       {/* ── controls ─────────────────────────────────────────── */}
       <div className="shrink-0 flex flex-col sm:flex-row sm:items-center gap-2">

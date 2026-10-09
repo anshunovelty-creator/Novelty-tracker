@@ -6,11 +6,11 @@
 // the newest notes across every job, grouped by day, with All / Unread /
 // Mentions me. Mounted by src/app/admin/layout.tsx; reads GET /api/notes/feed.
 //
-// Every note still belongs to a job and a stage: the composer at the bottom
-// writes to one job (POST /api/jobs/[id]/comments), filed at that job's
-// current stage, so nothing drifts into untethered chat. Reply picks the
-// note's job and tags its department (@QC); "Mentions me" finds notes that
-// tag yours.
+// The composer defaults to no job: a general note for the team
+// (POST /api/notes, migration 077). Searching attaches a job instead, and the
+// note is filed on it at the job's current stage (POST /api/jobs/[id]/comments).
+// Reply picks the note's job (or none) and tags its author; "Mentions me"
+// finds notes that tag you or your department.
 //
 // Read state is per user, synced across devices (POST /api/notes/read, see
 // migration 017_note_reads). The old single localStorage "last seen"
@@ -40,6 +40,9 @@ import type { NoteFeedItem } from '@/lib/types';
 
 const POLL_MS  = 60_000;
 const FEED_URL = '/api/notes/feed?limit=50';
+
+/** A job the composer can file a note on — a /api/search job row. */
+type PickedJob = { id: string; po_number: string; party: string; job_name: string | null; status: string };
 
 type Props = {
   /** Department of the signed-in user, as people write it: "QC". Used for "Mentions me". */
@@ -88,7 +91,10 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
   // Ids marked read locally but not yet confirmed by the next poll.
   const [optimisticRead, setOptimisticRead] = useState<Set<string>>(new Set());
   // Composer
-  const [jobId,   setJobId]   = useState('');
+  const [job,     setJob]     = useState<PickedJob | null>(null);
+  const [jobQuery, setJobQuery] = useState('');
+  const [jobHits,  setJobHits]  = useState<PickedJob[]>([]);
+  const [jobActive, setJobActive] = useState(0);
   const [draft,   setDraft]   = useState('');
   const [posting, setPosting] = useState(false);
   const draftRef = useRef<HTMLTextAreaElement | null>(null);
@@ -173,9 +179,10 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
         const job = newest.job_name || newest.po_number;
         const who = nameOfRef.current(newest.created_by_email) || newest.created_by;
         const forMe = mentions(newest.comment, myNamesRef.current);
+        const head = forMe ? `${who} mentioned you` : who;
         notify({
           id:     newest.id,
-          title:  forMe ? `${who} mentioned you — ${job}` : `${who} — ${job}`,
+          title:  job ? `${head} — ${job}` : head,
           body:   newest.comment,
           onOpen: () => window.dispatchEvent(new Event(NOTES_OPEN_EVENT)),
         });
@@ -294,16 +301,38 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
     [notes, isRead, userEmail, myNames],
   );
 
-  // Jobs the composer can write to: the ones in the feed, newest first.
-  const jobs = useMemo(() => {
-    const seen = new Map<string, NoteFeedItem>();
-    for (const n of notes) if (!seen.has(n.job_id)) seen.set(n.job_id, n);
-    return Array.from(seen.values());
-  }, [notes]);
-  const composeJob = jobs.find((j) => j.job_id === jobId) ?? jobs[0] ?? null;
+  // Job search for the composer — same endpoint as the Ctrl K palette, which
+  // matches PO, job card, party, job name and PM code, open jobs first.
+  useEffect(() => {
+    const q = jobQuery.trim();
+    if (q.length < 2) { setJobHits([]); return; }
+    const ctrl = new AbortController();
+    const t = window.setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal });
+        if (!res.ok) return;
+        const data = await res.json() as { jobs: PickedJob[] };
+        setJobHits(data.jobs);
+        setJobActive(0);
+      } catch { /* aborted or offline — keep the last results */ }
+    }, 200);
+    return () => { window.clearTimeout(t); ctrl.abort(); };
+  }, [jobQuery]);
+
+  function pickJob(j: PickedJob | null) {
+    setJob(j);
+    setJobQuery('');
+    setJobHits([]);
+  }
 
   function reply(note: NoteFeedItem) {
-    setJobId(note.job_id);
+    pickJob(note.job_id ? {
+      id:        note.job_id,
+      po_number: note.po_number ?? '',
+      party:     note.party ?? '',
+      job_name:  note.job_name,
+      status:    note.job_status ?? note.stage ?? '',
+    } : null);
     const tag = `@${nameOf(note.created_by_email) || note.created_by} `;
     setDraft((d) => (d.startsWith(tag) ? d : tag + d));
     requestAnimationFrame(() => {
@@ -315,13 +344,13 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
   async function post(e: React.FormEvent | React.KeyboardEvent) {
     e.preventDefault();
     const text = draft.trim();
-    if (!text || !composeJob || posting) return;
+    if (!text || posting) return;
     setPosting(true);
     try {
-      const res = await fetch(`/api/jobs/${composeJob.job_id}/comments`, {
+      const res = await fetch(job ? `/api/jobs/${job.id}/comments` : '/api/notes', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ stage: composeJob.job_status ?? composeJob.stage, comment: text }),
+        body:    JSON.stringify(job ? { stage: job.status, comment: text } : { comment: text }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) { toast.error(body.error ?? 'Could not post the note'); return; }
@@ -434,14 +463,20 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
                       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-brand-muted">
                           <strong className="text-[13px] text-brand-ink" title={note.created_by_email ?? undefined}>{who}</strong>
-                          <Link
-                            href={`/admin/jobs/${note.job_id}`}
-                            onClick={() => setOpen(false)}
-                            className="inline-flex items-center rounded-lg border border-brand-border bg-[#F1F5F2] px-2 py-0.5 font-mono text-xs font-semibold text-brand-ink hover:border-brand-primary"
-                          >
-                            {note.po_number}
-                          </Link>
-                          <span>at {note.stage}</span>
+                          {note.job_id ? (
+                            <>
+                              <Link
+                                href={`/admin/jobs/${note.job_id}`}
+                                onClick={() => setOpen(false)}
+                                className="inline-flex items-center rounded-lg border border-brand-border bg-[#F1F5F2] px-2 py-0.5 font-mono text-xs font-semibold text-brand-ink hover:border-brand-primary"
+                              >
+                                {note.po_number}
+                              </Link>
+                              <span>at {note.stage}</span>
+                            </>
+                          ) : (
+                            <span>General</span>
+                          )}
                           <time dateTime={note.created_at} className="ml-auto font-mono">{format(new Date(note.created_at), 'HH:mm')}</time>
                         </div>
                         <p className={cn('break-words text-sm leading-normal', read || mine ? 'text-brand-muted' : 'text-brand-ink')}>
@@ -474,46 +509,95 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username }: Pr
           ))}
         </div>
 
-        {/* Composer — always on a job, filed at the job's current stage. */}
-        {composeJob && (
-          <form onSubmit={post} className="flex flex-col gap-2.5 border-t border-brand-line-soft bg-[#F8FBF9] px-4 pb-4 pt-3.5">
-            <label className="flex items-center gap-2 text-xs text-brand-muted">
-              On job
-              <select
-                value={composeJob.job_id}
-                onChange={(e) => setJobId(e.target.value)}
-                className="min-h-8 max-w-[60%] rounded-lg border border-brand-border bg-white px-2 font-mono text-xs font-semibold text-brand-ink"
-              >
-                {jobs.map((j) => (
-                  <option key={j.job_id} value={j.job_id}>{j.po_number} · {j.party}</option>
-                ))}
-              </select>
-              <span className="truncate">at {composeJob.job_status ?? composeJob.stage}</span>
-            </label>
-            <div className="flex items-end gap-2">
-              <label className="flex-1">
-                <span className="sr-only">Write a note</span>
-                <MentionTextarea
-                  inputRef={draftRef}
-                  rows={2}
-                  value={draft}
-                  onValueChange={setDraft}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) post(e); }}
-                  placeholder="Write a note… type @ to tag a person or department"
-                  className="resize-none rounded-xl border border-brand-border bg-white px-3 py-2.5 text-sm leading-normal text-brand-ink focus:border-brand-primary focus:outline-none"
+        {/* Composer — a general note by default; search to file it on a job. */}
+        <form onSubmit={post} className="flex flex-col gap-2.5 border-t border-brand-line-soft bg-[#F8FBF9] px-4 pb-4 pt-3.5">
+          <div className="relative flex items-center gap-2 text-xs text-brand-muted">
+            <span className="shrink-0">Job</span>
+            {job ? (
+              <>
+                <span className="inline-flex min-w-0 items-center gap-1.5 rounded-lg border border-brand-border bg-white py-1 pl-2 pr-1 text-brand-ink">
+                  <span className="truncate font-mono font-semibold">{job.po_number} · {job.party}</span>
+                  <button
+                    type="button"
+                    onClick={() => pickJob(null)}
+                    aria-label="Remove job — send as a general note"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-brand-muted hover:bg-brand-surface-hover hover:text-brand-ink"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                </span>
+                <span className="truncate">at {job.status}</span>
+              </>
+            ) : (
+              <>
+                <input
+                  type="search"
+                  role="combobox"
+                  aria-label="Attach a job (optional)"
+                  aria-expanded={jobHits.length > 0}
+                  aria-controls={`${titleId}-jobs`}
+                  aria-activedescendant={jobHits.length > 0 ? `${titleId}-job-${jobActive}` : undefined}
+                  aria-autocomplete="list"
+                  value={jobQuery}
+                  onChange={(e) => setJobQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowDown' && jobHits.length) { e.preventDefault(); setJobActive((i) => (i + 1) % jobHits.length); }
+                    else if (e.key === 'ArrowUp' && jobHits.length) { e.preventDefault(); setJobActive((i) => (i - 1 + jobHits.length) % jobHits.length); }
+                    else if (e.key === 'Enter' && jobHits[jobActive]) { e.preventDefault(); pickJob(jobHits[jobActive]); }
+                    else if (e.key === 'Escape' && jobQuery) { e.stopPropagation(); pickJob(null); }
+                  }}
+                  placeholder="None — search PO, party or job to attach"
+                  className="min-h-9 min-w-0 flex-1 rounded-lg border border-brand-border bg-white px-2.5 text-xs text-brand-ink placeholder:text-brand-muted focus:border-brand-primary focus:outline-none"
                 />
-              </label>
-              <button
-                type="submit"
-                disabled={posting || !draft.trim()}
-                aria-label="Post note"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-primary text-white hover:bg-brand-primary-hover disabled:opacity-40"
-              >
-                <Send className="h-[18px] w-[18px]" aria-hidden="true" />
-              </button>
-            </div>
-          </form>
-        )}
+                {jobHits.length > 0 && (
+                  <ul
+                    id={`${titleId}-jobs`}
+                    role="listbox"
+                    aria-label="Matching jobs"
+                    className="absolute bottom-full left-0 right-0 mb-1.5 max-h-64 overflow-y-auto rounded-xl border border-brand-border bg-white py-1 shadow-[0_8px_24px_rgba(12,42,32,0.16)]"
+                  >
+                    {jobHits.map((j, i) => (
+                      <li
+                        key={j.id}
+                        id={`${titleId}-job-${i}`}
+                        role="option"
+                        aria-selected={i === jobActive}
+                        onMouseDown={(e) => { e.preventDefault(); pickJob(j); }}
+                        onMouseEnter={() => setJobActive(i)}
+                        className={cn('flex min-h-11 cursor-pointer flex-col justify-center px-3 py-1.5', i === jobActive && 'bg-[#F1F5F2]')}
+                      >
+                        <span className="truncate font-mono text-xs font-semibold text-brand-ink">{j.po_number} · {j.party}</span>
+                        <span className="truncate text-[11px] text-brand-muted">{j.job_name ? `${j.job_name} · ` : ''}{j.status}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+          </div>
+          <div className="flex items-end gap-2">
+            <label className="flex-1">
+              <span className="sr-only">Write a note</span>
+              <MentionTextarea
+                inputRef={draftRef}
+                rows={2}
+                value={draft}
+                onValueChange={setDraft}
+                onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) post(e); }}
+                placeholder="Write a note… type @ to tag a person or department"
+                className="resize-none rounded-xl border border-brand-border bg-white px-3 py-2.5 text-sm leading-normal text-brand-ink focus:border-brand-primary focus:outline-none"
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={posting || !draft.trim()}
+              aria-label="Post note"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-primary text-white hover:bg-brand-primary-hover disabled:opacity-40"
+            >
+              <Send className="h-[18px] w-[18px]" aria-hidden="true" />
+            </button>
+          </div>
+        </form>
       </aside>
     </>
   );

@@ -1,7 +1,8 @@
 // src/app/api/notes/feed/route.ts
 // ============================================================
 // GET /api/notes/feed?limit=50
-//   Newest-first internal notes across every job, for the global
+//   Newest-first internal notes across every job (and general notes
+//   with no job, migration 077), for the global
 //   notes box in the admin shell. Each note carries `read`, the
 //   caller's own read state (see migration 017_note_reads).
 //
@@ -33,8 +34,8 @@ export const dynamic = 'force-dynamic';
 
 type JoinedRow = {
   id:               string;
-  job_id:           string;
-  stage:            string;
+  job_id:           string | null;
+  stage:            string | null;
   comment:          string;
   created_by:       string;
   created_by_email: string | null;
@@ -95,11 +96,12 @@ export async function GET(request: NextRequest) {
 
   const readIds = new Set((readRows ?? []).map((r: { note_id: string }) => r.note_id));
 
-  // Flatten the join so the client gets one object per note.
-  // A note whose job row is missing (deleted mid-flight) is dropped
-  // rather than rendered with blank identity.
+  // Flatten the join so the client gets one object per note. A general
+  // note (no job, migration 077) keeps null job fields; a note whose job
+  // row is missing (deleted mid-flight) is dropped rather than rendered
+  // with blank identity.
   const notes: NoteFeedItem[] = rows
-    .filter((r) => r.jobs !== null)
+    .filter((r) => r.job_id === null || r.jobs !== null)
     .map((r) => ({
       id:               r.id,
       job_id:           r.job_id,
@@ -108,11 +110,11 @@ export async function GET(request: NextRequest) {
       created_by:       r.created_by,
       created_by_email: r.created_by_email,
       created_at:       r.created_at,
-      job_name:         r.jobs!.job_name,
-      pm_code:          r.jobs!.pm_code,
-      po_number:        r.jobs!.po_number,
-      party:            r.jobs!.party,
-      job_status:       r.jobs!.status,
+      job_name:         r.jobs?.job_name ?? null,
+      pm_code:          r.jobs?.pm_code ?? null,
+      po_number:        r.jobs?.po_number ?? null,
+      party:            r.jobs?.party ?? null,
+      job_status:       r.jobs?.status,
       read:             readIds.has(r.id),
     }));
 
