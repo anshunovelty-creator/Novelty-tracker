@@ -432,6 +432,8 @@ export interface NoteFeedItem extends Omit<StageComment, 'job_id' | 'stage'> {
   read: boolean;
   /** The note this one replies to, quoted above it (migration 078). */
   reply_to: { id: string; comment: string; created_by: string; created_by_email: string | null } | null;
+  /** Set when the author edited it, within 15 minutes of posting (migration 079). */
+  edited_at: string | null;
 }
 
 // ── dispatch_schedules ────────────────────────────────────────

@@ -9,6 +9,10 @@
 // The composer defaults to no job: a general note for the team
 // (POST /api/notes, migration 077). Searching attaches a job instead, and the
 // note is filed on it at the job's current stage (POST /api/jobs/[id]/comments).
+// Search asks the server (GET /api/notes/feed?q=) so it reaches past the
+// newest 50. Your own note can be edited for 15 minutes (PATCH
+// /api/notes/[id]); on a phone, swipe a bubble right to reply.
+//
 // Chat order, WhatsApp-style: oldest at the top, newest at the bottom, and
 // the list stays pinned to the bottom unless you've scrolled up to read.
 // Reply quotes the note (reply_to_id, migration 078) and picks its job (or
@@ -26,14 +30,14 @@
 
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { X, Send, Reply, Trash2 } from 'lucide-react';
+import { X, Send, Reply, Trash2, Pencil, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { requestOpen, subscribeActiveWidget } from '@/lib/floatingWidgetCoordinator';
 import { NOTES_OPEN_EVENT, NOTES_UNREAD_EVENT } from '@/lib/constants/events';
-import { filterNotes, groupByDay, mentions, type NotesTab } from '@/lib/notesView';
+import { filterNotes, groupByDay, mentions, canEditNote, isNewerThan, type NotesTab } from '@/lib/notesView';
 import { useTeamDirectory } from '@/hooks/useReferenceData';
 import { MentionText, MentionTextarea } from '@/components/ui/Mention';
 import { initials } from '@/lib/team';
@@ -102,6 +106,13 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
   const [jobActive, setJobActive] = useState(0);
   const [draft,   setDraft]   = useState('');
   const [replyTo, setReplyTo] = useState<NoteFeedItem | null>(null);
+  // Your own note being edited in the composer (within the 15-minute window).
+  const [editing, setEditing] = useState<NoteFeedItem | null>(null);
+  // Search: the server's matches while 2+ characters are typed, else null.
+  const [search,     setSearch]     = useState('');
+  const [searchHits, setSearchHits] = useState<NoteFeedItem[] | null>(null);
+  // Swipe-to-reply in progress: where the finger started, and which way it's going.
+  const swipeRef = useRef<{ x: number; y: number; dx: number; axis: 'x' | 'y' | null } | null>(null);
   // The original a quote was tapped for: scrolled to and briefly highlighted.
   const [flashId, setFlashId] = useState<string | null>(null);
   // Admin's "Delete for everyone?" step, and the note being deleted.
@@ -125,11 +136,13 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
     nameOfRef.current = nameOf;
     myNamesRef.current = [deptName, deptKey, username];
   });
-  // Newest note id we have already fired a desktop notification for.
-  // null until the first poll completes, so a page load never notifies
-  // about the backlog. Doubles as the "is this the first poll" flag,
-  // which gates the one-time legacy-marker migration below.
-  const notifiedIdRef = useRef<string | null>(null);
+  // Posting time (ms) of the newest note already seen — only a note posted
+  // after it alerts. A time, not an id: when an admin deletes the newest
+  // note, the next-newest is older, not new, and must not chime. null until
+  // the first poll completes, so a page load never notifies about the
+  // backlog; it doubles as the "is this the first poll" flag, which gates
+  // the one-time legacy-marker migration below.
+  const seenUpToRef = useRef<number | null>(null);
 
   useEffect(() => { openRef.current = open; }, [open]);
 
@@ -151,7 +164,7 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
       });
 
       const newest = data.notes[0];
-      const isFirstPoll = notifiedIdRef.current === null;
+      const isFirstPoll = seenUpToRef.current === null;
 
       // One-time backfill: fold the legacy "last seen" timestamp into real
       // read receipts so upgrading doesn't dump the whole note history
@@ -186,7 +199,7 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
       if (
         newest &&
         !isFirstPoll &&
-        newest.id !== notifiedIdRef.current &&
+        isNewerThan(newest.created_at, seenUpToRef.current) &&
         newest.created_by_email !== userEmail &&
         !(openRef.current && document.visibilityState === 'visible')
       ) {
@@ -202,7 +215,8 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
           onOpen: () => window.dispatchEvent(new Event(NOTES_OPEN_EVENT)),
         });
       }
-      if (newest) notifiedIdRef.current = newest.id;
+      // Only ever moves forward; an empty first feed still ends the first poll.
+      seenUpToRef.current = Math.max(seenUpToRef.current ?? 0, newest ? Date.parse(newest.created_at) : 0);
 
       setUnread(Math.max(0, data.unread - backfilledUnread));
     } catch {
@@ -307,10 +321,28 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
   const isRead  = useCallback((n: NoteFeedItem) => n.read || optimisticRead.has(n.id), [optimisticRead]);
   // A note tags me when it names my username or my department.
   const myNames = useMemo(() => [deptName, deptKey, username], [deptName, deptKey, username]);
+  // While searching, the server's matches stand in for the feed.
+  const source = searchHits ?? notes;
   const visible = useMemo(
-    () => filterNotes(notes, tab, { isRead, me: userEmail, myNames }),
-    [notes, tab, isRead, userEmail, myNames],
+    () => filterNotes(source, tab, { isRead, me: userEmail, myNames }),
+    [source, tab, isRead, userEmail, myNames],
   );
+
+  useEffect(() => {
+    const q = search.trim();
+    if (q.length < 2) { setSearchHits(null); return; }
+    const ctrl = new AbortController();
+    const t = window.setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/notes/feed?limit=50&q=${encodeURIComponent(q)}`, { signal: ctrl.signal, cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json() as { notes: NoteFeedItem[] };
+        pinnedRef.current = true;
+        setSearchHits(data.notes);
+      } catch { /* aborted or offline — keep the last results */ }
+    }, 250);
+    return () => { window.clearTimeout(t); ctrl.abort(); };
+  }, [search]);
   const mentionCount = useMemo(
     () => filterNotes(notes, 'mentions', { isRead, me: userEmail, myNames }).filter((n) => !isRead(n)).length,
     [notes, isRead, userEmail, myNames],
@@ -348,11 +380,43 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
       job_name:  note.job_name,
       status:    note.job_status ?? note.stage ?? '',
     } : null);
+    if (editing) { setEditing(null); setDraft(''); }
     setReplyTo(note);
     requestAnimationFrame(() => {
       const el = draftRef.current;
       if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
     });
+  }
+
+  function startEdit(note: NoteFeedItem) {
+    setReplyTo(null);
+    setEditing(note);
+    setDraft(note.comment);
+    requestAnimationFrame(() => {
+      const el = draftRef.current;
+      if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+    });
+  }
+
+  function cancelEdit() {
+    setEditing(null);
+    setDraft('');
+  }
+
+  async function saveEdit(note: NoteFeedItem, text: string) {
+    const res = await fetch(`/api/notes/${note.id}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ comment: text }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) { toast.error(body.error ?? 'Could not save the edit'); return; }
+    const editedAt: string | null = body.comment?.edited_at ?? new Date().toISOString();
+    const patch = (n: NoteFeedItem) => (n.id === note.id ? { ...n, comment: text, edited_at: editedAt } : n);
+    setNotes((prev) => prev.map(patch));
+    setSearchHits((prev) => prev && prev.map(patch));
+    cancelEdit();
+    poll();
   }
 
   async function post(e: React.FormEvent | React.KeyboardEvent) {
@@ -361,6 +425,7 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
     if (!text || posting) return;
     setPosting(true);
     try {
+      if (editing) { await saveEdit(editing, text); return; }
       const res = await fetch(job ? `/api/jobs/${job.id}/comments` : '/api/notes', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -404,7 +469,7 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
 
   /** Tap a quote: show the original, switching to All if this tab hides it. */
   function jumpTo(id: string) {
-    if (!notes.some((n) => n.id === id)) { toast('That note is older than the last 50.'); return; }
+    if (!source.some((n) => n.id === id)) { toast(searchHits ? 'That note isn’t in these search results.' : 'That note is older than the last 50.'); return; }
     if (!visible.some((n) => n.id === id)) setTab('all');
     setFlashId(id);
   }
@@ -440,7 +505,7 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
   const groups = groupByDay([...visible].reverse());
   // Someone else's unread notes: the divider sits above the first of them.
   const unreadList = visible.filter((n) => !isRead(n) && n.created_by_email !== userEmail);
-  const firstUnreadId = unreadList.length ? unreadList[unreadList.length - 1].id : null;
+  const firstUnreadId = unreadList.length && !searchHits ? unreadList[unreadList.length - 1].id : null;
 
   return (
     <>
@@ -491,6 +556,18 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
               );
             })}
           </div>
+          <label className="relative block">
+            <span className="sr-only">Search notes</span>
+            <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-muted" />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Escape' && search) { e.stopPropagation(); setSearch(''); } }}
+              placeholder="Search notes"
+              className="min-h-10 w-full rounded-[10px] border border-brand-border bg-white pl-9 pr-3 text-sm text-brand-ink placeholder:text-brand-muted focus:border-brand-primary focus:outline-none"
+            />
+          </label>
           <DesktopNotificationsToggle />
         </div>
 
@@ -506,7 +583,14 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
           {error && notes.length === 0 && (
             <p className="px-6 py-8 text-center text-sm text-brand-danger">Could not load notes. Retrying…</p>
           )}
-          {!error && visible.length === 0 && (
+          {searchHits && (
+            <p role="status" className="px-6 pt-3 text-center text-xs text-brand-muted">
+              {visible.length === 0
+                ? `No notes match “${search.trim()}”.`
+                : `${visible.length}${searchHits.length === 50 ? '+' : ''} ${visible.length === 1 ? 'note matches' : 'notes match'} “${search.trim()}”`}
+            </p>
+          )}
+          {!error && !searchHits && visible.length === 0 && (
             <p className="px-6 py-10 text-center text-sm text-brand-muted">
               {notes.length === 0
                 ? 'No internal notes yet. Notes written on any job appear here.'
@@ -565,7 +649,36 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
                           </span>
                         ) : <span aria-hidden="true" className="w-7 shrink-0" />)}
 
-                        <div className={cn('group flex min-w-0 max-w-[84%] items-center gap-0.5', mine && 'flex-row-reverse')}>
+                        <div
+                          className={cn('group flex min-w-0 max-w-[84%] touch-pan-y items-center gap-0.5', mine && 'flex-row-reverse')}
+                          // Swipe right to reply, as on WhatsApp. touch-pan-y leaves
+                          // vertical scrolling to the browser and sideways drags to us.
+                          onTouchStart={(e) => {
+                            const t = e.touches[0];
+                            swipeRef.current = { x: t.clientX, y: t.clientY, dx: 0, axis: null };
+                          }}
+                          onTouchMove={(e) => {
+                            const sw = swipeRef.current;
+                            if (!sw) return;
+                            const t = e.touches[0];
+                            const dx = t.clientX - sw.x, dy = t.clientY - sw.y;
+                            if (!sw.axis && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) sw.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+                            if (sw.axis !== 'x') return;
+                            sw.dx = Math.max(0, Math.min(dx, 72));
+                            e.currentTarget.style.transition = 'none';
+                            e.currentTarget.style.transform = `translateX(${sw.dx}px)`;
+                          }}
+                          onTouchEnd={(e) => {
+                            const sw = swipeRef.current;
+                            swipeRef.current = null;
+                            e.currentTarget.style.transition = 'transform 150ms ease-out';
+                            e.currentTarget.style.transform = '';
+                            if (sw?.axis === 'x' && sw.dx >= 56) {
+                              navigator.vibrate?.(10);
+                              reply(note);
+                            }
+                          }}
+                        >
                           <div
                             className={cn(
                               'flex min-w-0 flex-col gap-1 rounded-2xl border px-3 pb-1.5 pt-2 shadow-[0_1px_1px_rgba(12,42,32,0.05)]',
@@ -608,9 +721,10 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
                             <p className="whitespace-pre-line break-words text-sm leading-normal text-brand-ink">
                               <MentionText text={note.comment} />
                               {/* Room for the time, so it tucks in after a short last line. */}
-                              <span aria-hidden="true" className="inline-block w-12" />
+                              <span aria-hidden="true" className={cn('inline-block', note.edited_at ? 'w-24' : 'w-12')} />
                             </p>
                             <time dateTime={note.created_at} className="-mt-4 self-end font-mono text-[11px] text-brand-muted">
+                              {note.edited_at && <span className="mr-1 font-sans italic">edited</span>}
                               {format(new Date(note.created_at), 'HH:mm')}
                             </time>
                           </div>
@@ -622,6 +736,16 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
                           >
                             <Reply className="h-4 w-4" aria-hidden="true" />
                           </button>
+                          {canEditNote(note, userEmail) && (
+                            <button
+                              type="button"
+                              onClick={() => startEdit(note)}
+                              aria-label="Edit your note"
+                              className="-mx-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-brand-muted transition-opacity hover:bg-white hover:text-brand-ink focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:hover)]:opacity-0"
+                            >
+                              <Pencil className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                          )}
                           {isAdmin && (
                             <button
                               type="button"
@@ -669,6 +793,23 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
 
         {/* Composer — a general note by default; search to file it on a job. */}
         <form onSubmit={post} className="flex flex-col gap-2.5 border-t border-brand-line-soft bg-[#F8FBF9] px-4 pb-4 pt-3.5">
+          {editing && (
+            <div className="flex items-center gap-2 rounded-lg border border-brand-border bg-white py-1.5 pl-3 pr-1.5">
+              <Pencil className="h-4 w-4 shrink-0 text-brand-primary" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <span className="block text-xs font-semibold text-brand-ink">Editing your note</span>
+                <span className="block truncate text-xs text-brand-muted">{editing.comment}</span>
+              </div>
+              <button
+                type="button"
+                onClick={cancelEdit}
+                aria-label="Cancel edit"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-brand-muted hover:bg-brand-surface-hover hover:text-brand-ink"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+          )}
           {replyTo && (
             <div className="flex items-center gap-2 rounded-lg border border-brand-border bg-white py-1.5 pl-3 pr-1.5">
               <div className="min-w-0 flex-1">
@@ -687,6 +828,8 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
               </button>
             </div>
           )}
+          {/* The job is fixed once a note is posted, so editing hides the picker. */}
+          {!editing && (
           <div className="relative flex items-center gap-2 text-xs text-brand-muted">
             <span className="shrink-0">Job</span>
             {job ? (
@@ -751,6 +894,7 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
               </>
             )}
           </div>
+          )}
           <div className="flex items-end gap-2">
             <label className="flex-1">
               <span className="sr-only">Write a note</span>
@@ -769,7 +913,7 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
             <button
               type="submit"
               disabled={posting || !draft.trim()}
-              aria-label="Post note"
+              aria-label={editing ? 'Save edit' : 'Post note'}
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-primary text-white hover:bg-brand-primary-hover disabled:opacity-40"
             >
               <Send className="h-[18px] w-[18px]" aria-hidden="true" />

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mentions, filterNotes, dayLabel, groupByDay, parseNoteId } from './notesView';
+import { mentions, filterNotes, dayLabel, groupByDay, parseNoteId, canEditNote, EDIT_WINDOW_MS, isNewerThan } from './notesView';
 
 const note = (id: string, comment: string, created_at: string, by: string | null = 'a@x.in') =>
   ({ id, comment, created_at, created_by_email: by });
@@ -62,5 +62,34 @@ describe('parseNoteId', () => {
     expect(parseNoteId('not-a-uuid')).toBeNull();
     expect(parseNoteId(42)).toBeNull();
     expect(parseNoteId(undefined)).toBeNull();
+  });
+});
+
+describe('canEditNote', () => {
+  const at = '2026-10-09T05:00:00Z';
+  const now = Date.parse(at);
+  const note = { created_by_email: 'me@x.in', created_at: at };
+  it('lets the author edit within the window', () => {
+    expect(canEditNote(note, 'me@x.in', now + 60_000)).toBe(true);
+    expect(canEditNote(note, 'me@x.in', now + EDIT_WINDOW_MS)).toBe(true);
+  });
+  it('refuses after the window, or anyone but the author', () => {
+    expect(canEditNote(note, 'me@x.in', now + EDIT_WINDOW_MS + 1)).toBe(false);
+    expect(canEditNote(note, 'other@x.in', now + 60_000)).toBe(false);
+    expect(canEditNote({ ...note, created_by_email: null }, '', now)).toBe(false);
+  });
+});
+
+describe('isNewerThan', () => {
+  const seen = Date.parse('2026-10-09T05:00:00Z');
+  it('a note posted after the last one seen is new', () => {
+    expect(isNewerThan('2026-10-09T05:00:01Z', seen)).toBe(true);
+  });
+  it('the same or an older note is not — e.g. the next-newest after an admin delete', () => {
+    expect(isNewerThan('2026-10-09T05:00:00Z', seen)).toBe(false);
+    expect(isNewerThan('2026-10-08T11:09:00Z', seen)).toBe(false);
+  });
+  it('anything is newer than nothing seen yet', () => {
+    expect(isNewerThan('2026-10-09T05:00:00Z', null)).toBe(true);
   });
 });

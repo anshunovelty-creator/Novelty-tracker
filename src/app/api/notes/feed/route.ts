@@ -7,6 +7,8 @@
 //   caller's own read state (see migration 017_note_reads).
 //
 //   `limit`  — page size, 1..100, default 50.
+//   `q`      — optional search: notes whose text contains it (2+ chars),
+//              across all notes, not just the newest page.
 //
 //   Returns { notes: NoteFeedItem[], unread: number }.
 //   `unread` counts notes in this page that are unread and not the
@@ -24,6 +26,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
+import { containsPattern } from '@/lib/search';
 import type { NoteFeedItem } from '@/lib/types';
 
 const DEFAULT_LIMIT = 50;
@@ -41,6 +44,8 @@ type JoinedRow = {
   created_by_email: string | null;
   created_at:       string;
   reply_to_id:      string | null;
+  /** Absent until migration 079 runs — read through `*` so the feed works either way. */
+  edited_at?:       string | null;
   jobs: {
     job_name:  string | null;
     pm_code:   string | null;
@@ -64,21 +69,15 @@ export async function GET(request: NextRequest) {
     ? Math.min(Math.max(rawLimit, 1), MAX_LIMIT)
     : DEFAULT_LIMIT;
 
-  const { data, error } = await supabase
+  const query = supabase
     .from('stage_comments')
-    .select(`
-      id,
-      job_id,
-      stage,
-      comment,
-      created_by,
-      created_by_email,
-      created_at,
-      reply_to_id,
-      jobs ( job_name, pm_code, po_number, party, status )
-    `)
+    // `*` rather than a column list: edited_at (079) is picked up once the
+    // column exists, and the feed keeps working before the migration runs.
+    .select('*, jobs ( job_name, pm_code, po_number, party, status )')
     .order('created_at', { ascending: false })
     .limit(limit);
+  const q = params.get('q')?.trim() ?? '';
+  const { data, error } = await (q.length >= 2 ? query.ilike('comment', containsPattern(q)) : query);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -135,6 +134,7 @@ export async function GET(request: NextRequest) {
       job_status:       r.jobs?.status,
       read:             readIds.has(r.id),
       reply_to:         r.reply_to_id ? quoted.get(r.reply_to_id) ?? null : null,
+      edited_at:        r.edited_at ?? null,
     }));
 
   // Unread = notes in this page the caller hasn't marked read, excluding

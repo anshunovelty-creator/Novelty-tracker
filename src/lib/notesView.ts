@@ -36,6 +36,29 @@ export function mentions(text: string, names: readonly string[]): boolean {
   return tags.some((t) => wanted.has(norm(t.slice(t.indexOf('@') + 1))));
 }
 
+/** Was this note posted after everything already seen (`seenUpTo`, ms)?
+ *  The Notes drawer alerts only for such a note. By time, not id: an admin
+ *  deleting the newest note leaves an older one on top, which isn't new. */
+export function isNewerThan(createdAt: string, seenUpTo: number | null): boolean {
+  return Date.parse(createdAt) > (seenUpTo ?? 0);
+}
+
+/** How long after posting the author can still edit a note. */
+export const EDIT_WINDOW_MS = 15 * 60 * 1000;
+
+/** Only the author, and only within EDIT_WINDOW_MS of posting. The server
+ *  (PATCH /api/notes/[id]) applies the same rule; the drawer uses it to
+ *  decide whether to show the pencil. */
+export function canEditNote(
+  note: { created_by_email: string | null; created_at: string },
+  me: string,
+  now: number = Date.now(),
+): boolean {
+  if (!me || note.created_by_email !== me) return false;
+  const age = now - Date.parse(note.created_at);
+  return age >= 0 && age <= EDIT_WINDOW_MS;
+}
+
 export function filterNotes<T extends NoteLike>(
   notes: readonly T[],
   tab: NotesTab,
