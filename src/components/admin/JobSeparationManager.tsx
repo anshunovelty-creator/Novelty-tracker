@@ -876,10 +876,23 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
           editing={editing ?? undefined}
           prefill={!editing ? duplicateSource ?? undefined : undefined}
           onClose={() => { setAdding(false); setEditing(null); setDuplicateSource(null); }}
-          onSaved={() => {
+          onSaved={(saved) => {
             setAdding(false);
             setEditing(null);
             setDuplicateSource(null);
+            // The save already returned the row, so show it now rather than
+            // after the whole list re-downloads (two round trips on a weak
+            // connection). The refetch below still runs, in the background,
+            // to reconcile filters/search and anyone else's changes.
+            queryClient.setQueriesData<{ rows: JobSeparation[]; hasMore: boolean }>(
+              { queryKey: ['job-separations'] },
+              (old) => {
+                if (!old) return old;
+                return old.rows.some((r) => r.id === saved.id)
+                  ? { ...old, rows: old.rows.map((r) => (r.id === saved.id ? saved : r)) }
+                  : { ...old, rows: [saved, ...old.rows] };
+              },
+            );
             queryClient.invalidateQueries({ queryKey: ['job-separations'] });
           }}
         />

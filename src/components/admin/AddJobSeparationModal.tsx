@@ -37,7 +37,7 @@ type Props = {
   // other field starts empty. Ignored when `editing` is set.
   prefill?: JobSeparation;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (row: JobSeparation) => void;
 };
 
 export default function AddJobSeparationModal({ editing, prefill, onClose, onSaved }: Props) {
@@ -162,7 +162,7 @@ export default function AddJobSeparationModal({ editing, prefill, onClose, onSav
         return;
       }
       toast.success(editing ? 'Row updated' : 'Row added');
-      onSaved();
+      onSaved(data.job_separation as JobSeparation);
     } catch {
       toast.error('Network error');
     } finally {
