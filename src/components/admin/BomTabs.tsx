@@ -27,7 +27,7 @@ const TABS: { value: Tab; label: string }[] = [
   { value: 'materials', label: 'Materials' },
 ];
 
-export default function BomTabs({ canDecide, canManageStock, canSeeTotals }: { canDecide: boolean; canManageStock: boolean; canSeeTotals: boolean }) {
+export default function BomTabs({ canDecide, canManageStock, canSeeTotals, canSeeRates }: { canDecide: boolean; canManageStock: boolean; canSeeTotals: boolean; canSeeRates: boolean }) {
   // Costing first for everyone — "is this order worth taking" is the
   // question the section exists to answer; the Requests badge flags the
   // rest.
@@ -41,7 +41,8 @@ export default function BomTabs({ canDecide, canManageStock, canSeeTotals }: { c
     <div className="space-y-4">
       {/* Underline tabs — the same grammar as DiesTabs and the dashboard. */}
       <div role="tablist" aria-label="Bill of Material section" className="flex gap-7 overflow-x-auto overflow-y-hidden border-b border-brand-border">
-        {TABS.map((t) => (
+        {/* Materials is the rate list — only for "See material rates". */}
+        {TABS.filter((t) => t.value !== 'materials' || canSeeRates).map((t) => (
           <button
             key={t.value}
             type="button"
@@ -68,10 +69,10 @@ export default function BomTabs({ canDecide, canManageStock, canSeeTotals }: { c
         ))}
       </div>
 
-      {tab === 'costing'   && <BomCostingTable canDecide={canDecide} canSeeTotals={canSeeTotals} />}
+      {tab === 'costing'   && <BomCostingTable canDecide={canDecide} canSeeTotals={canSeeTotals} canSeeRates={canSeeRates} />}
       {tab === 'requests'  && <BomRequestsList canDecide={canDecide} canManageStock={canManageStock} />}
-      {tab === 'inventory' && <PaperStockManager canManage={canManageStock} canSeeTotals={canSeeTotals} />}
-      {tab === 'materials' && <BomMaterialsManager canManage={canDecide} />}
+      {tab === 'inventory' && <PaperStockManager canManage={canManageStock} canSeeTotals={canSeeTotals && canSeeRates} />}
+      {tab === 'materials' && canSeeRates && <BomMaterialsManager canManage={canDecide} />}
     </div>
   );
 }

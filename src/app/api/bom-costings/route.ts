@@ -21,9 +21,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
-import { getDeptPermissions, canDeptUseBOM } from '@/lib/constants/departments';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { getDeptPermissions, canDeptUseBOM, canDeptSeeMaterialRates } from '@/lib/constants/departments';
 import { parseDateRange, rangeOrClause, parseLimit, searchOrClause } from '@/lib/jobSeparationQuery';
-import { materialExpense } from '@/lib/bom';
+import { materialExpense, withoutRates } from '@/lib/bom';
 import { stockUsage } from '@/lib/paperStock';
 import type { BomCostingRow, BomCosting, BomMaterialRequest } from '@/lib/types';
 import { deptKeyOf } from '@/lib/identity';
@@ -98,7 +99,11 @@ export async function GET(request: NextRequest) {
   const range  = parseDateRange(searchParams.get('range'));
   const limit  = parseLimit(searchParams.get('limit'));
 
-  let query = supabase
+  // Service role: the rate columns are closed to logins (migration 081).
+  // Access was checked just above; rates are blanked below for anyone
+  // who may not see them.
+  const seeRates = canDeptSeeMaterialRates(perms);
+  let query = createAdminClient()
     .from('job_separations')
     .select(
       'id, sr_no, party, po_no, po_date, pm_code, material_name, quantity, order_value, created_at, ' +
@@ -128,7 +133,10 @@ export async function GET(request: NextRequest) {
   const hasMore = raw.length > limit;
   const page = hasMore ? raw.slice(0, limit) : raw;
 
-  const rows: BomCostingRow[] = page.map((r) => ({
+  const rows: BomCostingRow[] = page.map((r) => {
+    const costing = shapeCosting(one(r.costing));
+    const request = one(r.requests);
+    return {
     job: {
       id:            r.id,
       sr_no:         r.sr_no,
@@ -141,10 +149,11 @@ export async function GET(request: NextRequest) {
       order_value:   r.order_value === null ? null : Number(r.order_value),
       created_at:    r.created_at,
     },
-    costing:        shapeCosting(one(r.costing)),
-    latest_request: one(r.requests),
+    costing:        costing && !seeRates ? withoutRates(costing) : costing,
+    latest_request: request && !seeRates ? withoutRates(request) : request,
     ...stockUsage(r.stock),
-  }));
+    };
+  });
 
   return NextResponse.json({ rows, hasMore });
 }

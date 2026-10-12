@@ -13,8 +13,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getDeptPermissions, canDeptUseBOM } from '@/lib/constants/departments';
-import { materialExpense } from '@/lib/bom';
+import { getDeptPermissions, canDeptUseBOM, canDeptSeeMaterialRates } from '@/lib/constants/departments';
+import { materialExpense, withoutRates } from '@/lib/bom';
 import type { BomCosting } from '@/lib/types';
 import { deptKeyOf } from '@/lib/identity';
 
@@ -115,5 +115,5 @@ export async function PUT(request: NextRequest, { params }: Params) {
     updated_at:        saved.updated_at,
   };
 
-  return NextResponse.json({ costing });
+  return NextResponse.json({ costing: canDeptSeeMaterialRates(perms) ? costing : withoutRates(costing) });
 }

@@ -738,7 +738,8 @@ export interface BomMaterial {
   specification: string | null;   // gsm / micron / finish — free text
   // ₹ per square metre. 0 means "not entered yet": the material is listed
   // but a job can't be priced with it — see materialExpense() in lib/bom.ts.
-  rate_per_sqm:  number;
+  // null: hidden from this department (canDeptSeeMaterialRates).
+  rate_per_sqm:  number | null;
   /** Costed jobs using it (GET /api/bom-materials). */
   used_by?:      number;
   is_active:     boolean;
@@ -785,8 +786,8 @@ export interface BomMaterialRequest {
   material_name:           string;
   material_width_mm:       number;
   running_meter:           number;
-  rate_per_sqm:            number;
-  expense:                 number;
+  rate_per_sqm:            number | null;   // null: hidden (canDeptSeeMaterialRates)
+  expense:                 number | null;
   order_value:             number | null;
   message:                 string | null;
   status:                  BomRequestStatus;

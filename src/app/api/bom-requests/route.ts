@@ -17,8 +17,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getDeptPermissions, canDeptUseBOM } from '@/lib/constants/departments';
-import { materialExpense, BOM_JOB_SUMMARY_SELECT } from '@/lib/bom';
+import { getDeptPermissions, canDeptUseBOM, canDeptSeeMaterialRates } from '@/lib/constants/departments';
+import { materialExpense, withoutRates, BOM_JOB_SUMMARY_SELECT } from '@/lib/bom';
 import { deptKeyOf } from '@/lib/identity';
 
 const STATUSES = ['pending', 'ordered', 'declined', 'cancelled'] as const;
@@ -62,7 +62,9 @@ export async function GET(request: NextRequest) {
 
   const statusParam = request.nextUrl.searchParams.get('status') ?? 'pending';
 
-  let query = gate.supabase
+  // Service role: rate and expense are closed to logins (migration 081);
+  // access was checked by the gate, and they're blanked below if needed.
+  let query = createAdminClient()
     .from('bom_material_requests')
     .select(`*, ${BOM_JOB_SUMMARY_SELECT}`)
     .order('created_at', { ascending: false });
@@ -75,7 +77,8 @@ export async function GET(request: NextRequest) {
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ requests: data ?? [] });
+  const seeRates = canDeptSeeMaterialRates(gate.perms);
+  return NextResponse.json({ requests: (data ?? []).map((r) => (seeRates ? r : withoutRates(r))) });
 }
 
 export async function POST(request: NextRequest) {
@@ -169,5 +172,5 @@ export async function POST(request: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ request: data }, { status: 201 });
+  return NextResponse.json({ request: canDeptSeeMaterialRates(gate.perms) ? data : withoutRates(data) }, { status: 201 });
 }

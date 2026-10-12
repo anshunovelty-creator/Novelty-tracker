@@ -11,7 +11,8 @@
 
 import { NextResponse } from 'next/server';
 import { requirePaperStock } from '@/lib/api/paperStockGate';
-import { canDeptSeeMoneyTotals } from '@/lib/constants/departments';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { canDeptSeeMoneyTotals, canDeptSeeMaterialRates } from '@/lib/constants/departments';
 import { stockValue } from '@/lib/paperStock';
 import type { PaperRoll } from '@/lib/types';
 
@@ -24,11 +25,13 @@ type Raw = Pick<PaperRoll, 'id' | 'material_id' | 'width_mm' | 'remaining_meter'
 export async function GET() {
   const gate = await requirePaperStock('use');
   if ('error' in gate) return gate.error;
-  if (!canDeptSeeMoneyTotals(gate.perms)) {
+  // Stock value is metres × rate, so it needs the rates too (migration 081).
+  if (!canDeptSeeMoneyTotals(gate.perms) || !canDeptSeeMaterialRates(gate.perms)) {
     return NextResponse.json({ error: 'Your department does not see money totals' }, { status: 403 });
   }
 
-  const { data, error } = await gate.supabase
+  // Service role: rates are closed to logins (migration 081).
+  const { data, error } = await createAdminClient()
     .from('paper_rolls')
     .select('id, material_id, width_mm, remaining_meter, material:bom_materials(name, rate_per_sqm)')
     .gt('remaining_meter', 0)

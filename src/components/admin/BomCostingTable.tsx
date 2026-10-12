@@ -70,6 +70,11 @@ const COLUMNS = [
   'Material', 'Width (mm)', 'Running (m)', 'Stock', 'Expense', 'Difference', 'Request',
 ] as const;
 
+// What a department without canSeeRates gets: the same sheet minus every
+// figure made from a ₹/m² rate.
+const RATE_COLUMNS: readonly string[] = ['Expense', 'Difference'];
+const RATE_EXPORT_HEADERS: readonly string[] = ['Rate per sq m', 'Expense', 'Difference'];
+
 // A state is a dot + its name (DESIGN.md) — colour encodes state only.
 const REQUEST_DOT: Record<BomRequestStatus, string> = {
   pending:   '#D97706',
@@ -132,10 +137,13 @@ const EXPORT_COLUMNS: CsvColumn<ExportRow>[] = [
   { header: 'Request',        value: (r) => r.latest_request ? `${r.latest_request.ref} · ${REQUEST_LABEL[r.latest_request.status]}` : null },
 ];
 
-/** canSeeTotals: the department's "See money totals" feature — hides the ₹ sums, not the per-row figures. */
-type Props = { canDecide: boolean; canSeeTotals: boolean };
+/** canSeeTotals: the department's "See money totals" feature — hides the ₹ sums, not the per-row figures.
+ *  canSeeRates: "See material rates" — without it, no rate, expense or difference anywhere (the API sends none). */
+type Props = { canDecide: boolean; canSeeTotals: boolean; canSeeRates: boolean };
 
-export default function BomCostingTable({ canDecide, canSeeTotals }: Props) {
+export default function BomCostingTable({ canDecide, canSeeTotals, canSeeRates }: Props) {
+  const columns = canSeeRates ? COLUMNS : COLUMNS.filter((c) => !RATE_COLUMNS.includes(c));
+  const exportColumns = canSeeRates ? EXPORT_COLUMNS : EXPORT_COLUMNS.filter((c) => !RATE_EXPORT_HEADERS.includes(c.header));
   // The table scrolls, not the page — see useFitToViewport.
   const fitRef = useFitToViewport<HTMLDivElement>();
   const queryClient = useQueryClient();
@@ -409,7 +417,7 @@ export default function BomCostingTable({ canDecide, canSeeTotals }: Props) {
           <SearchClearButton value={search} onClear={() => setSearch('')} />
         </div>
 
-        <CsvExportButton rows={exportRows} columns={EXPORT_COLUMNS} filename="bill-of-material" />
+        <CsvExportButton rows={exportRows} columns={exportColumns} filename="bill-of-material" />
       </div>
 
       {/* ── Totals ─────────────────────────────────────────────── */}
@@ -441,7 +449,7 @@ export default function BomCostingTable({ canDecide, canSeeTotals }: Props) {
           read better than anyone has actually established. */}
       {!loading && rows.length > 0 && (
         <dl
-          className={cn('grid grid-cols-2 gap-3', canSeeTotals && 'lg:grid-cols-4')}
+          className={cn('grid grid-cols-2 gap-3', canSeeTotals && canSeeRates && 'lg:grid-cols-4', canSeeTotals !== canSeeRates && 'lg:grid-cols-3')}
           title={hasMore ? 'Totals only what’s loaded — narrow the search or "Load more" to cover the rest' : 'Totals of the rows shown, using saved figures'}
         >
           {/* The ₹ sums follow the department's "See money totals" feature;
@@ -449,20 +457,24 @@ export default function BomCostingTable({ canDecide, canSeeTotals }: Props) {
           {canSeeTotals && (
             <>
               <Total label="Order value" value={`₹${formatInr(totals.orderValue)}`} starred={hasMore} />
-              <Total
-                label="Paper expense"
-                value={`₹${formatInr(totals.expense)}`}
-                sub={<>Difference <span className={cn('font-mono font-semibold', totals.difference < 0 ? 'text-red-700' : 'text-emerald-800')}>₹{signedInr(totals.difference)}</span></>}
-              />
+              {canSeeRates && (
+                <Total
+                  label="Paper expense"
+                  value={`₹${formatInr(totals.expense)}`}
+                  sub={<>Difference <span className={cn('font-mono font-semibold', totals.difference < 0 ? 'text-red-700' : 'text-emerald-800')}>₹{signedInr(totals.difference)}</span></>}
+                />
+              )}
             </>
           )}
           <Total label="Paper from stock" value={`${formatMeters(stockMetres)} m`} sub="saved buying new rolls" />
-          <Total
-            label="Jobs over paper budget"
-            value={String(overBudget)}
-            tone={overBudget > 0 ? 'text-red-700' : 'text-[var(--glass-ink)]'}
-            sub={overBudget > 0 ? 'expense above the order value' : 'none — every priced job is within its order'}
-          />
+          {canSeeRates && (
+            <Total
+              label="Jobs over paper budget"
+              value={String(overBudget)}
+              tone={overBudget > 0 ? 'text-red-700' : 'text-[var(--glass-ink)]'}
+              sub={overBudget > 0 ? 'expense above the order value' : 'none — every priced job is within its order'}
+            />
+          )}
         </dl>
       )}
 
@@ -471,8 +483,8 @@ export default function BomCostingTable({ canDecide, canSeeTotals }: Props) {
         <div className="rounded-xl glass overflow-hidden">
           <div ref={fitRef} className="table-scroll-wrapper relative max-h-[70vh] overflow-y-auto">
             <table className="w-full min-w-[1080px] border-collapse text-sm">
-              <thead><tr>{COLUMNS.map((col) => <th key={col} scope="col" className={headerClass(col)}>{col}</th>)}</tr></thead>
-              <tbody><SkeletonRows rows={6} cols={COLUMNS.length} /></tbody>
+              <thead><tr>{columns.map((col) => <th key={col} scope="col" className={headerClass(col)}>{col}</th>)}</tr></thead>
+              <tbody><SkeletonRows rows={6} cols={columns.length} /></tbody>
             </table>
           </div>
         </div>
@@ -504,8 +516,12 @@ export default function BomCostingTable({ canDecide, canSeeTotals }: Props) {
 
                   <div className="grid grid-cols-3 gap-x-3 gap-y-1 text-xs">
                     <Figure label="Order value" value={row.job.order_value} />
-                    <Figure label="Expense" value={preview.expense} dirty={dirty} />
-                    <Figure label="Difference" value={preview.difference} dirty={dirty} signed />
+                    {canSeeRates && (
+                      <>
+                        <Figure label="Expense" value={preview.expense} dirty={dirty} />
+                        <Figure label="Difference" value={preview.difference} dirty={dirty} signed />
+                      </>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -527,6 +543,7 @@ export default function BomCostingTable({ canDecide, canSeeTotals }: Props) {
                     onSave={() => saveRow(row)}
                     onDiscard={() => discardDraft(row.job.id)}
                     onRequest={() => setRequesting(row)}
+                    canSeeRates={canSeeRates}
                     size="md"
                   />
                 </li>
@@ -539,7 +556,7 @@ export default function BomCostingTable({ canDecide, canSeeTotals }: Props) {
             <div ref={fitRef} className="table-scroll-wrapper relative max-h-[70vh] overflow-y-auto">
               <table className="w-full min-w-[1080px] border-collapse text-sm">
                 <thead>
-                  <tr>{COLUMNS.map((col) => <th key={col} scope="col" className={headerClass(col)}>{col}</th>)}</tr>
+                  <tr>{columns.map((col) => <th key={col} scope="col" className={headerClass(col)}>{col}</th>)}</tr>
                 </thead>
                 <tbody>
                   {rows.map((row, i) => {
@@ -582,6 +599,7 @@ export default function BomCostingTable({ canDecide, canSeeTotals }: Props) {
                         </td>
 
                         {/* The sheet's two answers */}
+                        {canSeeRates && (<>
                         <td className={cn(cellClass, 'font-mono whitespace-nowrap text-right', dirty ? 'text-amber-800' : 'text-[var(--glass-ink)]')}
                             title={preview.rateNote ?? undefined}>
                           {formatInr(preview.expense)}
@@ -593,6 +611,7 @@ export default function BomCostingTable({ canDecide, canSeeTotals }: Props) {
                             <span className="block text-[10px] font-normal opacity-80">{preview.marginPct}%</span>
                           )}
                         </td>
+                        </>)}
 
                         <td className="px-3 py-1.5 text-right whitespace-nowrap">
                           <RowActions
@@ -602,6 +621,7 @@ export default function BomCostingTable({ canDecide, canSeeTotals }: Props) {
                             onSave={() => saveRow(row)}
                             onDiscard={() => discardDraft(row.job.id)}
                             onRequest={() => setRequesting(row)}
+                            canSeeRates={canSeeRates}
                             size="sm"
                           />
                         </td>
@@ -695,7 +715,9 @@ export default function BomCostingTable({ canDecide, canSeeTotals }: Props) {
           description={
             <>
               <span className="font-mono">{formatQty(requesting.costing?.running_meter ?? null)} m × {formatQty(requesting.costing?.material_width_mm ?? null)} mm</span>
-              {' '}— ₹{formatInr(requesting.costing?.expense)} against an order of ₹{formatInr(requesting.job.order_value)}.
+              {canSeeRates
+                ? <>{' '}— ₹{formatInr(requesting.costing?.expense)} against an order of ₹{formatInr(requesting.job.order_value)}.</>
+                : '.'}
               {canDecide ? ' This goes to the Requests tab.' : ' Admin sees this in their Requests tab.'}
             </>
           }
@@ -822,7 +844,10 @@ function MaterialSelect({
         <option value="">— pick material —</option>
         {options.map((m) => (
           <option key={m.id} value={m.id}>
-            {m.name}{m.rate_per_sqm > 0 ? ` · ₹${formatInr(m.rate_per_sqm)}/m²` : ' · no rate'}{m.is_active ? '' : ' (retired)'}
+            {m.name}
+            {/* null: rates hidden from this department — say nothing, not "no rate". */}
+            {m.rate_per_sqm === null ? '' : m.rate_per_sqm > 0 ? ` · ₹${formatInr(m.rate_per_sqm)}/m²` : ' · no rate'}
+            {m.is_active ? '' : ' (retired)'}
           </option>
         ))}
       </select>
@@ -1094,10 +1119,10 @@ function FloatingCard({
 }
 
 function RowActions({
-  row, dirty, busy, onSave, onDiscard, onRequest, size,
+  row, dirty, busy, onSave, onDiscard, onRequest, canSeeRates, size,
 }: {
   row: BomCostingRow; dirty: boolean; busy: boolean;
-  onSave: () => void; onDiscard: () => void; onRequest: () => void; size: 'sm' | 'md';
+  onSave: () => void; onDiscard: () => void; onRequest: () => void; canSeeRates: boolean; size: 'sm' | 'md';
 }) {
   // Unsaved edits: the row's one job is to get saved. Request would send
   // the OLD numbers (the API reads the database, not the form), so it
@@ -1111,7 +1136,12 @@ function RowActions({
     );
   }
 
-  const priceable = row.costing?.expense !== null && row.costing?.expense !== undefined;
+  // Without rates there's no expense to check — the three inputs being in is
+  // enough, and the API still refuses a material with no rate on the master.
+  const c = row.costing;
+  const priceable = canSeeRates
+    ? c?.expense !== null && c?.expense !== undefined
+    : !!(c?.material_id && c.material_width_mm && c.running_meter);
   const open = row.latest_request?.status === 'pending';
 
   return (

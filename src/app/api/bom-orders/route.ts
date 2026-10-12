@@ -14,8 +14,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getDeptPermissions, canDeptUseBOM, canDeptDecideBOM } from '@/lib/constants/departments';
-import { BOM_JOB_SUMMARY_SELECT } from '@/lib/bom';
+import { getDeptPermissions, canDeptUseBOM, canDeptDecideBOM, canDeptSeeMaterialRates } from '@/lib/constants/departments';
+import { withoutRates, BOM_JOB_SUMMARY_SELECT } from '@/lib/bom';
 import { positive, rpcError } from '@/lib/api/paperStockGate';
 import { deptKeyOf } from '@/lib/identity';
 
@@ -31,7 +31,9 @@ export async function GET(request: NextRequest) {
   }
 
   const status = request.nextUrl.searchParams.get('status') ?? 'ordered';
-  let query = supabase
+  // Service role: a request's rate and expense are closed to logins
+  // (migration 081); access was checked above, and they're blanked below.
+  let query = createAdminClient()
     .from('bom_material_orders')
     .select(`*, requests:bom_material_requests(*, ${BOM_JOB_SUMMARY_SELECT})`)
     .order('created_at', { ascending: false });
@@ -40,8 +42,10 @@ export async function GET(request: NextRequest) {
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  const seeRates = canDeptSeeMaterialRates(perms);
   const orders = (data ?? []).map((o) => ({
     ...o,
+    requests:       seeRates ? o.requests : (o.requests ?? []).map(withoutRates),
     width_mm:       Number(o.width_mm),
     ordered_meter:  Number(o.ordered_meter),
     received_meter: o.received_meter === null ? null : Number(o.received_meter),

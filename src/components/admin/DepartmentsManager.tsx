@@ -42,6 +42,7 @@ const FEATURES: { key: string; label: string }[] = [
   { key: 'register_manage',                label: 'Access Register (Follow-ups)' },
   { key: 'bom_use',                        label: 'Access Bill of Material (cost jobs, request material)' },
   { key: 'bom_decide',                     label: 'Answer BOM requests & manage material rates' },
+  { key: 'bom_rates_view',                 label: 'See material rates (₹/m², expense, stock value)' },
   { key: 'paper_stock_manage',             label: 'Manage paper stock (receive, adjust rolls)' },
   { key: 'notification_recipients_manage', label: 'Manage Dispatch Alerts recipients' },
   { key: 'team_manage',                    label: 'Manage team logins' },

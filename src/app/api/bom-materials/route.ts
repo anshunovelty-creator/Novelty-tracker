@@ -2,7 +2,8 @@
 // ============================================================
 // GET  /api/bom-materials — the material master, A→Z, retired ones included
 //      (the costing table needs a retired material's name and rate to keep
-//      pricing the old jobs that use it). bom_use.
+//      pricing the old jobs that use it). bom_use; rates blanked without
+//      canDeptSeeMaterialRates.
 // POST /api/bom-materials — add a material with its ₹/m² rate. bom_decide:
 //      the rate is the owner's number, and the master is what every
 //      expense on the BOM is computed from.
@@ -17,7 +18,8 @@ import { allPages } from '@/lib/api/allPages';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getDeptPermissions, canDeptUseBOM, canDeptDecideBOM } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptUseBOM, canDeptDecideBOM, canDeptSeeMaterialRates } from '@/lib/constants/departments';
+import { withoutRates } from '@/lib/bom';
 import { deptKeyOf } from '@/lib/identity';
 
 function text(value: unknown): string | null {
@@ -45,7 +47,9 @@ export async function GET(_request: NextRequest) {
 
   // The whole master in one go: a shop's material list is a few dozen rows
   // at most, and the dropdown filters it client-side.
-  const { data, error } = await supabase
+  // Service role: rate_per_sqm is closed to logins (migration 081); access
+  // was checked above, and the rate is blanked below if they may not see it.
+  const { data, error } = await createAdminClient()
     .from('bom_materials')
     .select('*')
     .order('name');
@@ -72,7 +76,11 @@ export async function GET(_request: NextRequest) {
   const usedBy = new Map<string, number>();
   for (const u of uses) usedBy.set(u.material_id, (usedBy.get(u.material_id) ?? 0) + 1);
 
-  const materials = (data ?? []).map((m) => ({ ...m, rate_per_sqm: Number(m.rate_per_sqm), used_by: usedBy.get(m.id) ?? 0 }));
+  const seeRates = canDeptSeeMaterialRates(perms);
+  const materials = (data ?? []).map((m) => {
+    const row = { ...m, rate_per_sqm: Number(m.rate_per_sqm), used_by: usedBy.get(m.id) ?? 0 };
+    return seeRates ? row : withoutRates(row);
+  });
 
   return NextResponse.json({ materials });
 }

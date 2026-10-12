@@ -43,7 +43,7 @@ export type RequestGroup = {
   requests:     BomMaterialRequestWithJob[];
   meters:       number;   // open only (awaiting, or ordered and not yet received)
   sqm:          number;
-  expense:      number;
+  expense:      number | null;   // null: rates hidden from this department (the API sent none)
   widths:       { width: number; meters: number }[];
   pending:      BomMaterialRequestWithJob[];
   pendingByWidth: Map<number, BomMaterialRequestWithJob[]>; // width → awaiting — one order per width
@@ -75,7 +75,7 @@ export function groupRequests(requests: BomMaterialRequestWithJob[]): RequestGro
     if (isOpen(r)) {
       g.meters  = round2(g.meters + metres);
       g.sqm     = round2(g.sqm + metres * (width / 1000));
-      g.expense = round2(g.expense + Number(r.expense));
+      g.expense = r.expense === null || g.expense === null ? null : round2(g.expense + Number(r.expense));
       const w = g.widths.find((x) => x.width === width);
       if (w) w.meters = round2(w.meters + metres); else g.widths.push({ width, meters: metres });
     }
@@ -203,7 +203,7 @@ function GroupCard({
               <p className="font-mono text-3xl font-bold tabular-nums leading-none text-[var(--glass-ink)] mt-1">
                 {formatMeters(g.meters)}<span className="text-base font-semibold text-[var(--glass-muted)]"> m</span>
               </p>
-              <p className="mt-1 font-mono text-xs text-[var(--glass-muted)]">{formatMeters(g.sqm)} m² · ₹{formatInr(g.expense)}</p>
+              <p className="mt-1 font-mono text-xs text-[var(--glass-muted)]">{formatMeters(g.sqm)} m²{g.expense !== null && <> · ₹{formatInr(g.expense)}</>}</p>
             </div>
           </div>
         )}
@@ -312,14 +312,15 @@ function RequestLine({
             {chip.label}{r.decided_by ? ` by ${r.decided_by.split('@')[0]}` : ''}: <span className="text-[var(--glass-ink)]">{r.decision_note}</span>
           </p>
         )}
-        {/* Phone: the money under the job */}
-        <p className="md:hidden mt-1 font-mono text-[11px] text-[var(--glass-muted)]">
+        {/* Phone: the money under the job — none when rates are hidden */}
+        {r.expense !== null && <p className="md:hidden mt-1 font-mono text-[11px] text-[var(--glass-muted)]">
           ₹{formatInr(r.expense)} cost
           {difference !== null && <span className={difference < 0 ? 'text-red-700' : 'text-emerald-800'}> · {marginPct}% margin</span>}
-        </p>
+        </p>}
       </div>
 
       {/* Money — secondary: cost, and whether the order is worth it */}
+      {r.expense === null ? <div className="hidden md:block" /> : (
       <div className={cn('hidden md:block text-right', closed && 'opacity-70')} title={`Order value ₹${formatInr(r.order_value)} − material ₹${formatInr(r.expense)}`}>
         <p className="font-mono text-sm tabular-nums text-[var(--glass-ink)]">₹{formatInr(r.expense)}</p>
         {difference !== null ? (
@@ -330,6 +331,7 @@ function RequestLine({
           <p className="text-[11px] text-[var(--glass-muted)]">—</p>
         )}
       </div>
+      )}
 
       {/* Actions — the decision in words, the rest behind ⋯ */}
       <div className="flex items-center justify-end gap-1.5">

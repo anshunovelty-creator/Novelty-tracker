@@ -273,6 +273,13 @@ export function canDeptSeeMoneyTotals(perms: DeptPermissions | null): boolean {
   return hasFeature(perms, 'job_separation_total_view');
 }
 
+/** Who sees material ₹/m² rates and anything computed from them (expense,
+ *  difference, paper stock value). Setting rates implies seeing them —
+ *  migration 081. */
+export function canDeptSeeMaterialRates(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'bom_rates_view') || hasFeature(perms, 'bom_decide');
+}
+
 /** Who may add, edit, revise and change the status of shade cards.
  *  Prepress and QC (seeded in migration 055), plus the super-admin
  *  department. Deleting a card is separate and stricter — super admin only,

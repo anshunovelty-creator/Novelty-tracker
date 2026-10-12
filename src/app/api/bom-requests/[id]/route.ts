@@ -14,8 +14,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getDeptPermissions, canDeptUseBOM, canDeptDecideBOM } from '@/lib/constants/departments';
-import { BOM_JOB_SUMMARY_SELECT } from '@/lib/bom';
+import { getDeptPermissions, canDeptUseBOM, canDeptDecideBOM, canDeptSeeMaterialRates } from '@/lib/constants/departments';
+import { withoutRates, BOM_JOB_SUMMARY_SELECT } from '@/lib/bom';
 import type { BomRequestStatus } from '@/lib/types';
 import { deptKeyOf } from '@/lib/identity';
 
@@ -123,7 +123,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ request: data });
+  return NextResponse.json({ request: canDeptSeeMaterialRates(gate.perms) ? data : withoutRates(data) });
 }
 
 export async function DELETE(_request: NextRequest, { params }: Params) {

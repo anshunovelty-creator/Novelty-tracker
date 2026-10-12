@@ -166,3 +166,12 @@ describe('formatInr', () => {
     expect(formatInr(undefined)).toBe('—');
   });
 });
+
+describe('withoutRates', () => {
+  it('blanks the rate and expense, keeps everything else, adds nothing', async () => {
+    const { withoutRates } = await import('./bom');
+    expect(withoutRates({ name: 'Kraft', rate_per_sqm: 42 })).toEqual({ name: 'Kraft', rate_per_sqm: null });
+    expect(withoutRates({ ref: 'BOM-1', rate_per_sqm: 42, expense: 900, order_value: 1200 }))
+      .toEqual({ ref: 'BOM-1', rate_per_sqm: null, expense: null, order_value: 1200 });
+  });
+});

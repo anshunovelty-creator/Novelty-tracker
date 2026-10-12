@@ -12,7 +12,7 @@
 import { redirect } from 'next/navigation';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
-import { getDeptPermissions, canDeptUseBOM, canDeptDecideBOM, canDeptManagePaperStock, canDeptSeeMoneyTotals } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptUseBOM, canDeptDecideBOM, canDeptManagePaperStock, canDeptSeeMoneyTotals, canDeptSeeMaterialRates } from '@/lib/constants/departments';
 import BomTabs from '@/components/admin/BomTabs';
 import { deptKeyOf } from '@/lib/identity';
 
@@ -36,7 +36,7 @@ export default async function BomPage() {
             : 'Pick the material, enter its width and running metres, use paper from stock when it’s there, and send Admin a request when it isn’t.'}
         </p>
       </div>
-      <BomTabs canDecide={canDecide} canManageStock={canDeptManagePaperStock(perms)} canSeeTotals={canDeptSeeMoneyTotals(perms)} />
+      <BomTabs canDecide={canDecide} canManageStock={canDeptManagePaperStock(perms)} canSeeTotals={canDeptSeeMoneyTotals(perms)} canSeeRates={canDeptSeeMaterialRates(perms)} />
     </div>
   );
 }

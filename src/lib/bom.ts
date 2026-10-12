@@ -87,3 +87,11 @@ export function formatInr(value: number | null | undefined): string {
  */
 export const BOM_JOB_SUMMARY_SELECT =
   'job:job_separations(id, sr_no, party, po_no, po_date, pm_code, material_name, quantity, order_value, created_at)';
+
+/**
+ * The same row with ₹/m² and the expense made from it blanked — what a
+ * department without canDeptSeeMaterialRates is sent instead.
+ */
+export function withoutRates<T extends { rate_per_sqm?: number | null; expense?: number | null }>(row: T): T {
+  return { ...row, rate_per_sqm: null, ...('expense' in row ? { expense: null } : {}) };
+}

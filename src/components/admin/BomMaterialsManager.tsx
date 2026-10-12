@@ -49,7 +49,7 @@ function draftFrom(material: BomMaterial): Draft {
   return {
     name:          material.name,
     specification: material.specification ?? '',
-    rate:          material.rate_per_sqm > 0 ? String(material.rate_per_sqm) : '',
+    rate:          (material.rate_per_sqm ?? 0) > 0 ? String(material.rate_per_sqm) : '',
   };
 }
 
@@ -106,7 +106,7 @@ export default function BomMaterialsManager({ canManage }: Props) {
     return sorted;
   }, [visible, sortField, sortDir]);
   const retiredCount = materials.length - materials.filter((m) => m.is_active).length;
-  const unrated = materials.filter((m) => m.is_active && !(m.rate_per_sqm > 0)).length;
+  const unrated = materials.filter((m) => m.is_active && !((m.rate_per_sqm ?? 0) > 0)).length;
 
   // Every write invalidates both this list and the costing sheet — a rate
   // change reprices rows the other tab is showing.
@@ -300,7 +300,7 @@ export default function BomMaterialsManager({ canManage }: Props) {
                         </td>
                         <td className="px-3 py-1.5 whitespace-normal break-words text-[var(--glass-muted)]">{m.specification ?? '—'}</td>
                         <td className={cn('px-3 py-1.5 font-mono tabular-nums text-right whitespace-nowrap', m.is_active && 'text-[var(--glass-ink)]')}>
-                          {m.rate_per_sqm > 0 ? formatInr(m.rate_per_sqm) : (
+                          {(m.rate_per_sqm ?? 0) > 0 ? formatInr(m.rate_per_sqm) : (
                             <span className="inline-flex items-center gap-1 font-sans text-xs font-medium text-amber-800">
                               <AlertTriangle className="h-3 w-3" aria-hidden="true" />
                               Set rate
