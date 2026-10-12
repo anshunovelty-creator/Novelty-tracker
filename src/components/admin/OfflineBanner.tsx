@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { WifiOff } from 'lucide-react';
-import { flushQueueOnce, readQueue, OFFLINE_QUEUE_EVENT, OFFLINE_QUEUE_KEY, type QueuedChange } from '@/lib/offlineQueue';
+import { flushQueueOnce, readQueue, serverReachable,OFFLINE_QUEUE_EVENT, OFFLINE_QUEUE_KEY, type QueuedChange } from '@/lib/offlineQueue';
 import { JOBS_CHANGED_EVENT } from '@/lib/constants/events';
 
 export default function OfflineBanner() {
@@ -38,27 +38,41 @@ export default function OfflineBanner() {
     }
   }, []);
 
+  // The browser saying "offline" is checked against our server before we
+  // believe it — see serverReachable.
+  const check = useCallback(async () => {
+    const ok = navigator.onLine || await serverReachable(fetch);
+    setOnline(ok);
+    if (ok) sync();
+  }, [sync]);
+
   useEffect(() => {
     const refresh = () => setQueue(readQueue());
     const onStorage = (e: StorageEvent) => { if (e.key === OFFLINE_QUEUE_KEY) refresh(); };
     const goOnline  = () => { setOnline(true); sync(); };
-    const goOffline = () => setOnline(false);
 
-    setOnline(navigator.onLine);
     refresh();
-    if (navigator.onLine) sync();
+    check();
 
     window.addEventListener(OFFLINE_QUEUE_EVENT, refresh);
     window.addEventListener('storage', onStorage);
     window.addEventListener('online', goOnline);
-    window.addEventListener('offline', goOffline);
+    window.addEventListener('offline', check);
     return () => {
       window.removeEventListener(OFFLINE_QUEUE_EVENT, refresh);
       window.removeEventListener('storage', onStorage);
       window.removeEventListener('online', goOnline);
-      window.removeEventListener('offline', goOffline);
+      window.removeEventListener('offline', check);
     };
-  }, [sync]);
+  }, [sync, check]);
+
+  // While the strip says "No connection", keep asking the server, so it
+  // clears even if the browser never fires 'online'.
+  useEffect(() => {
+    if (online) return;
+    const t = setInterval(check, 15_000);
+    return () => clearInterval(t);
+  }, [online, check]);
 
   if (online && queue.length === 0) return null;
 

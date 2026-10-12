@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { enqueue, readQueue, flushQueue, flushQueueOnce, newRequestId, OFFLINE_QUEUE_KEY } from './offlineQueue';
+import { enqueue, readQueue, flushQueue, flushQueueOnce, newRequestId, isNetworkFailure, serverReachable, OFFLINE_QUEUE_KEY } from './offlineQueue';
 import { joinOr, notYourStageTitle } from './stageBlocked';
 
 const mem = () => {
@@ -144,5 +144,14 @@ describe('not your stage wording', () => {
   it('names Admin when no floor department holds the stage', () => {
     expect(notYourStageTitle([], 'PO Closed')).toBe('Only Admin can move a job to PO Closed');
     expect(notYourStageTitle(['Dispatch'], 'Packing')).toBe('Only Dispatch can move a job to Packing');
+  });
+});
+
+describe('connection check', () => {
+  it('trusts the server, not the browser flag', async () => {
+    expect(await serverReachable(async () => new Response(null, { status: 404 }))).toBe(true);
+    expect(await serverReachable(async () => { throw new TypeError('Failed to fetch'); })).toBe(false);
+    expect(isNetworkFailure(new TypeError('Failed to fetch'))).toBe(true);
+    expect(isNetworkFailure(new SyntaxError('bad json'))).toBe(false);
   });
 });

@@ -83,7 +83,22 @@ export function statusHeaders(requestId?: string): Record<string, string> {
 
 /** fetch() rejects (rather than resolving with a status) only when the request never got an answer. */
 export function isNetworkFailure(err: unknown): boolean {
-  return err instanceof TypeError || (typeof navigator !== 'undefined' && navigator.onLine === false);
+  return err instanceof TypeError;
+}
+
+/**
+ * Does our own server answer? navigator.onLine is only a hint: it can stick
+ * on false while the network works (Chrome/Edge on Windows with VPN or
+ * virtual adapters), until the machine restarts. Any HTTP answer counts;
+ * a static file, so it skips the middleware and costs nothing.
+ */
+export async function serverReachable(fetchImpl: typeof fetch): Promise<boolean> {
+  try {
+    await fetchImpl(`/company-logo.png?ping=${Date.now()}`, { method: 'HEAD', cache: 'no-store' });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export type FlushResult = {
