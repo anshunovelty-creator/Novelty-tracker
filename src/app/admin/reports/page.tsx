@@ -1,7 +1,7 @@
 // src/app/admin/reports/page.tsx
-// How the floor performed in a month — on-time delivery, where jobs wait,
-// who orders most — plus that month's dispatches as a CSV. Admin only, the
-// same gate as Settings; GET /api/reports enforces it again.
+// The order book from Job Separation, analysed every way the office asks:
+// value, units, parties, products, order sizes, artwork, job cards. Admin
+// only, the same gate as Settings; GET /api/reports enforces it again.
 
 import { redirect } from 'next/navigation';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
