@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/Button';
 import { ModalShell } from './modals';
 import type { JobSeparation, Party } from '@/lib/types';
 import { WithExample, WithUnit } from '@/components/ui/FieldAffix';
+import { useListKeys } from '@/hooks/useListKeys';
 
 const inputCls = cn(
   'w-full px-3 py-2 rounded-lg text-sm bg-[var(--field-bg)] border border-[var(--field-border)]',
@@ -123,6 +124,11 @@ export default function AddJobSeparationModal({ editing, prefill, onClose, onSav
     setShowPartySuggestions(false);
   }
 
+  const partyKeys = useListKeys({
+    items: partySuggestions, open: showPartySuggestions,
+    onPick: selectParty, onClose: () => setShowPartySuggestions(false),
+  });
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
@@ -206,18 +212,24 @@ export default function AddJobSeparationModal({ editing, prefill, onClose, onSav
                 onFocus={() => (partySuggestions.length > 0 || party.trim()) && setShowPartySuggestions(true)}
                 onBlur={() => setTimeout(() => setShowPartySuggestions(false), 150)}
                 autoComplete="off"
+                aria-label="Party"
+                {...partyKeys.inputProps}
                 className={inputCls}
               />
               {showPartySuggestions && (
-                <div className="absolute z-20 top-full left-0 right-0 mt-1 glass-strong glass rounded-lg shadow-lg overflow-hidden max-h-56 overflow-y-auto">
+                <div {...partyKeys.listProps} className="absolute z-20 top-full left-0 right-0 mt-1 glass-strong glass rounded-lg shadow-lg overflow-hidden max-h-56 overflow-y-auto">
                   {partySuggestions.length > 0 ? (
-                    partySuggestions.map((p) => (
+                    partySuggestions.map((p, i) => (
                       <button
                         key={p.id}
                         type="button"
+                        {...partyKeys.optionProps(i)}
                         // onMouseDown fires before the input's onBlur closes the list
                         onMouseDown={(e) => { e.preventDefault(); selectParty(p); }}
-                        className="w-full text-left px-3 py-2 text-sm text-[var(--glass-ink)] hover:bg-white/[0.08] transition-colors border-b border-white/10 last:border-0"
+                        className={cn(
+                          'w-full text-left px-3 py-2 text-sm text-[var(--glass-ink)] transition-colors border-b border-white/10 last:border-0',
+                          i === partyKeys.active && 'bg-brand-surface-hover shadow-[inset_3px_0_0_#10553F]',
+                        )}
                       >
                         {p.name}
                       </button>

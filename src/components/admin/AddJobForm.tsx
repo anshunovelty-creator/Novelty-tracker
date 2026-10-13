@@ -11,6 +11,7 @@ import { LoadingButton } from '@/components/ui/Loading';
 import toast from 'react-hot-toast';
 import { usePrintingUnits } from '@/hooks/useReferenceData';
 import { WithExample, WithUnit } from '@/components/ui/FieldAffix';
+import { useListKeys } from '@/hooks/useListKeys';
 
 const NO_UNITS: PrintingUnit[] = [];
 
@@ -193,6 +194,11 @@ const AddJobForm = React.forwardRef<AddJobFormHandle, Props>(function AddJobForm
     toast.success('Autofilled from earlier job — type set to Repeat');
   }
 
+  const pmKeys = useListKeys({
+    items: pmSuggestions, open: showPmSuggestions,
+    onPick: applyPmSuggestion, onClose: () => setShowPmSuggestions(false),
+  });
+
   function set<K extends keyof AddJobFormData>(key: K, value: AddJobFormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
@@ -344,21 +350,26 @@ const AddJobForm = React.forwardRef<AddJobFormHandle, Props>(function AddJobForm
                   onFocus={() => pmSuggestions.length > 0 && setShowPmSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowPmSuggestions(false), 150)}
                   autoComplete="off"
+                  aria-label="PM Code"
+                  {...pmKeys.inputProps}
                   className={inputCls}
                 />
               </WithExample>
               {showPmSuggestions && (
                 <div className="absolute z-20 top-full left-0 right-0 mt-1 glass-strong glass rounded-lg shadow-lg overflow-hidden">
                   <p className="px-3 py-1.5 text-xs text-[var(--glass-muted)] bg-white/[0.06] border-b border-white/10">
-                    Earlier jobs — click to autofill
+                    Earlier jobs — pick one to autofill (↓ ↑ and Enter work too)
                   </p>
-                  {pmSuggestions.map((s) => (
+                  <div {...pmKeys.listProps} aria-label="Earlier jobs" className="max-h-72 overflow-y-auto">
+                  {pmSuggestions.map((s, i) => (
                     <button
                       key={s.pm_code}
                       type="button"
+                      {...pmKeys.optionProps(i)}
                       // onMouseDown fires before the input's onBlur closes the list
                       onMouseDown={(e) => { e.preventDefault(); applyPmSuggestion(s); }}
-                      className="w-full text-left px-3 py-2 hover:bg-white/[0.08] transition-colors border-b border-white/10 last:border-0"
+                      className={cn('w-full text-left px-3 py-2 transition-colors border-b border-white/10 last:border-0',
+                        i === pmKeys.active && 'bg-brand-surface-hover shadow-[inset_3px_0_0_#10553F]')}
                     >
                       <span className="block font-mono text-xs font-medium text-[var(--glass-ink)]">
                         {s.pm_code}
@@ -372,6 +383,7 @@ const AddJobForm = React.forwardRef<AddJobFormHandle, Props>(function AddJobForm
                       </span>
                     </button>
                   ))}
+                  </div>
                 </div>
               )}
             </div>
