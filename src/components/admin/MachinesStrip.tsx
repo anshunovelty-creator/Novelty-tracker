@@ -3,6 +3,8 @@
 // The Machines header on the dashboard: how many are running, a link to the
 // Machines page, and Hide / Show for the MachineBoard (queues, Start/Complete)
 // beneath it — that choice is remembered per browser by DashboardBoard.
+// While the board is hidden, `inline` renders the same thing as a run of
+// text for the page header's subtitle, so it takes no row of its own.
 //
 // Reads the same ['machines', ''] query as MachineBoard's live view, so the
 // two share one request and one cache.
@@ -22,9 +24,10 @@ type Props = {
   boardOpen:     boolean;
   onToggleBoard: () => void;
   boardId:       string;
+  inline?:       boolean;
 };
 
-export default function MachinesStrip({ boardOpen, onToggleBoard, boardId }: Props) {
+export default function MachinesStrip({ boardOpen, onToggleBoard, boardId, inline }: Props) {
   const query = useQuery({
     queryKey: ['machines', ''],
     queryFn: async () => {
@@ -39,14 +42,30 @@ export default function MachinesStrip({ boardOpen, onToggleBoard, boardId }: Pro
   const queue    = query.data?.queue ?? [];
   const running  = machines.filter((m) => queue.some((q) => q.machine_id === m.id && q.status === 'printing')).length;
 
+  const summary = query.data && machines.length > 0 ? `${running} of ${machines.length} running` : null;
+
+  if (inline) {
+    // -my-3 keeps the 44px tap target without making the subtitle line taller.
+    const link = 'inline-flex min-h-11 -my-3 items-center rounded-[10px] px-2 font-semibold hover:bg-brand-surface-hover';
+    return (
+      <span className="inline-flex flex-wrap items-center">
+        <span>Machines{summary && <span className="font-mono"> {summary}</span>}</span>
+        <Link href="/admin/machines" className={cn(link, 'ml-1 text-brand-muted hover:text-brand-ink')}>All machines</Link>
+        <button type="button" onClick={onToggleBoard} aria-expanded={boardOpen} aria-controls={boardId}
+          className={cn(link, 'gap-1 text-brand-primary')}>
+          Show
+          <ChevronDown aria-hidden="true" className="h-4 w-4" />
+        </button>
+      </span>
+    );
+  }
+
   return (
     <section aria-labelledby="machines-strip-title">
       <div className="flex items-center justify-between gap-3">
         <h2 id="machines-strip-title" className="text-[15px] font-semibold text-brand-ink">
           Machines
-          {query.data && machines.length > 0 && (
-            <span className="font-normal text-brand-muted"> · {running} of {machines.length} running</span>
-          )}
+          {summary && <span className="font-normal text-brand-muted"> · {summary}</span>}
         </h2>
         <div className="flex items-center gap-1">
         <Link

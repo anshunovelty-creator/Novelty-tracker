@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useUrlSearch } from '@/hooks/useUrlSearch';
+import { useFitToViewport } from '@/hooks/useFitToViewport';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn, sortJobs, type JobSortOption } from '@/lib/utils';
 import { compareValues, type SortDir, type SortKind } from '@/lib/sort';
@@ -136,6 +137,10 @@ export default function JobsTable({ initialJobs, dept, addJobFormRef, hideAddTri
   // Opened from the Ctrl K palette (/admin?q=…): search every active job,
   // not just the remembered tab — without overwriting that remembered tab.
   useUrlSearch(setSearch, () => setStoredView('all'));
+  // The table runs to the bottom of the window (more rows when the machines
+  // are hidden); below the open machines board it keeps its old 72vh.
+  // 70 = main's 24px bottom padding + the 46px count footer under the table.
+  const fitRef = useFitToViewport<HTMLDivElement>(70, 0.72);
 
   const fetchJobs = (closed: boolean) => async () => {
       const params = new URLSearchParams();
@@ -464,12 +469,12 @@ export default function JobsTable({ initialJobs, dept, addJobFormRef, hideAddTri
             )}
           </div>
 
-          {/* Desk: table. The scroll region is bounded (max-h) so the sticky
-              header has a scrollport to stick to; min-w forces horizontal
+          {/* Desk: table. The scroll region is bounded (fitted to the window)
+              so the sticky header has a scrollport to stick to; min-w forces horizontal
               scroll only once every column is at its floor, and the Job cell
               stays pinned through it. */}
           <div className="hidden lg:block">
-            <div className="table-scroll-wrapper max-h-[72vh] overflow-y-auto">
+            <div ref={fitRef} className="table-scroll-wrapper max-h-[72vh] overflow-y-auto">
               <table className="w-full min-w-[1180px] border-collapse text-sm">
                 <thead>
                   <tr>

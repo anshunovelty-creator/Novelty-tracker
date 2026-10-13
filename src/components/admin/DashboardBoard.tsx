@@ -73,7 +73,7 @@ export default function DashboardBoard({ dept, jobs }: Props) {
   }).format(new Date());
 
   return (
-    <div className="flex flex-col gap-7">
+    <div className="flex flex-col gap-6">
       {showFloor && (
         <div className="sm:hidden">
           <FloorQueue dept={dept} initialJobs={jobs} />
@@ -85,10 +85,18 @@ export default function DashboardBoard({ dept, jobs }: Props) {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1.5">
           <h1 className="text-[30px] font-semibold leading-9 tracking-[-0.025em] text-brand-ink">Jobs</h1>
-          <p className="text-sm text-brand-muted">
-            <span className="font-mono font-semibold text-brand-ink">{jobs.length}</span> in production
-            {' · '}
+          <p className="flex flex-wrap items-center gap-x-1.5 text-sm text-brand-muted">
+            <span><span className="font-mono font-semibold text-brand-ink">{jobs.length}</span> in production</span>
+            <span aria-hidden="true">·</span>
             <span className="font-mono">{today}</span>
+            {/* Machines hidden: their line folds into this subtitle instead
+                of keeping a row (and an empty board) above the jobs. */}
+            {isHidden && (
+              <>
+                <span aria-hidden="true">·</span>
+                <MachinesStrip inline boardOpen={false} onToggleBoard={() => applyCollapsed(false)} boardId="machine-board" />
+              </>
+            )}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -114,16 +122,20 @@ export default function DashboardBoard({ dept, jobs }: Props) {
         </div>
       </div>
 
-      <div className="flex flex-col gap-4">
-        <MachinesStrip
-          boardOpen={!isHidden}
-          onToggleBoard={() => applyCollapsed(!isHidden)}
-          boardId="machine-board"
-        />
-        <div id="machine-board">
-          <MachineBoard dept={dept} collapsed={collapsed} />
+      {isHidden ? (
+        <div id="machine-board" hidden />
+      ) : (
+        <div className="flex flex-col gap-4">
+          <MachinesStrip
+            boardOpen
+            onToggleBoard={() => applyCollapsed(true)}
+            boardId="machine-board"
+          />
+          <div id="machine-board">
+            <MachineBoard dept={dept} collapsed={collapsed} />
+          </div>
         </div>
-      </div>
+      )}
 
       <JobsTable
         initialJobs={jobs}
