@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { addMonths, previousPeriod, presetPeriod, artworkKind, jobCardKind, analyse, groupKey, cyclesOf, likelyDuplicates, partyKey, segmentsOf, rateChecksOf, pmKey, approvalsOf, lifecycleOf, forecastOf, type SepRow, type ShadeCard } from './reports';
+import { addMonths, previousPeriod, presetPeriod, artworkKind, jobCardKind, analyse, groupKey, cyclesOf, likelyDuplicates, partyKey, segmentsOf, rateChecksOf, pmKey, approvalsOf, lifecycleOf, forecastOf, bridgeOf, cohortsOf, rowChecksOf, paceOf, forecastCheckOf, type SepRow, type ShadeCard } from './reports';
 
 const row = (p: Partial<SepRow>): SepRow => ({
   id: Math.random().toString(36), sr_no: null, day: '2026-10-05', party: 'Arysta', po_no: 'PO1',
@@ -267,5 +267,61 @@ describe('product lifecycle and forecast', () => {
     // New-product first orders since 15 Aug: 500 + 2000 over 8 weeks
     expect(f.freshWeekly).toBeCloseTo(2500 / 8);
     expect(f.recentWeekly).toBe((1000 + 2000) / 4);
+  });
+});
+
+describe('what changed, pace and self-checks', () => {
+  const r = (party: string, pm: string, day: string, value: number, quantity = 1000) =>
+    row({ party, pm_code: pm, day, order_value: value, quantity, rate: value / quantity });
+  const rows = [
+    r('Dee', 'P9', '2026-08-10', 400),                                          // ordered in Aug, skipped Sep
+    r('Aye', 'P1', '2026-09-03', 2000), r('Aye', 'P2', '2026-09-04', 500), r('Bee', 'P1', '2026-09-05', 900),
+    r('Aye', 'P1', '2026-10-03', 2250, 1500), r('Aye', 'P3', '2026-10-04', 300),
+    r('Cee', 'P1', '2026-10-05', 700), r('Dee', 'P9', '2026-10-06', 400),
+  ];
+  const a = analyse(rows, { from: '2026-10-01', to: '2026-10-13' }, { unit: null, group: null, party: null }, '2026-10-13');
+
+  it('splits the change from last period into parts that add up', () => {
+    const v = Object.fromEntries(a.bridge.steps.map((s) => [s.key, s.value]));
+    expect(a.bridge.from).toBe(3400);
+    expect(a.bridge.to).toBe(3650);
+    expect(v).toEqual({ newCustomers: 700, returned: 400, lost: -900, addedProducts: 300, droppedProducts: -500, volume: 1000, price: -750 });
+    expect(a.bridge.from + a.bridge.steps.reduce((s, x) => s + x.value, 0)).toBe(a.bridge.to);
+  });
+  it('compares with last year only once the data goes back that far', () => {
+    expect(a.yearAgo).toBeNull();
+  });
+  it('follows each month of new plants', () => {
+    const c = cohortsOf(rows, '2026-10-13', '2026-08-01');
+    expect(c.map((x) => [x.month, x.customers, x.active, x.onBooks])).toEqual([
+      ['2026-08', 1, [100, 0, 100], true], ['2026-09', 2, [100, 50], false], ['2026-10', 1, [100], false],
+    ]);
+    expect(c[1].partial).toBe(true);
+  });
+  it('projects the month from the forecast for the days left', () => {
+    const week = (from: string, to: string) => ({ from, to, repeat: 700, fresh: 0, orders: 1 });
+    const p = paceOf([r('A', 'P', '2026-09-05', 1000), r('A', 'P', '2026-09-20', 500), r('A', 'P', '2026-10-03', 2000)], '2026-10-13', {
+      weeks: [week('2026-10-13', '2026-10-19'), week('2026-10-20', '2026-10-26'), week('2026-10-27', '2026-11-02'), week('2026-11-03', '2026-11-09')],
+      recentWeekly: 0, freshWeekly: 0,
+    });
+    expect(p).toMatchObject({ soFar: 2000, day: 13, daysIn: 31, lastMonth: 1500, lastMonthToDate: 1000 });
+    expect(p.projected).toBeCloseTo(2000 + 600 + 700 + 500);
+  });
+  it('scores the forecast on past weeks once there are six weeks before a cut-off', () => {
+    const f = forecastCheckOf(rows, '2026-10-13', '2026-08-01');
+    expect(f.runs.map((x) => [x.asOf, x.actual])).toEqual([['2026-09-15', 3650]]);
+    expect(forecastCheckOf(rows, '2026-09-20', '2026-08-01').runs).toEqual([]);
+  });
+  it('flags rows that look mistyped', () => {
+    const checks = rowChecksOf([
+      row({ day: '2026-10-01', quantity: 1000, rate: 2, order_value: 2500 }),
+      row({ day: '2026-10-02', order_value: null }),
+      row({ pm_code: 'Q', day: '2026-09-01' }), row({ pm_code: 'Q', day: '2026-09-02' }), row({ pm_code: 'Q', day: '2026-09-03' }),
+      row({ pm_code: 'Q', day: '2026-09-04', quantity: 20000, order_value: 40000 }),
+      row({ pm_code: 'Q', day: '2026-09-05', quantity: 50, order_value: 100 }),   // a small top-up: fine
+    ], '2026-10-13');
+    expect(checks.map((c) => c.issue)).toEqual([
+      'No order value', 'Value ₹2,500, but labels × rate is ₹2,000', '20,000 labels; this product usually runs 1,000. An extra zero?',
+    ]);
   });
 });

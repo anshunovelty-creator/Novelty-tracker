@@ -30,8 +30,16 @@
 //   - Customer segments (RFM): each plant scored on how recently, how often
 //     and how much it orders, put in a segment with an action, and flagged
 //     when it looks like it's slipping away.
-//   Cycles and segments look at all orders up to today, whatever period is
-//   picked.
+//   - What changed: last period → this one as parts that add up exactly
+//     (new / returning / lost plants, products added or dropped, labels,
+//     rate), and the same days a year back once the data reaches that far.
+//   - Pace: this month so far and where it's heading.
+//   - Cohorts: plants by first-order month, and how many keep ordering.
+//   - Self-checks: the forecast re-run on past weeks and scored, and order
+//     lines that look mistyped.
+//   Cycles, segments, cohorts and the checks look at all orders up to
+//   today, whatever period is picked; that half is cached (standing()), so
+//   switching periods stays instant however long the history gets.
 
 export type SepRow = {
   id:            string;
@@ -109,7 +117,13 @@ export type Analysis = {
   approvals:  Approvals | null;                         // null until shade cards are passed in
   lifecycle:  Lifecycle;                                // as of today
   forecast:   Forecast;                                 // from today
-  lines:      SepRow[];                                 // the period's live rows after filters, oldest first
+  forecastCheck: ForecastCheck;                         // the forecast scored on past weeks
+  pace:       Pace;                                     // this month so far, whatever period is picked
+  bridge:     Bridge;                                   // previous period → this one
+  yearAgo:    { period: Period; totals: Totals } | null;  // same days a year back, once the data reaches that far
+  cohorts:    Cohort[];
+  rowChecks:  RowCheck[];                               // rows that look mistyped, as of today
+  lines:     SepRow[];                                 // the period's live rows after filters, oldest first
 };
 
 // ── Days and periods ──────────────────────────────────────────
@@ -214,6 +228,44 @@ export type Forecast = {
   recentWeekly: number;          // actual ₹ a week over the last four weeks
   freshWeekly:  number;          // ₹ a week from first orders of new products, last eight weeks
 };
+
+/** The forecast, re-run as of past days on what was known then, against what arrived. */
+export type ForecastCheck = {
+  runs:  { asOf: string; predicted: number; actual: number }[];   // newest first
+  error: number | null;          // median miss, % of actual, over the runs
+};
+
+/** The current month so far, and where it's heading. */
+export type Pace = {
+  month:     string;             // 'YYYY-MM'
+  soFar:     number;             // ₹ from the 1st to today
+  day:       number;             // today's day of the month
+  daysIn:    number;
+  projected: number;             // soFar + the forecast for the rest of the month
+  lastMonth: number;             // the whole of last month
+  lastMonthToDate: number;       // last month, the same days
+};
+
+export type BridgeKey = 'newCustomers' | 'returned' | 'lost' | 'addedProducts' | 'droppedProducts' | 'volume' | 'price';
+
+/** Previous period's value → this period's, in parts that add up exactly. */
+export type Bridge = {
+  from:  number;
+  to:    number;
+  steps: { key: BridgeKey; value: number; count: number }[];   // count: parties or products behind it
+};
+
+/** Plants by the month of their first order, and how many ordered again in each month after. */
+export type Cohort = {
+  month:     string;
+  customers: number;
+  value:     number;             // ₹ from these plants so far
+  active:    number[];           // % of the cohort ordering in month 0, 1, 2… up to this month
+  partial:   boolean;            // the last month in `active` is this month, not over yet
+  onBooks:   boolean;            // the data's first month: already customers, not new
+};
+
+export type RowCheck = { row: SepRow; issue: string };
 
 export type ShadeCard = {
   id:       string;
@@ -346,6 +398,11 @@ const weekdayOf = (d: string) => (new Date(toMs(d)).getUTCDay() + 6) % 7;   // M
 // ── Aggregation ───────────────────────────────────────────────
 
 const num = (n: number | null) => n ?? 0;
+/** Append to a list in a map of lists — in place; a copy per row is quadratic on a busy party. */
+function push<K, V>(m: Map<K, V[]>, k: K, v: V) {
+  const list = m.get(k);
+  if (list) list.push(v); else m.set(k, [v]);
+}
 const daysBetween = (a: string, b: string) => Math.round((toMs(b) - toMs(a)) / DAY);
 function median(xs: number[]): number {
   const s = [...xs].sort((a, b) => a - b);
@@ -478,7 +535,7 @@ export function cyclesOf(rows: SepRow[], keyOf: (r: SepRow) => string | null, to
   for (const r of rows) {
     const k = keyOf(r);
     if (!k || r.day > today) continue;
-    by.set(k, [...(by.get(k) ?? []), r]);
+    push(by, k, r);
   }
   const out: Cycle[] = [];
   for (const [key, list] of Array.from(by.entries())) {
@@ -512,7 +569,10 @@ export function cyclesOf(rows: SepRow[], keyOf: (r: SepRow) => string | null, to
 function tertile(values: number[], higherIsBetter: boolean): (v: number) => number {
   const sorted = [...values].sort((a, b) => a - b);
   return (v) => {
-    const below = sorted.filter((x) => (higherIsBetter ? x < v : x > v)).length;
+    // Binary search for how many sit below (or above) v: a scan per customer is quadratic.
+    let lo = 0, hi = sorted.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (higherIsBetter ? sorted[mid] < v : sorted[mid] <= v) lo = mid + 1; else hi = mid; }
+    const below = higherIsBetter ? lo : sorted.length - lo;
     const pos = sorted.length > 1 ? below / (sorted.length - 1) : 1;
     return pos >= 2 / 3 ? 3 : pos >= 1 / 3 ? 2 : 1;
   };
@@ -537,7 +597,7 @@ export function segmentsOf(rows: SepRow[], today: string, cycles: Cycle[]): Cust
   for (const r of rows) {
     if (r.day > today) continue;
     const k = partyKey(r.party);
-    by.set(k, [...(by.get(k) ?? []), r]);
+    push(by, k, r);
   }
   const cycleOf = new Map(cycles.map((c) => [c.key, c]));
   const base = Array.from(by.entries()).map(([key, list]) => {
@@ -644,7 +704,7 @@ export function rateChecksOf(rows: SepRow[], today: string): RateCheck[] {
     const pm = pmKey(r.pm_code);
     if (!pm || r.day > today || !r.rate || !r.quantity) continue;
     const k = `${partyKey(r.party)}|${pm}`;
-    by.set(k, [...(by.get(k) ?? []), r]);
+    push(by, k, r);
   }
   const out: RateCheck[] = [];
   for (const [key, list] of Array.from(by.entries())) {
@@ -688,7 +748,7 @@ export function lifecycleOf(rows: SepRow[], today: string, start: string, cycles
     const pm = pmKey(r.pm_code);
     if (!pm || r.day > today) continue;
     const k = `${partyKey(r.party)}|${pm}`;
-    by.set(k, [...(by.get(k) ?? []), r]);
+    push(by, k, r);
   }
   const lapsed = new Set(cycles.filter((c) => c.status === 'lapsed').map((c) => c.key));
   const settled = addDays(start, 14);
@@ -758,6 +818,184 @@ export function forecastOf(rows: SepRow[], today: string, cycles: Cycle[], life:
   return { weeks, recentWeekly: recent / 4, freshWeekly };
 }
 
+const productKey = (r: SepRow) => (pmKey(r.pm_code) ? `${partyKey(r.party)}|${pmKey(r.pm_code)}` : null);
+const sumValue = (rows: SepRow[]) => rows.reduce((s, r) => s + num(r.order_value), 0);
+
+/**
+ * The forecast scored on itself: re-run as of 28, 35, 42… days ago with
+ * only the orders dated up to then, and compared with what was dated in
+ * the four weeks after. Needs six weeks of history before a cut-off, so it
+ * stays empty for a new data set and gets more runs (and a truer error) as
+ * months add up.
+ * Each run sees the two years before its cut-off: reorder gaps run weeks
+ * to months, and it keeps the cost flat however long the history gets.
+ * ponytail: four runs; raise `runs` when the error needs more to settle.
+ */
+export function forecastCheckOf(rows: SepRow[], today: string, start: string, runs = 4): ForecastCheck {
+  const out: ForecastCheck['runs'] = [];
+  for (let k = 0; k < runs; k++) {
+    const asOf = addDays(today, -28 - 7 * k);
+    if (daysBetween(start, asOf) < 42) break;
+    const from = addDays(asOf, -730);
+    const known = rows.filter((r) => r.day <= asOf && r.day >= from);
+    const cycles = cyclesOf(known, productKey, asOf);
+    const s = [start, from].sort()[1];
+    const f = forecastOf(known, asOf, cycles, lifecycleOf(known, asOf, s, cycles), s);
+    const end = addDays(asOf, 27);
+    out.push({
+      asOf,
+      predicted: f.weeks.reduce((s, w) => s + w.repeat + w.fresh, 0),
+      actual: sumValue(rows.filter((r) => r.day >= asOf && r.day <= end)),
+    });
+  }
+  const misses = out.filter((r) => r.actual > 0).map((r) => (Math.abs(r.predicted - r.actual) / r.actual) * 100);
+  return { runs: out, error: misses.length ? Math.round(median(misses)) : null };
+}
+
+/** This month so far, and soFar + the forecast's share of the days left. */
+export function paceOf(rows: SepRow[], today: string, forecast: Forecast): Pace {
+  const month = today.slice(0, 7), end = monthEnd(month);
+  const last = previousPeriod({ from: `${month}-01`, to: today });
+  let soFar = 0, lastMonth = 0, lastMonthToDate = 0;
+  for (const r of rows) {
+    if (r.day >= `${month}-01` && r.day <= today) soFar += num(r.order_value);
+    if (r.day >= last.from && r.day <= monthEnd(last.from.slice(0, 7))) {
+      lastMonth += num(r.order_value);
+      if (r.day <= last.to) lastMonthToDate += num(r.order_value);
+    }
+  }
+  // Each forecast week counts for the days of it still left this month.
+  let rest = 0;
+  for (const w of forecast.weeks) {
+    const from = [w.from, addDays(today, 1)].sort()[1], to = minDay(w.to, end);
+    if (from <= to) rest += ((w.repeat + w.fresh) * (daysBetween(from, to) + 1)) / 7;
+  }
+  return { month, soFar, day: +today.slice(8), daysIn: +end.slice(8), projected: soFar + rest, lastMonth, lastMonthToDate };
+}
+
+/**
+ * What moved the value from the previous period to this one, in parts that
+ * add up exactly: plants that are new, came back or didn't order; and, for
+ * plants in both, products added or not reordered, then on products in
+ * both, more or fewer labels (at the old rate) and the rate per label
+ * (on the new labels). The rate part includes run size: a shorter run
+ * bills more a label.
+ */
+export function bridgeOf(rows: SepRow[], prevRows: SepRow[], firstOrder: Map<string, string>, period: Period): Bridge {
+  const agg = (list: SepRow[]) => {
+    const m = new Map<string, { party: string; value: number; qty: number }>();
+    for (const r of list) {
+      const party = partyKey(r.party);
+      const k = `${party}|${pmKey(r.pm_code) ?? (r.material_name ?? '').trim().toUpperCase()}`;
+      const a = m.get(k) ?? { party, value: 0, qty: 0 };
+      a.value += num(r.order_value); a.qty += num(r.quantity);
+      m.set(k, a);
+    }
+    return m;
+  };
+  const now = agg(rows), before = agg(prevRows);
+  const partiesNow = new Set(rows.map((r) => partyKey(r.party)));
+  const partiesBefore = new Set(prevRows.map((r) => partyKey(r.party)));
+  const v: Record<BridgeKey, number> = { newCustomers: 0, returned: 0, lost: 0, addedProducts: 0, droppedProducts: 0, volume: 0, price: 0 };
+  const who: Record<BridgeKey, Set<string>> = { newCustomers: new Set(), returned: new Set(), lost: new Set(), addedProducts: new Set(), droppedProducts: new Set(), volume: new Set(), price: new Set() };
+  const add = (k: BridgeKey, value: number, id: string) => { v[k] += value; if (value) who[k].add(id); };
+
+  for (const [k, n] of Array.from(now.entries())) {
+    const b = before.get(k);
+    if (!partiesBefore.has(n.party)) add((firstOrder.get(n.party) ?? '') >= period.from ? 'newCustomers' : 'returned', n.value, n.party);
+    else if (!b) add('addedProducts', n.value, k);
+    else {
+      // Volume at the old rate; whatever's left is the rate. No labels on either side → all volume.
+      const volume = b.qty > 0 && n.qty > 0 ? (n.qty - b.qty) * (b.value / b.qty) : n.value - b.value;
+      add('volume', volume, k);
+      add('price', n.value - b.value - volume, k);
+    }
+  }
+  for (const [k, b] of Array.from(before.entries())) {
+    if (now.has(k)) continue;
+    if (!partiesNow.has(b.party)) add('lost', -b.value, b.party);
+    else add('droppedProducts', -b.value, k);
+  }
+  return {
+    from: sumValue(prevRows), to: sumValue(rows),
+    steps: (Object.keys(v) as BridgeKey[]).map((key) => ({ key, value: v[key], count: who[key].size })),
+  };
+}
+
+/**
+ * Plants grouped by the month of their first order, and the share of each
+ * group that ordered in every month since. Plants already ordering when the
+ * data starts land in its first month, marked as on the books. Last 12
+ * cohorts, 12 months each.
+ */
+export function cohortsOf(rows: SepRow[], today: string, start: string): Cohort[] {
+  const months = new Map<string, Set<string>>();   // party → months it ordered in
+  const value = new Map<string, number>();
+  for (const r of rows) {
+    if (r.day > today) continue;
+    const k = partyKey(r.party);
+    const s = months.get(k) ?? new Set<string>();
+    s.add(r.day.slice(0, 7));
+    months.set(k, s);
+    value.set(k, (value.get(k) ?? 0) + num(r.order_value));
+  }
+  const cohorts = new Map<string, string[]>();
+  for (const [k, s] of Array.from(months.entries())) push(cohorts, Array.from(s).sort()[0], k);
+  const now = today.slice(0, 7);
+  return Array.from(cohorts.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-12)
+    .map(([month, parties]) => {
+      const active: number[] = [];
+      for (let m = month, i = 0; m <= now && i < 12; m = addMonths(m, 1), i++) {
+        active.push(share(parties.filter((p) => months.get(p)!.has(m)).length, parties.length));
+      }
+      return {
+        month, customers: parties.length,
+        value: parties.reduce((s, p) => s + value.get(p)!, 0),
+        active, partial: addMonths(month, active.length - 1) === now,
+        onBooks: month === start.slice(0, 7),
+      };
+    });
+}
+
+/**
+ * Rows that look mistyped, from every order so far: value isn't labels ×
+ * rate, no value at all, or ten times the labels the product usually runs
+ * (median of its orders, once it has three) — an extra zero inflates every
+ * total. Far fewer than usual isn't flagged: small top-ups and samples are
+ * normal in label printing.
+ */
+export function rowChecksOf(rows: SepRow[], today: string): RowCheck[] {
+  const out: RowCheck[] = [];
+  const byProduct = new Map<string, SepRow[]>();
+  for (const r of rows) {
+    if (r.day > today) continue;
+    const v = num(r.order_value), q = num(r.quantity), rt = num(r.rate);
+    if (!v) out.push({ row: r, issue: 'No order value' });
+    else if (q && rt && Math.abs(q * rt - v) > Math.max(1, v / 100)) {
+      out.push({ row: r, issue: `Value ₹${Math.round(v).toLocaleString('en-US')}, but labels × rate is ₹${Math.round(q * rt).toLocaleString('en-US')}` });
+    }
+    const k = productKey(r);
+    if (k && q) push(byProduct, k, r);
+  }
+  for (const list of Array.from(byProduct.values())) {
+    if (list.length < 3) continue;
+    // One median for the product, the odd row included: it barely moves a median.
+    const usual = median(list.map((x) => num(x.quantity)));
+    for (const r of list) {
+      const q = num(r.quantity);
+      if (usual > 0 && q >= usual * 10) {
+        out.push({ row: r, issue: `${q.toLocaleString('en-US')} labels; this product usually runs ${Math.round(usual).toLocaleString('en-US')}. An extra zero?` });
+      }
+    }
+  }
+  return out.sort((x, y) => y.row.day.localeCompare(x.row.day));
+}
+
+/** The same days a year earlier; 29 Feb → 28 Feb. */
+const yearBefore = (d: string) => `${+d.slice(0, 4) - 1}${d.slice(4) === '-02-29' ? '-02-28' : d.slice(4)}`;
+
 /** "UPL-3", "UPL - 03" and "SML LIMITED-2" / "SML - 2" alike: no spaces, dashes, LIMITED/LTD or leading zeros. */
 const looseKey = (p: string) => partyKey(p).replace(/\b(LIMI+TED|LTD)\b\.?/g, '').replace(/[\s.-]+/g, '').replace(/(\D)0+(\d)/g, '$1$2');
 
@@ -774,7 +1012,7 @@ export function approvalsOf(cards: ShadeCard[], rows: SepRow[], since: string, t
   const byPm = new Map<string, SepRow[]>();
   for (const r of rows) {
     const pm = pmKey(r.pm_code);
-    if (pm) byPm.set(pm, [...(byPm.get(pm) ?? []), r]);
+    if (pm) push(byPm, pm, r);
   }
   const tracks: CardTrack[] = [];
   for (const c of cards) {
@@ -806,7 +1044,7 @@ export function approvalsOf(cards: ShadeCard[], rows: SepRow[], since: string, t
   const oldest = (a: CardTrack, b: CardTrack) => a.start.localeCompare(b.start);
 
   const parties = new Map<string, CardTrack[]>();
-  for (const t of tracks) parties.set(t.customer, [...(parties.get(t.customer) ?? []), t]);
+  for (const t of tracks) push(parties, t.customer, t);
 
   return {
     since, cards: tracks,
@@ -835,6 +1073,49 @@ export function earliestDay(all: SepRow[]): string | null {
   return d;
 }
 
+type Standing = Pick<Analysis,
+  'reorders' | 'partyCycles' | 'lifecycle' | 'forecast' | 'forecastCheck' | 'pace' | 'customers' | 'duplicates'
+  | 'rateChecks' | 'noPmCode' | 'approvals' | 'cohorts' | 'rowChecks'> & { first: Map<string, { day: string; party: string }> };
+
+// The last standing() answer. It depends on the rows, unit / party and
+// today — not the period — so flicking between periods reuses it instead
+// of re-running cycles, the forecast and its back-test.
+let standingMemo: { all: SepRow[]; cards?: ShadeCard[]; key: string; value: Standing } | null = null;
+
+/** Everything "as of today": every order so far for these filters, whatever period is picked. */
+function standing(all: SepRow[], live: SepRow[], filter: Filter, today: string, start: string | null, cards?: ShadeCard[]): Standing {
+  const key = `${filter.unit}|${filter.group}|${filter.party}|${today}`;
+  if (standingMemo && standingMemo.all === all && standingMemo.cards === cards && standingMemo.key === key) return standingMemo.value;
+
+  const s = start ?? today;
+  const partyCycles = cyclesOf(live, (r) => partyKey(r.party), today);
+  const reorders  = cyclesOf(live, productKey, today);
+  const lifecycle = lifecycleOf(live, today, s, reorders);
+  const forecast  = forecastOf(live, today, reorders, lifecycle, s);
+  const first = new Map<string, { day: string; party: string }>();
+  for (const r of live) {
+    const k = partyKey(r.party);
+    const f = first.get(k);
+    if (!f || r.day < f.day) first.set(k, { day: r.day, party: r.party.trim() });
+  }
+  const value: Standing = {
+    first, reorders, partyCycles, lifecycle, forecast,
+    forecastCheck: forecastCheckOf(live, today, s),
+    pace:        paceOf(live, today, forecast),
+    customers:   segmentsOf(live, today, partyCycles),
+    duplicates:  likelyDuplicates(all),
+    rateChecks:  rateChecksOf(live, today),
+    noPmCode:    live.filter((r) => r.day <= today && !pmKey(r.pm_code)).sort((x, y) => y.day.localeCompare(x.day)),
+    cohorts:     cohortsOf(live, today, s),
+    rowChecks:   rowChecksOf(live, today),
+    // Unit doesn't apply to approvals: a card has none.
+    approvals:   cards && start ? approvalsOf(cards, all.filter((r) => !r.cancelled), start, today,
+      (c) => (!filter.group || groupKey(c) === filter.group) && (!filter.party || partyKey(c) === filter.party)) : null,
+  };
+  standingMemo = { all, cards, key, value };
+  return value;
+}
+
 export function analyse(all: SepRow[], period: Period, filter: Filter, today: string, cards?: ShadeCard[]): Analysis {
   const previous = previousPeriod(period);
   const matches = (r: SepRow) =>
@@ -849,20 +1130,12 @@ export function analyse(all: SepRow[], period: Period, filter: Filter, today: st
   const totals    = totalsOf(rows);
   const parties   = partiesOf(rows, prevRows, totals.value);
   const groups    = partiesOf(rows, prevRows, totals.value, groupKey);
-  const partyCycles = cyclesOf(live, (r) => partyKey(r.party), today);
-  const reorders  = cyclesOf(live, (r) => (pmKey(r.pm_code) ? `${partyKey(r.party)}|${pmKey(r.pm_code)}` : null), today);
+  const start     = earliestDay(all);
+  const { first, ...st } = standing(all, live, filter, today, start, cards);
 
   // New = the party's first order ever lands in the period. A party whose
   // first order is on the data's very first day isn't new — the data just
   // starts there.
-  const start = earliestDay(all);
-  const lifecycle = lifecycleOf(live, today, start ?? today, reorders);
-  const first = new Map<string, { day: string; party: string }>();
-  for (const r of live) {
-    const k = partyKey(r.party);
-    const f = first.get(k);
-    if (!f || r.day < f.day) first.set(k, { day: r.day, party: r.party.trim() });
-  }
   const newParties = Array.from(first.values())
     .filter((f) => f.day >= period.from && f.day <= period.to && f.day !== start)
     .map((f) => f.party)
@@ -878,9 +1151,14 @@ export function analyse(all: SepRow[], period: Period, filter: Filter, today: st
     quiet.set(k, q);
   }
 
+  const lastYear = { from: yearBefore(period.from), to: yearBefore(period.to) };
+
   return {
+    ...st,
     period, previous, totals,
     prevTotals: totalsOf(prevRows),
+    bridge:     bridgeOf(rows, prevRows, new Map(Array.from(first.entries()).map(([k, f]) => [k, f.day])), period),
+    yearAgo:    start && start <= lastYear.from ? { period: lastYear, totals: totalsOf(live.filter((r) => inPeriod(r, lastYear))) } : null,
     cancelled:  { orders: cancelled.length, value: cancelled.reduce((s, r) => s + num(r.order_value), 0) },
     trend:      trendOf(rows, period),
     units:      slices(rows, (r) => unitKey(r.unit), [...UNITS, '—'], unitLabel).filter((s) => s.key !== '—' || s.orders > 0),
@@ -896,25 +1174,13 @@ export function analyse(all: SepRow[], period: Period, filter: Filter, today: st
     lines:      [...rows].sort((x, y) => x.day.localeCompare(y.day)),
     groups,
     top3GroupShare: share(groups.slice(0, 3).reduce((s, g) => s + g.value, 0), totals.value),
-    reorders,
-    lifecycle,
-    forecast:    forecastOf(live, today, reorders, lifecycle, start ?? today),
-    partyCycles,
-    customers:   segmentsOf(live, today, partyCycles),
-    duplicates:  likelyDuplicates(all),
     priceCurve:  QTY_BANDS.map(([label, max], i) => {
       const band = rows.filter((r) => num(r.quantity) < max && num(r.quantity) >= (i ? QTY_BANDS[i - 1][1] : 0));
       const t = totalsOf(band);
       return { label, orders: t.orders, qty: t.qty, value: t.value, rate: t.avgRate };
     }),
-    rateChecks:  rateChecksOf(live, today),
-    noPmCode:    live.filter((r) => r.day <= today && !pmKey(r.pm_code)).sort((x, y) => y.day.localeCompare(x.day)),
-    // Unit doesn't apply to approvals: a card has none.
-    approvals:   cards && start ? approvalsOf(cards, all.filter((r) => !r.cancelled), start, today,
-      (c) => (!filter.group || groupKey(c) === filter.group) && (!filter.party || partyKey(c) === filter.party)) : null,
   };
 }
-
 
 /** Every party seen, for the filter list: one display name per key, with its group, A–Z. */
 export function partyOptions(all: SepRow[]): { key: string; party: string; group: string }[] {

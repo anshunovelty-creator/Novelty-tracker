@@ -9,20 +9,30 @@
 // (lib/reports.ts analyse), so switching any of them is instant. Tapping a
 // party or a unit narrows the whole page to it.
 //
+// Live: the page asks every 30 s whether Job Separation changed (a few
+// bytes, useRefetchOnChange) and only then syncs — fetching just the rows
+// written since its last sync and folding them into the copy it holds
+// (lib/reportSync.ts). Every sync is checked against the database's own
+// per-month totals; if the copy has drifted it reloads everything. When
+// nothing really changed the rows keep their identity, so the analysis
+// isn't recomputed. A slow poll keeps "today" right overnight.
+//
 // Charts are single-series and plain HTML: every bar carries its value as
 // text and a title tooltip, so nothing is read from colour or length alone.
 
-import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   analyse, presetPeriod, partyOptions, partyKey, earliestDay, unitLabel, UNITS, SEGMENTS, SEGMENT_ACTIONS,
   type SepRow, type Period, type Preset, type Analysis, type PartyRow, type ProductRow, type Slice, type Totals, type Cycle,
-  type CustomerRow, type Segment, type RateCheck, type ShadeCard, type CardTrack, type ProductLife, type ProductStage, PRODUCT_STAGES,
+  type CustomerRow, type Segment, type RateCheck, type BridgeKey, type RowCheck, type ShadeCard, type CardTrack, type ProductLife, type ProductStage, PRODUCT_STAGES,
 } from '@/lib/reports';
 import { csvDate, type CsvColumn } from '@/lib/export/csv';
 import CsvExportButton from './CsvExportButton';
+import { useRefetchOnChange } from '@/hooks/useRefetchOnChange';
+import { syncReports, type ReportData, type Fetched } from '@/lib/reportSync';
 import { Kpi, type KpiDelta } from '@/components/ui/Kpi';
 
 const CARD = 'rounded-2xl border border-brand-border bg-white shadow-[0_2px_8px_rgba(12,42,32,0.04)]';
@@ -49,6 +59,7 @@ const qtyFull = (n: number) => intl(n);
 const dayLabel = (d: string, year = false) => `${+d.slice(8, 10)} ${MON[+d.slice(5, 7) - 1]}${year ? ` ${d.slice(0, 4)}` : ''}`;
 const periodLabel = (p: Period) =>
   p.from === p.to ? dayLabel(p.from, true) : `${dayLabel(p.from, p.from.slice(0, 4) !== p.to.slice(0, 4))} – ${dayLabel(p.to, true)}`;
+const timeLabel = (ms: number) => new Date(ms).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`;
 const round2 = (n: number | null) => (n == null ? null : Math.round(n * 100) / 100);
 
@@ -125,17 +136,30 @@ const METRICS: { key: Metric; label: string }[] = [
 ];
 const showMetric = (m: Metric, n: number) => (m === 'value' ? rupees(n) : m === 'qty' ? qtyShort(n) : n.toLocaleString('en-US'));
 
+async function getReports(since: string | null): Promise<Fetched> {
+  const res  = await fetch(since ? `/api/reports?since=${encodeURIComponent(since)}` : '/api/reports');
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? 'Failed to load the report');
+  return data;
+}
+
 export default function ReportsView() {
+  const queryClient = useQueryClient();
+  const reloadAll = useRef(false);
   const q = useQuery({
     queryKey: ['reports'],
-    queryFn: async () => {
-      const res  = await fetch('/api/reports');
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Failed to load the report');
-      return data as { rows: SepRow[]; cards: ShadeCard[]; today: string };
+    queryFn: () => {
+      const full = reloadAll.current;
+      reloadAll.current = false;
+      return syncReports(queryClient.getQueryData<ReportData>(['reports']), full, getReports);
     },
     staleTime: 60_000,
+    // Kept for an hour after leaving the page: coming back syncs the changes only.
+    gcTime: 60 * 60_000,
+    // Changes arrive through useRefetchOnChange; this only rolls "today" over.
+    refetchInterval: 30 * 60_000,
   });
+  useRefetchOnChange(['job_separations'], [['reports']]);
 
   const [preset, setPreset] = useState<Preset | 'custom'>('month');
   const [custom, setCustom] = useState<Period | null>(null);
@@ -170,7 +194,26 @@ export default function ReportsView() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-[30px] font-semibold leading-9 tracking-[-0.025em] text-brand-ink">Reports</h1>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h1 className="text-[30px] font-semibold leading-9 tracking-[-0.025em] text-brand-ink">Reports</h1>
+          {q.data && (
+            <span className="inline-flex flex-wrap items-center gap-x-2 font-mono text-xs text-brand-muted">
+              <span className="inline-flex items-center gap-2"
+                title={q.data.sync.mismatch
+                  ? `The page's totals differ from the database's: ${q.data.sync.mismatch}`
+                  : 'Checks Job Separation every 30 seconds, fetches only what changed, and checks the totals against the database'}>
+                <span className={cn('h-2 w-2 rounded-full', q.isFetching || q.data.sync.mismatch ? 'bg-amber-400' : 'bg-brand-primary')} aria-hidden="true" />
+                {q.isFetching ? 'Syncing…'
+                  : q.data.sync.mismatch ? 'Totals differ from the database'
+                  : `Live · matches the database · ${timeLabel(q.data.sync.at)}`}
+              </span>
+              <button type="button" disabled={q.isFetching} onClick={() => { reloadAll.current = true; void q.refetch(); }}
+                className="min-h-11 rounded-md px-2 font-sans text-xs font-medium text-brand-primary hover:underline disabled:opacity-50">
+                Reload all
+              </button>
+            </span>
+          )}
+        </div>
         <p className="mt-1.5 max-w-[72ch] text-sm text-brand-muted">
           The order book from Job Separation, by PO date — what came in, on which unit, from whom, and for what.
         </p>
@@ -294,6 +337,10 @@ function Body({ a, unit, who, onUnit, onWho }: {
             {a && <Insights a={a} unit={unit} onTab={setTab} />}
             {a && a.duplicates.length > 0 && <Duplicates list={a.duplicates} />}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-[3fr_2fr]">
+              <ChangeBridge a={a} />
+              <MonthPace a={a} />
+            </div>
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[3fr_2fr]">
               {/* Trend */}
               <section aria-label="Orders over time" className={cn(CARD, 'flex flex-col p-5 sm:p-6')}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -360,6 +407,7 @@ function Body({ a, unit, who, onUnit, onWho }: {
           <>
             <PartyTable a={a} who={who} onWho={onWho} stamp={stamp} />
             <Segments a={a} onWho={onWho} />
+            <Cohorts a={a} />
           </>
         )}
 
@@ -408,6 +456,7 @@ function Body({ a, unit, who, onUnit, onWho }: {
               <MissingPmCodes a={a} />
             </div>
             <RateChecks a={a} onWho={onWho} />
+            <RowChecks a={a} onWho={onWho} />
           </>
         )}
 
@@ -425,7 +474,7 @@ const TABS: { key: Tab; label: string; count?: (a: Analysis) => number }[] = [
   { key: 'customers', label: 'Customers' },
   { key: 'reorders',  label: 'Reorders & forecast', count: (a) => a.reorders.filter((c) => c.status === 'overdue').length },
   { key: 'products',  label: 'Products' },
-  { key: 'pricing',   label: 'Pricing', count: (a) => a.rateChecks.filter((c) => c.atStake > 0).length },
+  { key: 'pricing',   label: 'Pricing', count: (a) => a.rateChecks.filter((c) => c.atStake > 0).length + a.rowChecks.length },
   { key: 'approval',  label: 'Colour approval', count: (a) => a.approvals?.waiting.length ?? 0 },
 ];
 
@@ -530,7 +579,17 @@ function Insights({ a, unit, onTab }: { a: Analysis; unit: string | null; onTab:
   }
   const f = a.forecast, next4 = f.weeks.reduce((s, w) => s + w.repeat + w.fresh, 0);
   if (next4 > 0) {
-    out.push(<>Next four weeks look like about <B>{rupees(next4)}</B> ({rupees(next4 / 4)} a week) against {rupees(f.recentWeekly)} a week over the last four. {see('reorders')}</>);
+    const err = a.forecastCheck.error;
+    out.push(<>Next four weeks look like about <B>{rupees(next4)}</B> ({rupees(next4 / 4)} a week) against {rupees(f.recentWeekly)} a week over the last four
+      {err != null ? <>; tried on {plural(a.forecastCheck.runs.length, 'past four-week stretch', 'past four-week stretches')}, it was off by {a.forecastCheck.runs.length > 1 ? 'a median ' : ''}{err}%</> : ''}. {see('reorders')}</>);
+  }
+  const y = a.yearAgo;
+  if (y && y.totals.value > 0) {
+    const pct = Math.round(((a.totals.value - y.totals.value) / y.totals.value) * 100);
+    out.push(<>Against the same days last year ({periodLabel(y.period)}): <B>{pct >= 0 ? '▲' : '▼'} {Math.abs(pct)}%</B>, {rupees(y.totals.value)} → {rupees(a.totals.value)}.</>);
+  }
+  if (a.rowChecks.length) {
+    out.push(<><B>{plural(a.rowChecks.length, 'order line')}</B> {a.rowChecks.length === 1 ? 'is' : 'are'} worth a second look (value isn&apos;t labels × rate, or ten times the usual labels), since every figure here counts {a.rowChecks.length === 1 ? 'it' : 'them'}. {see('pricing')}</>);
   }
   const notMade = a.jobCards.find((s) => s.key === 'Not made yet');
   if (notMade?.orders) out.push(<><B>{plural(notMade.orders, 'order')}</B> ({rupees(notMade.value)}) {notMade.orders === 1 ? 'has' : 'have'} no job card yet.</>);
@@ -1433,8 +1492,7 @@ function ForecastCard({ a }: { a: Analysis | null }) {
       <h2 className="text-base font-semibold text-brand-ink">Next four weeks: a rough forecast</h2>
       <p className="mt-1 max-w-[72ch] text-[13px] text-brand-muted">
         Each repeat product&apos;s typical order lands on its usual gap (overdue ones count this week), plus products not seen before, at
-        their pace over the last eight weeks. Trust the four-week total: tried on past weeks it came within about 10% of what arrived.
-        A single week can swing 40% either way on one big one-off order.
+        their pace over the last eight weeks. Trust the four-week total more than any single week: one big one-off order can swing a week 40% either way.
       </p>
       {!f ? <Skeleton rows={4} /> : (
         <>
@@ -1459,9 +1517,47 @@ function ForecastCard({ a }: { a: Analysis | null }) {
               );
             })}
           </ul>
+          <ForecastScore check={a!.forecastCheck} />
         </>
       )}
     </section>
+  );
+}
+
+/** The forecast re-run as of past days, against what came in: how far to trust it, from this data, kept current. */
+function ForecastScore({ check }: { check: Analysis['forecastCheck'] }) {
+  if (!check.runs.length) {
+    return (
+      <p className="mt-5 border-t border-brand-line-soft pt-4 text-[13px] text-brand-muted">
+        Once there are six weeks of orders before a past cut-off, the forecast scores itself here against what actually came in.
+      </p>
+    );
+  }
+  return (
+    <div className="mt-5 border-t border-brand-line-soft pt-4">
+      <h3 className="text-sm font-semibold text-brand-ink">
+        How it did on past weeks{check.error != null && <>: {check.runs.length === 1 ? 'off by' : 'a median miss of'} <span className="font-mono">{check.error}%</span>
+          {check.runs.length === 1 && <span className="font-normal text-brand-muted"> (one run so far; a run is added each week)</span>}</>}
+      </h3>
+      <p className="mt-0.5 max-w-[72ch] text-[13px] text-brand-muted">
+        Re-run as of earlier days with only the orders known then, against what was dated in the four weeks after. Re-scored every
+        time the page loads, so it tracks how good the forecast is as the order book grows.
+      </p>
+      <ul className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {check.runs.map((r) => {
+          const miss = r.actual > 0 ? Math.round(((r.predicted - r.actual) / r.actual) * 100) : null;
+          return (
+            <li key={r.asOf} className="rounded-xl border border-brand-border px-4 py-3">
+              <span className="block text-xs font-medium text-brand-muted">From {dayLabel(r.asOf)}</span>
+              <span className="mt-1 block font-mono text-[13px] text-brand-ink">said {rupees(r.predicted)} · came {rupees(r.actual)}</span>
+              <span className="block font-mono text-xs text-brand-muted">
+                {miss == null ? 'nothing came in' : miss === 0 ? 'spot on' : `${miss > 0 ? 'over' : 'under'} by ${Math.abs(miss)}%`}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
@@ -1597,6 +1693,238 @@ function ProductMix({ a, onWho }: { a: Analysis | null; onWho: (w: string | null
         )}
       </section>
     </div>
+  );
+}
+
+const BRIDGE: Record<BridgeKey, { label: string; one: string; many: string }> = {
+  newCustomers:    { label: 'New customers',                   one: 'plant',   many: 'plants' },
+  returned:        { label: 'Back after a gap',                one: 'plant',   many: 'plants' },
+  lost:            { label: 'Didn’t order this time',          one: 'plant',   many: 'plants' },
+  addedProducts:   { label: 'Other products, same plants',     one: 'product', many: 'products' },
+  droppedProducts: { label: 'Products not ordered again',      one: 'product', many: 'products' },
+  volume:          { label: 'More or fewer labels',            one: 'product', many: 'products' },
+  price:           { label: 'Rate per label',                  one: 'product', many: 'products' },
+};
+
+/**
+ * Last period's value to this one as a waterfall: each part starts where the
+ * one before it ended, and the parts add up to the change exactly.
+ */
+function ChangeBridge({ a }: { a: Analysis | null }) {
+  const b = a?.bridge;
+  const steps = b?.steps.filter((x) => Math.round(x.value) !== 0) ?? [];
+  let run = b?.from ?? 0;
+  const bars = steps.map((x) => {
+    const lo = Math.min(run, run + x.value), hi = Math.max(run, run + x.value);
+    run += x.value;
+    return { ...x, lo, hi };
+  });
+  const max = Math.max(b?.from ?? 0, b?.to ?? 0, ...bars.map((x) => x.hi), 1);
+  // The headline nets the parts that mostly offset: in one fortnight a plant
+  // orders some PM codes, in the next others, so added vs dropped products
+  // is largely timing. Their net is the real product-mix effect.
+  const net = (keys: BridgeKey[]) => (b?.steps ?? []).filter((x) => keys.includes(x.key)).reduce((t, x) => t + x.value, 0);
+  const drivers = ([
+    ['plants new, back or gone', net(['newCustomers', 'returned', 'lost'])],
+    ['different products', net(['addedProducts', 'droppedProducts'])],
+    ['labels on the same products', net(['volume'])],
+    ['rate per label', net(['price'])],
+  ] as [string, number][]).filter(([, v]) => Math.round(v) !== 0).sort((x, y) => Math.abs(y[1]) - Math.abs(x[1]));
+  const diff = b ? b.to - b.from : 0;
+  const Row = ({ label, sub, value, lo, hi, tone }: { label: string; sub?: string; value: string; lo: number; hi: number; tone: 'total' | 'up' | 'down' }) => (
+    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3">
+      <span className="min-w-0 text-[13px] text-brand-ink">{label}{sub && <span className="block font-mono text-xs text-brand-muted sm:ml-1.5 sm:inline">{sub}</span>}</span>
+      <span className={cn('font-mono text-[13px] font-semibold', tone === 'down' ? 'text-brand-warning' : tone === 'up' ? 'text-brand-success' : 'text-brand-ink')}>{value}</span>
+      <span className="relative col-span-2 mt-1.5 block h-2.5 rounded-full bg-brand-sunken">
+        <span className={cn('absolute inset-y-0 rounded-full', tone === 'total' ? 'bg-brand-primary' : tone === 'up' ? 'bg-green-300' : 'bg-amber-300')}
+          style={{ left: `${(lo / max) * 100}%`, width: `${Math.max(((hi - lo) / max) * 100, 0.8)}%` }} />
+      </span>
+    </li>
+  );
+  return (
+    <section aria-label="What changed" className={cn(CARD, 'p-5 sm:p-6')}>
+      <h2 className="text-base font-semibold text-brand-ink">What changed{a ? ` since ${periodLabel(a.previous)}` : ''}</h2>
+      <p className="mt-1 max-w-[72ch] text-[13px] text-brand-muted">
+        The change in order value, split into where it came from. The parts add up exactly. Rate per label compares the same
+        products, so it also moves with run size: a shorter run bills more a label.
+      </p>
+      {!a || !b ? <Skeleton rows={7} /> : !b.from && !b.to ? (
+        <p className="mt-6 text-sm text-brand-muted">No orders in either period to compare.</p>
+      ) : (
+        <>
+          <p className="mt-4 text-[13px] text-brand-muted">
+            <B>{diff >= 0 ? '▲' : '▼'} {rupees(Math.abs(diff))}</B>{b.from > 0 && <> ({Math.round((diff / b.from) * 100)}%)</>}
+            {drivers.length > 0 && <>. Net, by cause: {drivers.map(([label, v], i) => (
+              <span key={label}>{i > 0 && ', '}{label} <B>{v > 0 ? '+' : '−'}{rupees(Math.abs(v))}</B></span>
+            ))}</>}.
+          </p>
+          <ul className="mt-4 space-y-3">
+            <Row label={periodLabel(a.previous)} value={rupees(b.from)} lo={0} hi={b.from} tone="total" />
+            {bars.map((x) => (
+              <Row key={x.key} label={BRIDGE[x.key].label} sub={plural(x.count, BRIDGE[x.key].one, BRIDGE[x.key].many)}
+                value={`${x.value > 0 ? '+' : '−'}${rupees(Math.abs(x.value))}`} lo={x.lo} hi={x.hi} tone={x.value > 0 ? 'up' : 'down'} />
+            ))}
+            <Row label={periodLabel(a.period)} value={rupees(b.to)} lo={0} hi={b.to} tone="total" />
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
+/** The current month as it fills in: so far, where it's heading, and last month beside it. Ignores the period, follows the filters. */
+function MonthPace({ a }: { a: Analysis | null }) {
+  const p = a?.pace;
+  const name = p ? MON[+p.month.slice(5, 7) - 1] : '';
+  const last = p ? MON[(+p.month.slice(5, 7) + 10) % 12] : '';
+  const max = p ? Math.max(p.projected, p.lastMonth, 1) : 1;
+  const vsToDate = p && p.lastMonthToDate > 0 ? Math.round(((p.soFar - p.lastMonthToDate) / p.lastMonthToDate) * 100) : null;
+  const line = (label: string, value: number, strong?: boolean) => (
+    <li title={`${label}: ${rupeesFull(value)}`}>
+      <span className="flex items-baseline justify-between gap-3">
+        <span className="text-[13px] text-brand-ink">{label}</span>
+        <span className="font-mono text-[13px] font-semibold text-brand-ink">{rupees(value)}</span>
+      </span>
+      <Bar pct={(value / max) * 100} strong={strong} />
+    </li>
+  );
+  return (
+    <section aria-label="This month so far" className={cn(CARD, 'p-5 sm:p-6')}>
+      <h2 className="text-base font-semibold text-brand-ink">{p ? `${name} so far` : 'This month so far'}</h2>
+      <p className="mt-1 text-[13px] text-brand-muted">Whatever period is picked. Follows the unit and party filters.</p>
+      {!p ? <Skeleton rows={4} /> : (
+        <>
+          <p className="mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="font-mono text-[28px] font-semibold leading-none text-brand-ink">{rupees(p.soFar)}</span>
+            <span className="text-[13px] text-brand-muted">
+              {p.day} of {p.daysIn} days
+              {vsToDate != null && <>, <span className={vsToDate >= 0 ? 'text-brand-success' : 'text-brand-warning'}>{vsToDate >= 0 ? '▲' : '▼'} {Math.abs(vsToDate)}%</span> on {last} by this day</>}
+            </span>
+          </p>
+          <ul className="mt-5 space-y-3.5">
+            {line(`${name}: on course for`, p.projected, true)}
+            {line(`${last}, the whole month`, p.lastMonth)}
+            {line(`${last} by day ${p.day}`, p.lastMonthToDate)}
+          </ul>
+          <p className="mt-4 text-xs text-brand-muted">
+            On course for = what&apos;s in so far, plus the four-week forecast for the days left (reorders due and the pace of new products).
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Plants by the month of their first order, and the share of each group
+ * ordering again in every month since: whether newer customers stay.
+ */
+function Cohorts({ a }: { a: Analysis | null }) {
+  const list = a?.cohorts ?? [];
+  const width = Math.max(...list.map((c) => c.active.length), 1);
+  const TH = 'px-3 py-2.5 text-right text-xs font-medium text-brand-muted';
+  return (
+    <section aria-label="Do customers come back" className={cn(CARD, 'overflow-hidden')}>
+      <div className="max-w-[72ch] px-5 pt-5 sm:px-6">
+        <h2 className="text-base font-semibold text-brand-ink">Do customers come back?</h2>
+        <p className="mt-0.5 text-[13px] text-brand-muted">
+          Plants grouped by the month of their first order. Each cell is the share of that group ordering in a later month. Read down a
+          column to see whether newer customers stay better than older ones. A column fills in as each month passes.
+        </p>
+      </div>
+      {!a ? <div className="px-5 pb-5"><Skeleton rows={4} /></div> : width < 2 ? (
+        <p className="px-5 py-10 text-center text-sm text-brand-muted sm:px-6">Needs a second month of orders. It fills in on its own.</p>
+      ) : (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[640px] border-collapse text-sm">
+            <thead>
+              <tr>
+                <th className="px-5 py-2.5 text-left text-xs font-medium text-brand-muted sm:px-6">First ordered</th>
+                <th className={TH}>Plants</th>
+                <th className={TH}>Value so far</th>
+                {Array.from({ length: width - 1 }, (_, i) => <th key={i} className={TH}>{i === 0 ? '1 month on' : `${i + 1} months`}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((c) => (
+                <tr key={c.month} className="border-t border-brand-line-soft">
+                  <td className="px-5 py-2.5 sm:px-6">
+                    <span className="block font-medium text-brand-ink">{MON[+c.month.slice(5, 7) - 1]} {c.month.slice(0, 4)}</span>
+                    {c.onBooks && <span className="block text-xs text-brand-muted">already customers when the data starts</span>}
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-mono text-brand-ink">{c.customers}</td>
+                  <td className="px-3 py-2.5 text-right font-mono text-brand-ink" title={rupeesFull(c.value)}>{rupees(c.value)}</td>
+                  {Array.from({ length: width - 1 }, (_, i) => {
+                    const pct = c.active[i + 1];
+                    const partial = c.partial && i + 1 === c.active.length - 1;
+                    return (
+                      <td key={i} className="px-3 py-2.5 text-right font-mono"
+                        style={pct != null ? { backgroundColor: `rgba(16,85,63,${(pct / 100) * 0.22})` } : undefined}
+                        title={pct == null ? 'Not reached yet' : `${pct}% of the ${MON[+c.month.slice(5, 7) - 1]} plants ordered ${i + 1} month${i ? 's' : ''} on${partial ? ' (this month, so far)' : ''}`}>
+                        {pct == null ? '' : <span className={partial ? 'text-brand-muted' : 'text-brand-ink'}>{Math.round(pct)}%{partial ? '…' : ''}</span>}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="px-5 py-3 text-xs text-brand-muted sm:px-6">… is this month, still filling in.</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+const CHECK_COLUMNS: CsvColumn<RowCheck>[] = [
+  { header: 'What looks off', value: (c) => c.issue },
+  ...LINE_COLUMNS.map((col) => ({ header: col.header, value: (c: RowCheck) => col.value(c.row) })),
+];
+
+/** Order lines that look mistyped: every figure on this page counts them, so they're worth fixing on Job Separation. */
+function RowChecks({ a, onWho }: { a: Analysis | null; onWho: (w: string | null) => void }) {
+  const [all, setAll] = useState(false);
+  const list = a?.rowChecks ?? [];
+  const shown = all ? list : list.slice(0, 12);
+  return (
+    <section aria-label="Order lines to check" className={cn(CARD, 'overflow-hidden')}>
+      <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-5 sm:px-6">
+        <div className="max-w-[72ch]">
+          <h2 className="text-base font-semibold text-brand-ink">Order lines to check</h2>
+          <p className="mt-0.5 text-[13px] text-brand-muted">
+            Lines whose value isn&apos;t labels × rate, with no value, or with ten times the labels the product usually runs. Often a
+            typo (an extra zero), and every total here counts it. Small top-ups aren&apos;t flagged. All orders so far.
+          </p>
+        </div>
+        <CsvExportButton rows={list} columns={CHECK_COLUMNS} filename="order-lines-to-check" label="CSV" />
+      </div>
+      {!a ? <div className="px-5 pb-5"><Skeleton rows={3} /></div> : list.length === 0 ? (
+        <p className="px-5 py-10 text-center text-sm text-brand-muted sm:px-6">Nothing looks off. Every line&apos;s value is labels × rate, and no run is far bigger than its product&apos;s usual.</p>
+      ) : (
+        <>
+          <ul className="mt-3">
+            {shown.map((c, i) => (
+              <li key={`${c.row.id}-${i}`} className="grid gap-x-4 gap-y-0.5 border-t border-brand-line-soft px-5 py-2.5 sm:grid-cols-[110px_minmax(0,1fr)_minmax(0,1.4fr)] sm:px-6">
+                <span className="font-mono text-xs text-brand-muted">{dayLabel(c.row.day)}{c.row.sr_no && <> · {c.row.sr_no}</>}</span>
+                <span className="min-w-0">
+                  <button type="button" onClick={() => onWho(`p:${partyKey(c.row.party)}`)}
+                    className="block max-w-full truncate text-left text-sm font-semibold text-brand-ink underline-offset-2 hover:underline">{c.row.party}</button>
+                  <span className="block truncate text-xs text-brand-muted">{c.row.material_name ?? '—'}{c.row.pm_code && <> · <span className="font-mono">{c.row.pm_code}</span></>}</span>
+                </span>
+                <span className="text-[13px] text-brand-warning">{c.issue}</span>
+              </li>
+            ))}
+          </ul>
+          {list.length > 12 && (
+            <div className="border-t border-brand-line-soft px-5 py-1 sm:px-6">
+              <button type="button" onClick={() => setAll(!all)} className="min-h-11 text-sm font-medium text-brand-primary hover:underline">
+                {all ? 'Show first 12' : `Show all ${list.length}`}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 
