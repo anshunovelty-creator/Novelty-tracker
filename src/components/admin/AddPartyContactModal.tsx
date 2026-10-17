@@ -14,6 +14,7 @@ import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { ModalShell } from './modals';
+import PartyPicker from './PartyPicker';
 import type { Party, PartyContact } from '@/lib/types';
 import { WithExample } from '@/components/ui/FieldAffix';
 
@@ -106,16 +107,7 @@ export default function AddPartyContactModal({ existing, onClose, onSaved }: Pro
         <div className="px-5 py-4 overflow-y-auto space-y-4">
           <div>
             <ContactLabel required>Party</ContactLabel>
-            <select
-              value={party}
-              onChange={(e) => setParty(e.target.value)}
-              className={cn(inputCls, 'appearance-none')}
-            >
-              <option value="" disabled>Choose a party</option>
-              {parties.map((p) => (
-                <option key={p.id} value={p.name}>{p.name}</option>
-              ))}
-            </select>
+            <PartyPicker parties={parties} value={party} onChange={setParty} className={inputCls} />
           </div>
 
           <div>

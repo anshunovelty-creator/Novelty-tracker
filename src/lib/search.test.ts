@@ -4,7 +4,22 @@
 // millimetre, whether the stored value or the search carries decimals.
 
 import { describe, expect, it } from 'vitest';
-import { containsPattern, orContains, orMatch, sizePatterns } from './search';
+import { containsPattern, nameMatches, orContains, orMatch, sizePatterns, startsFirst } from './search';
+
+describe('nameMatches', () => {
+  it('finds a party by any part of its name, ignoring spaces and dashes', () => {
+    for (const q of ['UPL - 53', 'upl 53', 'PL 53', '53', 'upl53', 'pl']) expect(nameMatches('UPL - 53', q)).toBe(true);
+    expect(nameMatches('UPL - 53', '85')).toBe(false);
+    expect(nameMatches('UPL - 53', 'pl 85')).toBe(false);
+  });
+});
+
+describe('startsFirst', () => {
+  it('lists names starting with the text above ones merely containing it', () => {
+    const rows = [{ name: 'SUPLEX' }, { name: 'UPL - 53' }, { name: 'ABC UPL' }];
+    expect(startsFirst(rows, 'upl').map((r) => r.name)).toEqual(['UPL - 53', 'SUPLEX', 'ABC UPL']);
+  });
+});
 
 describe('sizePatterns', () => {
   it('matches the whole millimetre and anything after its decimal point', () => {

@@ -1,7 +1,7 @@
 // src/app/api/parties/route.ts
 // ============================================================
 // GET  /api/parties            — the master list (any authenticated user)
-//      /api/parties?search=ar  — typeahead: names starting with the prefix
+//      /api/parties?search=ar  — typeahead: names containing the text, prefix matches first
 // POST /api/parties            — add a party (Prepress or Admin)
 // ============================================================
 
@@ -11,6 +11,7 @@ import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions, canDeptManageJobSeparation } from '@/lib/constants/departments';
 import { deptKeyOf } from '@/lib/identity';
+import { nameMatches, startsFirst } from '@/lib/search';
 
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -20,18 +21,15 @@ export async function GET(request: NextRequest) {
 
   const search = new URL(request.url).searchParams.get('search')?.trim();
 
-  let query = supabase.from('parties').select('*').order('name');
-  if (search) {
-    // Escape ilike wildcards so a typed % or _ is matched literally, then
-    // prefix-match — "type the first letter" is the whole point here.
-    const pattern = search.replace(/[%_]/g, '\\$&') + '%';
-    query = query.ilike('name', pattern).limit(8);
-  }
-
-  const { data, error } = await query;
+  const { data, error } = await supabase.from('parties').select('*').order('name');
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!search) return NextResponse.json({ parties: data ?? [] });
 
-  return NextResponse.json({ parties: data ?? [] });
+  // Any part of the name, spaces and dashes ignored — "53" or "PL 53" finds
+  // "UPL - 53"; names starting with the text come first.
+  // ponytail: filters the whole list in code (~50 rows); move to SQL if it grows into the thousands.
+  const hits = (data ?? []).filter((p) => nameMatches(p.name, search));
+  return NextResponse.json({ parties: startsFirst(hits, search).slice(0, 8) });
 }
 
 export async function POST(request: NextRequest) {

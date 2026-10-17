@@ -17,6 +17,25 @@ export function containsPattern(q: string): string {
   return `%${escapeLike(q)}%`;
 }
 
+// Constructor, not a literal: \p{…} needs the u flag, which the TS target rejects in a literal.
+const NOT_WORD = new RegExp('[^\\p{L}\\p{N}]', 'gu');
+const squash = (s: string) => s.toLowerCase().replace(NOT_WORD, '');
+
+/** Every typed word appears somewhere in the name, ignoring case, spaces
+ *  and punctuation — "pl 53", "53" and "upl53" all find "UPL - 53". */
+export function nameMatches(name: string, q: string): boolean {
+  const n = squash(name);
+  return q.split(/\s+/).map(squash).every((w) => n.includes(w));
+}
+
+/** Names that start with `q` first, then the rest — so "upl" still lists
+ *  UPL - 53 above SUPLEX when both match. Stable otherwise. */
+export function startsFirst<T extends { name: string }>(rows: T[], q: string): T[] {
+  const n = squash(q);
+  const starts = (r: T) => (squash(r.name).startsWith(n) ? 0 : 1);
+  return [...rows].sort((a, b) => starts(a) - starts(b));
+}
+
 /**
  * Patterns for a size (a die's length or width) — matched on the whole
  * millimetre, ignoring anything after the decimal point, so 210 and 210.84
