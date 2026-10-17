@@ -104,9 +104,8 @@ export default function ShadeCardsManager({ canManage, canDelete, className }: P
 
   const [search,  setSearch]  = useState('');
   const [field,   setField]   = useState('all');
-  // The KPI cards are the filter. Approval pending leads, because the cards
-  // sitting with a party are the ones someone has to chase.
-  const [filter,  setFilter]  = useState<KpiFilter>('pending');
+  // The KPI cards are the filter. The whole register leads.
+  const [filter,  setFilter]  = useState<KpiFilter>('all');
   const status = filter === 'pending' ? 'Pending Approval' : filter === 'approved' ? 'Approved' : '';
   const [page,    setPage]    = useState(1);
   const [sort,    setSort]    = useState<SortField>('shade_card_number');
@@ -239,14 +238,12 @@ export default function ShadeCardsManager({ canManage, canDelete, className }: P
         className="flex shrink-0 flex-wrap overflow-hidden rounded-2xl border border-brand-border bg-white shadow-[0_2px_8px_rgba(12,42,32,0.04)]"
       >
         <Kpi
-          label="Approval pending"
+          label="Total shade cards"
           loading={!summary}
-          value={summary ? fmt(summary.pending_approval) : '—'}
-          delta={summary && (summary.waiting_late > 0
-            ? { text: `${fmt(summary.waiting_late)} with party over ${WITH_PARTY_LATE_DAYS} days`, tone: 'bad' }
-            : { text: `none with party over ${WITH_PARTY_LATE_DAYS} days`, tone: 'good' })}
-          active={filter === 'pending'}
-          onClick={() => pick('pending')}
+          value={summary ? fmt(summary.total) : '—'}
+          delta={summary && { text: 'every current card', tone: 'muted' }}
+          active={filter === 'all'}
+          onClick={() => pick('all')}
         />
         <Kpi
           label="Approved"
@@ -257,12 +254,14 @@ export default function ShadeCardsManager({ canManage, canDelete, className }: P
           onClick={() => pick('approved')}
         />
         <Kpi
-          label="Total shade cards"
+          label="Approval pending"
           loading={!summary}
-          value={summary ? fmt(summary.total) : '—'}
-          delta={summary && { text: 'every current card', tone: 'muted' }}
-          active={filter === 'all'}
-          onClick={() => pick('all')}
+          value={summary ? fmt(summary.pending_approval) : '—'}
+          delta={summary && (summary.waiting_late > 0
+            ? { text: `${fmt(summary.waiting_late)} with party over ${WITH_PARTY_LATE_DAYS} days`, tone: 'bad' }
+            : { text: `none with party over ${WITH_PARTY_LATE_DAYS} days`, tone: 'good' })}
+          active={filter === 'pending'}
+          onClick={() => pick('pending')}
         />
         <Kpi
           label="Last 7 days added"
