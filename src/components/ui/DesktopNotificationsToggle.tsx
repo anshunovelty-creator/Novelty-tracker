@@ -7,6 +7,14 @@
 
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { listenForPushOpen, registerPush } from '@/lib/pushClient';
+
+/** Ask, then — if allowed — sign this device up for push (src/lib/pushClient). */
+async function askPermission(): Promise<NotificationPermission> {
+  const perm = await Notification.requestPermission();
+  if (perm === 'granted') void registerPush();
+  return perm;
+}
 
 export function DesktopNotificationsToggle({ className }: { className?: string }) {
   const [perm, setPerm] = useState<NotificationPermission | 'unsupported'>('unsupported');
@@ -27,7 +35,7 @@ export function DesktopNotificationsToggle({ className }: { className?: string }
           type="checkbox"
           checked={perm === 'granted'}
           disabled={perm === 'granted'}
-          onChange={async () => setPerm(await Notification.requestPermission())}
+          onChange={async () => setPerm(await askPermission())}
           className="h-5 w-5 accent-brand-primary"
         />
       )}
@@ -39,9 +47,18 @@ const PROMPT_DISMISSED = 'nl:notif-prompt-dismissed';
 
 /** Card under the header asking to turn notifications on, until the browser
  *  has an answer (allowed or blocked) or the user says "Not now" — the
- *  drawer switches above stay as the way back in. Mounted in the admin layout. */
+ *  drawer switches above stay as the way back in. Mounted in the admin layout,
+ *  which also makes it the home of push sign-up (src/lib/pushClient.ts). */
 export function NotificationPrompt() {
   const [show, setShow] = useState(false);
+
+  // Mounted once per admin page load, so this is where every device signs up
+  // for push (a no-op until notifications are allowed) and where a tapped
+  // notification gets routed to its drawer.
+  useEffect(() => {
+    void registerPush();
+    return listenForPushOpen();
+  }, []);
 
   useEffect(() => {
     if (!('Notification' in window) || Notification.permission !== 'default') return;
@@ -78,7 +95,7 @@ export function NotificationPrompt() {
         </button>
         <button
           type="button"
-          onClick={async () => { await Notification.requestPermission(); setShow(false); }}
+          onClick={async () => { await askPermission(); setShow(false); }}
           className="min-h-11 rounded-xl bg-brand-primary px-4 text-sm font-semibold text-white hover:bg-brand-primary-hover"
         >
           Turn on

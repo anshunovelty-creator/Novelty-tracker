@@ -24,6 +24,7 @@ import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import { requestOpen, subscribeActiveWidget } from '@/lib/floatingWidgetCoordinator';
 import { notify } from '@/lib/notify';
+import { MESSAGES_OPEN_EVENT } from '@/lib/constants/events';
 import { useTeamDirectory } from '@/hooks/useReferenceData';
 
 // Loaded on first open, not with every admin page — the drawer only renders
@@ -89,6 +90,7 @@ export default function MessagesWidget({ userEmail, isSuperAdmin }: Props) {
           id:     m.id,
           title:  `${nameOfRef.current(m.sender_email) || m.sender_email} sent you a message`,
           body:   m.body,
+          open:   { kind: 'messages', conversationId: m.conversation_id },
           onOpen: () => { requestOpen('messages'); setOpenOn(m.conversation_id); setOpen(true); },
         });
       })
@@ -99,6 +101,17 @@ export default function MessagesWidget({ userEmail, isSuperAdmin }: Props) {
 
     return () => { supabase.removeChannel(channel); };
   }, [queryClient, userEmail]);
+
+  // A tapped push notification (src/lib/pushClient.ts) opens on its thread.
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      requestOpen('messages');
+      setOpenOn((e as CustomEvent<string>).detail);
+      setOpen(true);
+    };
+    window.addEventListener(MESSAGES_OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(MESSAGES_OPEN_EVENT, onOpen);
+  }, []);
 
   useEffect(() => {
     if (!open) return;

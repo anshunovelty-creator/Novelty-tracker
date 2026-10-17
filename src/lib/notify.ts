@@ -14,6 +14,7 @@
 
 import { createElement } from 'react';
 import toast from 'react-hot-toast';
+import type { PushOpen } from '@/lib/push';
 
 let audio: AudioContext | null = null;
 
@@ -73,18 +74,34 @@ export type Alert = {
   id:     string;
   title:  string;
   body:   string;
+  /** What a click on the system notification opens, via public/sw.js. */
+  open:   PushOpen;
   /** Opens whatever the alert is about (the notes drawer, the chat thread). */
   onOpen: () => void;
 };
 
-export function notify({ id, title, body, onOpen }: Alert) {
+/** The system pop-up. Shown through the service worker when there is one:
+ *  phones only allow that kind (new Notification() throws on Android), and
+ *  it shares a tag with the push for the same note/message (src/lib/push.ts)
+ *  so the device shows it once. */
+async function systemNotification({ id, title, body, open, onOpen }: Alert) {
+  const reg = await navigator.serviceWorker?.getRegistration().catch(() => undefined);
+  // silent: the chime is the sound; the OS one would double it.
+  if (reg) {
+    await reg.showNotification(title, { body, tag: id, silent: true, icon: '/icon.png', data: { open } });
+    return;
+  }
+  const n = new Notification(title, { body, tag: id, silent: true });
+  n.onclick = () => { window.focus(); onOpen(); n.close(); };
+}
+
+export function notify(alert: Alert) {
+  const { id, title, body, onOpen } = alert;
   if (!claimAlert(id)) return;
   chime();
 
   if ('Notification' in window && Notification.permission === 'granted') {
-    // silent: the chime above is the sound; the OS one would double it.
-    const n = new Notification(title, { body, tag: id, silent: true });
-    n.onclick = () => { window.focus(); onOpen(); n.close(); };
+    systemNotification(alert).catch((e) => console.warn('[notify] system notification failed', e));
     return;
   }
 

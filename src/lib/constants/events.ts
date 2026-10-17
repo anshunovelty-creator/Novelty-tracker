@@ -43,3 +43,9 @@ export const NOTES_OPEN_EVENT = 'tracker:notes-open';
  * detail: number.
  */
 export const NOTES_UNREAD_EVENT = 'tracker:notes-unread';
+
+/**
+ * A click on a push notification (src/lib/pushClient.ts) asks MessagesWidget
+ * to open on a thread. detail: the conversation id.
+ */
+export const MESSAGES_OPEN_EVENT = 'tracker:messages-open';

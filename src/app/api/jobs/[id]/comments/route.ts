@@ -9,8 +9,10 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions } from '@/lib/constants/departments';
-import { deptKeyOf } from '@/lib/identity';
+import { deptKeyOf, appMetaOf } from '@/lib/identity';
 import { parseNoteId } from '@/lib/notesView';
+import { usernameOf } from '@/lib/username';
+import { pushTo } from '@/lib/push';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -72,6 +74,17 @@ export async function POST(request: NextRequest, { params }: Params) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Everyone but the writer, titled like the in-tab alert: "who — job".
+  const { data: job } = await admin.from('jobs').select('job_name, po_number').eq('id', id).maybeSingle();
+  const who = usernameOf(appMetaOf(user), user.email);
+  const jobLabel = job?.job_name || job?.po_number;
+  await pushTo('everyone', user.email, {
+    title: jobLabel ? `${who} — ${jobLabel}` : who,
+    body:  data.comment,
+    tag:   data.id,
+    open:  { kind: 'notes' },
+  });
 
   return NextResponse.json({ comment: data }, { status: 201 });
 }

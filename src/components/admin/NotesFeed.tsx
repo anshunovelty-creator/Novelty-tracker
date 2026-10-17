@@ -212,6 +212,7 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
           id:     newest.id,
           title:  job ? `${head} — ${job}` : head,
           body:   newest.comment,
+          open:   { kind: 'notes' },
           onOpen: () => window.dispatchEvent(new Event(NOTES_OPEN_EVENT)),
         });
       }

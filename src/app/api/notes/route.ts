@@ -14,8 +14,10 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions } from '@/lib/constants/departments';
-import { deptKeyOf } from '@/lib/identity';
+import { deptKeyOf, appMetaOf } from '@/lib/identity';
 import { parseNoteId } from '@/lib/notesView';
+import { usernameOf } from '@/lib/username';
+import { pushTo } from '@/lib/push';
 
 export async function POST(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -45,6 +47,14 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Everyone but the writer, same as the in-tab alert in NotesFeed.
+  await pushTo('everyone', user.email, {
+    title: usernameOf(appMetaOf(user), user.email),
+    body:  comment,
+    tag:   data.id,
+    open:  { kind: 'notes' },
+  });
 
   return NextResponse.json({ comment: data }, { status: 201 });
 }

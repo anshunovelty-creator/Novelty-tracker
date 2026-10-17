@@ -15,7 +15,9 @@ import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDeptPermissions } from '@/lib/constants/departments';
 import type { ConversationSummary, ConversationParticipant } from '@/lib/types';
-import { deptKeyOf } from '@/lib/identity';
+import { deptKeyOf, appMetaOf } from '@/lib/identity';
+import { usernameOf } from '@/lib/username';
+import { pushTo } from '@/lib/push';
 
 // ── GET ───────────────────────────────────────────────────────
 export async function GET() {
@@ -168,6 +170,13 @@ export async function POST(request: NextRequest) {
     console.error('[POST /api/messages/conversations] message', msgError);
     return NextResponse.json({ error: msgError.message }, { status: 500 });
   }
+
+  await pushTo(recipientIds.map((id) => emailById.get(id)!), user.email, {
+    title: `${usernameOf(appMetaOf(user), user.email)} sent you a message`,
+    body:  text,
+    tag:   message.id,
+    open:  { kind: 'messages', conversationId: conversation.id },
+  });
 
   return NextResponse.json({ conversation, message }, { status: 201 });
 }

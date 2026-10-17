@@ -9,6 +9,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { usernameOf } from '@/lib/username';
+import { appMetaOf } from '@/lib/identity';
+import { pushTo } from '@/lib/push';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -48,6 +52,18 @@ export async function POST(request: NextRequest, { params }: Params) {
     console.error('[POST /api/messages/conversations/[id]/messages]', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // The thread's other participants, titled like the in-tab alert.
+  const { data: roster } = await createAdminClient()
+    .from('conversation_participants')
+    .select('member_email')
+    .eq('conversation_id', id);
+  await pushTo((roster ?? []).map((r) => r.member_email), user.email, {
+    title: `${usernameOf(appMetaOf(user), user.email)} sent you a message`,
+    body:  text,
+    tag:   message.id,
+    open:  { kind: 'messages', conversationId: id },
+  });
 
   return NextResponse.json({
     message: {

@@ -77,7 +77,9 @@ export async function middleware(request: NextRequest) {
   // check department itself. An unauthenticated or non-Viewer request just
   // falls through to the route's own handling, unchanged.
   if (pathname.startsWith('/api/')) {
-    if (SAFE_METHODS.has(request.method)) return NextResponse.next();
+    // /api/push only files the caller's own device for notifications —
+    // Viewers get notified too.
+    if (SAFE_METHODS.has(request.method) || pathname === '/api/push') return NextResponse.next();
 
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -163,6 +165,7 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     // Match all paths except static files and Next.js internals
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // (and the service worker, which the browser re-fetches to check for updates)
+    '/((?!_next/static|_next/image|favicon.ico|sw\\.js|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };
