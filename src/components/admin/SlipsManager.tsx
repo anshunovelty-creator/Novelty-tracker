@@ -46,6 +46,7 @@ import BoxSlipLabel, {
   BOX_SLIP_WIDTH_MM,
   BOX_SLIP_HEIGHT_MM,
   type BoxSlipLabelData,
+  type BoxSlipUnit,
 } from './BoxSlipLabel';
 import RollSlipLabel, {
   ROLL_SLIP_WIDTH_MM,
@@ -68,8 +69,7 @@ import AddressSlipLabel, {
   type BlockOffset,
   type AddressSlipLabelData,
 } from './AddressSlipLabel';
-import type { Job, JobSeparation } from '@/lib/types';
-import { slipSourceFromJob, slipSourceFromSeparation, separationsToOffer, type SlipSource } from '@/lib/slipSource';
+import { searchSources, type SlipSource } from '@/lib/slipSource';
 import { useBranding } from '@/components/brand/BrandingProvider';
 import { SearchClearButton } from '@/components/ui/SearchClearButton';
 import { WithExample } from '@/components/ui/FieldAffix';
@@ -367,6 +367,10 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
   // count) blank to fill in by hand. The count field then only says how
   // many slips to print.
   const [blankQty, setBlankQty] = useState(false);
+  // Box slip only: packed in cartons (BOX) or packets (PKT) — printed after
+  // the count, on a blank slip too.
+  const [boxUnit, setBoxUnit] = useState<BoxSlipUnit>('BOX');
+  const unitWord = boxUnit === 'PKT' ? 'packet' : 'box';
 
   // ── Roll-slip fields ────────────────────────────────────────
   const [product, setProduct] = useState('');
@@ -417,27 +421,8 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
     }
     const t = setTimeout(async () => {
       setSearching(true);
-      const q = encodeURIComponent(term);
-      // Either lookup may fail on its own; it then just contributes nothing,
-      // rather than flashing an error toast on every keystroke over a flaky
-      // shop-floor link.
-      const get = async <T,>(url: string, key: string): Promise<T[]> => {
-        try {
-          const res = await fetch(url);
-          return res.ok ? ((await res.json())[key] ?? []) : [];
-        } catch { return []; }
-      };
       try {
-        const [jobs, seps] = await Promise.all([
-          get<Job>(`/api/jobs?search=${q}`, 'jobs'),
-          // Every date, not just this month: the row being packed may be old.
-          get<JobSeparation>(`/api/job-separations?search=${q}&range=all&limit=8`, 'job_separations'),
-        ]);
-        const shown = jobs.slice(0, 8);
-        setResults({
-          jobs:        shown.map(slipSourceFromJob),
-          separations: separationsToOffer(seps, new Set(shown.map((j) => j.id))).map(slipSourceFromSeparation),
-        });
+        setResults(await searchSources(term));
       } finally {
         setSearching(false);
       }
@@ -489,8 +474,8 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
     if (!date) return 'Date is required';
     if (kind === 'box') {
       if (!materialName.trim()) return 'Material name is required';
-      if (!blankQty && (!Number.isInteger(boxQty) || boxQty <= 0)) return 'Quantity per box must be a whole number';
-      if (!Number.isInteger(boxes) || boxes <= 0) return blankQty ? 'Number of slips must be a whole number' : 'Number of boxes must be a whole number';
+      if (!blankQty && (!Number.isInteger(boxQty) || boxQty <= 0)) return `Quantity per ${unitWord} must be a whole number`;
+      if (!Number.isInteger(boxes) || boxes <= 0) return blankQty ? 'Number of slips must be a whole number' : `Number of ${unitWord === 'box' ? 'boxes' : 'packets'} must be a whole number`;
       if (boxes > 200) return 'That would print more than 200 slips';
     } else {
       if (!product.trim()) return 'Product is required';
@@ -499,7 +484,7 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
       if (rolls > 500) return 'That would print more than 500 slips';
     }
     return null;
-  }, [job, date, kind, materialName, boxQty, boxes, product, rollQty, rolls, blankQty,
+  }, [job, date, kind, materialName, boxQty, boxes, product, rollQty, rolls, blankQty, unitWord,
       toAddress, fromAddress, addresses]);
 
   const boxPreview: BoxSlipLabelData = {
@@ -508,6 +493,7 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
     qtyPerBox: Number.isFinite(boxQty) && boxQty > 0 ? boxQty : 0,
     boxCount: Number.isFinite(boxes) && boxes > 0 ? boxes : 1,
     blankQty,
+    unit: boxUnit,
     mfgDate: date,
   };
 
@@ -664,7 +650,7 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
     } else if (blankQty) {
       // A blank slip has nothing to check.
     } else if (kind === 'box') {
-      if (!Number.isInteger(boxQty) || boxQty <= 0) { toast.error('Enter a quantity per box first'); return; }
+      if (!Number.isInteger(boxQty) || boxQty <= 0) { toast.error(`Enter a quantity per ${unitWord} first`); return; }
     } else if (!Number.isInteger(rollQty) || rollQty <= 0) {
       toast.error('Enter a quantity per roll first'); return;
     }
@@ -856,6 +842,38 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
           </>
         )}
 
+        {showFields && kind === 'box' && (
+          <fieldset>
+            <legend className={LABEL_CLS}>Packed in</legend>
+            <div className="flex flex-wrap gap-2">
+              {([['BOX', 'Box'], ['PKT', 'Packet (PKT)']] as const).map(([value, label]) => (
+                <label key={value} className="cursor-pointer">
+                  {/* Native radios: arrow keys move between the two for free. */}
+                  <input
+                    type="radio"
+                    name="s-box-unit"
+                    value={value}
+                    checked={boxUnit === value}
+                    onChange={() => setBoxUnit(value)}
+                    className="peer sr-only"
+                  />
+                  <span
+                    className={cn(
+                      'flex min-h-11 items-center rounded-full border px-3.5 text-sm font-medium transition-colors',
+                      'peer-focus-visible:ring-4 peer-focus-visible:ring-brand-primary/30',
+                      boxUnit === value
+                        ? 'border-brand-ink bg-brand-ink text-white'
+                        : 'border-brand-border bg-white text-brand-ink hover:bg-brand-surface-alt',
+                    )}
+                  >
+                    {label}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
+
         {showFields && kind !== 'address' && (
           <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-brand-border px-3 py-2 hover:bg-brand-surface-hover">
             <input
@@ -868,7 +886,7 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
               <span className="font-medium text-brand-ink">Leave quantity blank</span>
               <span className="block text-xs text-brand-muted">
                 {kind === 'box'
-                  ? 'Prints “_____ X _____ BOX” to fill in by hand.'
+                  ? `Prints “_____ X _____ ${boxUnit}” to fill in by hand.`
                   : 'Prints an empty quantity box to fill in by hand.'}
               </span>
             </span>
@@ -887,12 +905,12 @@ export default function SlipsManager({ canPrintBox, canPrintRoll }: Props) {
               />
             </div>
             <div>
-              <label className={LABEL_CLS} htmlFor="s-boxqty">Labels per box</label>
+              <label className={LABEL_CLS} htmlFor="s-boxqty">Labels per {unitWord}</label>
               <input id="s-boxqty" type="number" inputMode="numeric" min={1} disabled={blankQty}
                 value={blankQty ? '' : qtyPerBox} onChange={(e) => setQtyPerBox(e.target.value)} className={cn(FIELD, 'font-mono disabled:opacity-50')} />
             </div>
             <div>
-              <label className={LABEL_CLS} htmlFor="s-boxes">{blankQty ? 'Number of slips' : 'Number of boxes'}</label>
+              <label className={LABEL_CLS} htmlFor="s-boxes">{blankQty ? 'Number of slips' : unitWord === 'box' ? 'Number of boxes' : 'Number of packets'}</label>
               <input id="s-boxes" type="number" inputMode="numeric" min={1}
                 value={boxCount} onChange={(e) => setBoxCount(e.target.value)} className={cn(FIELD, 'font-mono')} />
             </div>

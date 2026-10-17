@@ -5,15 +5,24 @@
 // already in the list. Both cases queue/update a row in
 // pending_dispatch_notifications and ride the same consolidated per-party
 // send as every other entry.
+//
+// The PM code field searches orders the same way the slip page does
+// (src/lib/slipSource.ts): pick a job or Job Separation row and its party,
+// PO, job name and quantity fill in; anything can still be typed by hand.
 
-import React, { useState, useEffect, useId } from 'react';
+import React, { useState, useEffect, useId, useMemo } from 'react';
 import { Check, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { ModalShell } from './modals';
+import PartyPicker from './PartyPicker';
 import type { Party, PendingDispatchNotification } from '@/lib/types';
 import { WithExample, WithUnit } from '@/components/ui/FieldAffix';
+import { useListKeys } from '@/hooks/useListKeys';
+import { searchSources, type SlipSource, type SourceMatches } from '@/lib/slipSource';
+
+const NO_MATCHES: SourceMatches = { jobs: [], separations: [] };
 
 const inputCls = cn(
   'w-full px-3 py-2 rounded-lg text-sm bg-[var(--field-bg)] border border-[var(--field-border)]',
@@ -42,6 +51,46 @@ export default function AddCustomDispatchModal({ existing, onClose, onSaved }: P
   const [remark,     setRemark]     = useState(existing?.remark ?? '');
   const [pmCode,     setPmCode]     = useState(existing?.pm_code ?? '');
   const [saving,     setSaving]     = useState(false);
+
+  // Only what's typed into the PM code box searches — not the value an
+  // entry being edited opens with, nor the code a pick fills in.
+  const [pmQuery,     setPmQuery]     = useState('');
+  const [matches,     setMatches]     = useState<SourceMatches>(NO_MATCHES);
+  const [showMatches, setShowMatches] = useState(false);
+  const [searching,   setSearching]   = useState(false);
+
+  useEffect(() => {
+    const term = pmQuery.trim();
+    if (term.length < 2) { setMatches(NO_MATCHES); setShowMatches(false); return; }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      setSearching(true);
+      const found = await searchSources(term);
+      if (cancelled) return;
+      setSearching(false);
+      setMatches(found);
+      setShowMatches(true);
+    }, 250);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [pmQuery]);
+
+  const options = useMemo(() => [...matches.jobs, ...matches.separations], [matches]);
+
+  function pick(o: SlipSource) {
+    setPmCode(o.pm_code ?? '');
+    setParty(o.party);
+    setPoNumber(o.po_number ?? '');
+    setJobName(o.job_name ?? '');
+    setQty(o.label_qty ? String(o.label_qty) : '');
+    setPmQuery('');
+    setShowMatches(false);
+    toast.success('Filled from the order — check the qty if only part went out');
+  }
+
+  const pmKeys = useListKeys({
+    items: options, open: showMatches && options.length > 0,
+    onPick: pick, onClose: () => setShowMatches(false),
+  });
 
   useEffect(() => {
     fetch('/api/parties')
@@ -113,18 +162,64 @@ export default function AddCustomDispatchModal({ existing, onClose, onSaved }: P
         </div>
 
         <div className="px-5 py-4 overflow-y-auto space-y-4">
+          <div className="relative">
+            <FieldLabel>PM code</FieldLabel>
+            <WithExample example="PM-4521">
+              <input
+                type="text"
+                value={pmCode}
+                onChange={(e) => { setPmCode(e.target.value); setPmQuery(e.target.value); }}
+                onFocus={() => options.length > 0 && setShowMatches(true)}
+                onBlur={() => setTimeout(() => setShowMatches(false), 150)}
+                autoComplete="off"
+                aria-label="PM code"
+                {...pmKeys.inputProps}
+                className={cn(inputCls, 'font-mono')}
+              />
+            </WithExample>
+            <p className="mt-1 text-xs text-[var(--glass-muted)]">
+              {searching
+                ? 'Searching…'
+                : showMatches && options.length === 0
+                  ? 'No order with this PM code — fill the details in below'
+                  : 'Type a PM code and pick the order — party, PO, job name and qty fill in'}
+            </p>
+            {showMatches && options.length > 0 && (
+              <div className="absolute z-20 top-full left-0 right-0 -mt-4 glass-strong glass rounded-lg shadow-lg overflow-hidden">
+                <p className="px-3 py-1.5 text-xs text-[var(--glass-muted)] bg-white/[0.06] border-b border-white/10">
+                  Pick the order to fill in (↓ ↑ and Enter work too)
+                </p>
+                <div {...pmKeys.listProps} aria-label="Matching orders" className="max-h-72 overflow-y-auto">
+                  {options.map((o, i) => (
+                    <button
+                      key={`${o.from}-${o.id}`}
+                      type="button"
+                      {...pmKeys.optionProps(i)}
+                      // onMouseDown fires before the input's onBlur closes the list
+                      onMouseDown={(e) => { e.preventDefault(); pick(o); }}
+                      className={cn('w-full min-h-11 text-left px-3 py-2 transition-colors border-b border-white/10 last:border-0',
+                        i === pmKeys.active && 'bg-brand-surface-hover shadow-[inset_3px_0_0_#10553F]')}
+                    >
+                      <span className="block text-sm text-[var(--glass-ink)] truncate">
+                        {o.party} — {o.job_name ?? 'Untitled'}
+                      </span>
+                      <span className="block text-xs text-[var(--glass-muted)] mt-0.5">
+                        <span className="font-mono">{o.job_card_number ?? '—'}</span>
+                        {o.from === 'separation' && ' (Job Separation)'}
+                        {' · '}PO <span className="font-mono">{o.po_number ?? '—'}</span>
+                        {o.pm_code ? <> · PM <span className="font-mono">{o.pm_code}</span></> : ''}
+                        {o.label_qty ? <> · Qty <span className="font-mono">{o.label_qty.toLocaleString('en-IN')}</span></> : ''}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div>
             <FieldLabel required>Party</FieldLabel>
-            <select
-              value={party}
-              onChange={(e) => setParty(e.target.value)}
-              className={cn(inputCls, 'appearance-none')}
-            >
-              <option value="" disabled>Choose a party</option>
-              {parties.map((p) => (
-                <option key={p.id} value={p.name}>{p.name}</option>
-              ))}
-            </select>
+            <PartyPicker parties={parties} value={party} onChange={setParty} className={inputCls} />
           </div>
 
           <div>
@@ -148,17 +243,6 @@ export default function AddCustomDispatchModal({ existing, onClose, onSaved }: P
               onChange={(e) => setJobName(e.target.value)}
               autoComplete="off"
               className={inputCls}
-            />
-          </div>
-
-          <div>
-            <FieldLabel>PM code</FieldLabel>
-            <input
-              type="text"
-              value={pmCode}
-              onChange={(e) => setPmCode(e.target.value)}
-              autoComplete="off"
-              className={cn(inputCls, 'font-mono')}
             />
           </div>
 
