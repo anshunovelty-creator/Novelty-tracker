@@ -15,7 +15,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback } from 'react';
 import { cn } from '@/lib/utils';
 
-export type DispatchTabId = 'queue' | 'parties' | 'team';
+export type DispatchTabId = 'queue' | 'history' | 'parties' | 'team';
 
 export type DispatchTab = {
   id:      DispatchTabId;

@@ -19,6 +19,10 @@
 //
 // Charts are single-series and plain HTML: every bar carries its value as
 // text and a title tooltip, so nothing is read from colour or length alone.
+//
+// Dispatch tab: what went out and what's still to go, from the dispatch
+// team's entries matched to order lines (lib/dispatchLedger.ts). Same
+// period and filters; a change on Dispatch Emails syncs it like any other.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -34,6 +38,8 @@ import CsvExportButton from './CsvExportButton';
 import { useRefetchOnChange } from '@/hooks/useRefetchOnChange';
 import { syncReports, type ReportData, type Fetched } from '@/lib/reportSync';
 import { Kpi, type KpiDelta } from '@/components/ui/Kpi';
+import Link from 'next/link';
+import { dispatchOf, type DispatchView, type LineStatus } from '@/lib/dispatchLedger';
 
 const CARD = 'rounded-2xl border border-brand-border bg-white shadow-[0_2px_8px_rgba(12,42,32,0.04)]';
 const FOCUS = 'focus:border-brand-primary focus:outline-none focus:ring-4 focus:ring-[rgba(16,85,63,0.18)]';
@@ -159,7 +165,7 @@ export default function ReportsView() {
     // Changes arrive through useRefetchOnChange; this only rolls "today" over.
     refetchInterval: 30 * 60_000,
   });
-  useRefetchOnChange(['job_separations'], [['reports']]);
+  useRefetchOnChange(['job_separations', 'pending_dispatch_notifications'], [['reports']]);
 
   const [preset, setPreset] = useState<Preset | 'custom'>('month');
   const [custom, setCustom] = useState<Period | null>(null);
@@ -181,6 +187,11 @@ export default function ReportsView() {
     // period is rebuilt every render; its two days are what matter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [rows, q.data?.cards, period?.from, period?.to, unit, group, party, today],
+  );
+  const dispatches = q.data?.dispatches;
+  const d = useMemo(
+    () => (rows && a && today && dispatches ? dispatchOf(rows, dispatches, a.period, a.previous, { unit, group, party }, today) : null),
+    [rows, dispatches, a, unit, group, party, today],
   );
   const parties = useMemo(() => (rows ? partyOptions(rows) : []), [rows]);
   const partyName = party ? parties.find((p) => p.key === party)?.party ?? party : group ? `${group} (all plants)` : null;
@@ -292,14 +303,14 @@ export default function ReportsView() {
           {(q.error as Error).message}
         </div>
       ) : (
-        <Body a={a} unit={unit} who={who} onUnit={setUnit} onWho={setWho} />
+        <Body a={a} d={d} unit={unit} who={who} onUnit={setUnit} onWho={setWho} />
       )}
     </div>
   );
 }
 
-function Body({ a, unit, who, onUnit, onWho }: {
-  a: Analysis | null; unit: string | null; who: string | null;
+function Body({ a, d, unit, who, onUnit, onWho }: {
+  a: Analysis | null; d: DispatchView | null; unit: string | null; who: string | null;
   onUnit: (u: string | null) => void; onWho: (w: string | null) => void;
 }) {
   const [metric, setMetric] = useState<Metric>('value');
@@ -324,7 +335,7 @@ function Body({ a, unit, who, onUnit, onWho }: {
             : change(t.parties, p.parties, vs))} />
       </section>
 
-      <Tabs tab={tab} onTab={setTab} a={a} />
+      <Tabs tab={tab} onTab={setTab} a={a} d={d} />
 
       <div role="tabpanel" id={`rep-panel-${tab}`} aria-labelledby={`rep-tab-${tab}`} className="space-y-6">
         {tab === 'overview' && (a && a.totals.orders === 0 ? (
@@ -334,7 +345,7 @@ function Body({ a, unit, who, onUnit, onWho }: {
           </div>
         ) : (
           <>
-            {a && <Insights a={a} unit={unit} onTab={setTab} />}
+            {a && <Insights a={a} d={d} unit={unit} onTab={setTab} />}
             {a && a.duplicates.length > 0 && <Duplicates list={a.duplicates} />}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-[3fr_2fr]">
               <ChangeBridge a={a} />
@@ -461,6 +472,8 @@ function Body({ a, unit, who, onUnit, onWho }: {
         )}
 
         {tab === 'approval' && <Approvals a={a} onWho={onWho} />}
+
+        {tab === 'dispatch' && <DispatchPanel a={a} d={d} onWho={onWho} />}
       </div>
     </>
   );
@@ -468,9 +481,11 @@ function Body({ a, unit, who, onUnit, onWho }: {
 
 // ── Tabs ──────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'customers' | 'reorders' | 'products' | 'pricing' | 'approval';
-const TABS: { key: Tab; label: string; count?: (a: Analysis) => number }[] = [
+type Tab = 'overview' | 'dispatch' | 'customers' | 'reorders' | 'products' | 'pricing' | 'approval';
+const TABS: { key: Tab; label: string; count?: (a: Analysis, d: DispatchView | null) => number }[] = [
   { key: 'overview',  label: 'Overview' },
+  // Open lines waiting more than 30 days since their PO.
+  { key: 'dispatch',  label: 'Dispatch', count: (_a, d) => d ? d.open.ages.slice(3).reduce((s, b) => s + b.lines, 0) : 0 },
   { key: 'customers', label: 'Customers' },
   { key: 'reorders',  label: 'Reorders & forecast', count: (a) => a.reorders.filter((c) => c.status === 'overdue').length },
   { key: 'products',  label: 'Products' },
@@ -492,7 +507,7 @@ function useTab(): [Tab, (t: Tab) => void] {
 }
 
 /** One row of tabs under the filters; a count marks what needs attention. Arrow keys move between them. */
-function Tabs({ tab, onTab, a }: { tab: Tab; onTab: (t: Tab) => void; a: Analysis | null }) {
+function Tabs({ tab, onTab, a, d }: { tab: Tab; onTab: (t: Tab) => void; a: Analysis | null; d: DispatchView | null }) {
   const move = (e: React.KeyboardEvent, i: number) => {
     const next = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : null;
     if (next == null) return;
@@ -503,7 +518,7 @@ function Tabs({ tab, onTab, a }: { tab: Tab; onTab: (t: Tab) => void; a: Analysi
   return (
     <div role="tablist" aria-label="Report sections" className="sticky top-[57px] z-30 -mx-4 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-brand-border bg-brand-bg px-4 sm:mx-0 sm:px-0">
       {TABS.map((t, i) => {
-        const n = a && t.count ? t.count(a) : 0;
+        const n = a && t.count ? t.count(a, d) : 0;
         const on = tab === t.key;
         return (
           <button key={t.key} id={`rep-tab-${t.key}`} type="button" role="tab" aria-selected={on} aria-controls={`rep-panel-${t.key}`}
@@ -529,9 +544,16 @@ const SeeTab = ({ tab, onTab }: { tab: Tab; onTab: (t: Tab) => void }) => (
 // ── Sections ──────────────────────────────────────────────────
 
 /** Plain sentences: the few things worth saying out loud about this period. */
-function Insights({ a, unit, onTab }: { a: Analysis; unit: string | null; onTab: (t: Tab) => void }) {
+function Insights({ a, d, unit, onTab }: { a: Analysis; d: DispatchView | null; unit: string | null; onTab: (t: Tab) => void }) {
   const see = (t: Tab) => <SeeTab tab={t} onTab={onTab} />;
   const out: React.ReactNode[] = [];
+  if (d) {
+    const late = d.open.ages.slice(3).reduce((s, b) => s + b.value, 0);
+    out.push(<>
+      <B>{rupees(d.shipped.value)}</B> dispatched in this period ({qtyShort(d.shipped.qty)} labels){d.since > a.period.from ? <>, counting from {dayLabel(d.since)} when every dispatch started being entered</> : ''}.
+      {' '}<B>{rupees(d.open.value)}</B> is still to dispatch on {plural(d.open.lines, 'order line')}{late > 0 ? <>, {rupees(late)} of it waiting over 30 days</> : ''}. {see('dispatch')}
+    </>);
+  }
   const topGroup = a.groups[0];
   if (topGroup && a.groups.length > 1) {
     out.push(<><B>{topGroup.party}</B>{topGroup.plants > 1 ? ` (${topGroup.plants} plants)` : ''} is the biggest customer: {rupees(topGroup.value)}, {topGroup.share}% of the value.</>);
@@ -612,6 +634,258 @@ function Insights({ a, unit, onTab }: { a: Analysis; unit: string | null; onTab:
   );
 }
 const B = ({ children }: { children: React.ReactNode }) => <strong className="font-semibold text-brand-ink">{children}</strong>;
+
+// ── Dispatch ──────────────────────────────────────────────────
+
+const pendingValue = (s: LineStatus) => s.pending * (s.line.rate ?? 0);
+const monthLabel = (m: string) => `${MON[+m.slice(5, 7) - 1]} ${m.slice(0, 4)}`;
+
+const OPEN_COLUMNS: CsvColumn<LineStatus>[] = [
+  { header: 'Sr No',          value: (s) => s.line.sr_no },
+  { header: 'PO Date',        value: (s) => csvDate(s.line.day) },
+  { header: 'Party',          value: (s) => s.line.party },
+  { header: 'PO No',          value: (s) => s.line.po_no },
+  { header: 'PM Code',        value: (s) => s.line.pm_code },
+  { header: 'Material Name',  value: (s) => s.line.material_name },
+  { header: 'Ordered',        value: (s) => s.line.quantity },
+  { header: 'Dispatched',     value: (s) => s.shipped },
+  { header: 'Pending',        value: (s) => s.pending },
+  { header: 'Rate',           value: (s) => s.line.rate },
+  { header: 'Pending value',  value: (s) => round2(pendingValue(s)) },
+  { header: 'Days since PO',  value: (s) => s.ageDays },
+  { header: 'First dispatch', value: (s) => csvDate(s.first) },
+];
+
+/**
+ * Dispatched in the period, and the open order book as of today. The open
+ * book starts at the first dispatch record: older orders have no entries to
+ * count against, so calling them pending would be the lie this tab fixes.
+ */
+function DispatchPanel({ a, d, onWho }: { a: Analysis | null; d: DispatchView | null; onWho: (w: string | null) => void }) {
+  if (!a) return <div className={cn(CARD, 'p-5 sm:p-6')}><Skeleton rows={6} /></div>;
+  if (!d) {
+    return (
+      <div className={cn(CARD, 'px-5 py-14 text-center')}>
+        <p className="text-sm font-medium text-brand-ink">Dispatch tracking hasn&apos;t started yet.</p>
+        <p className="mt-1 text-[13px] text-brand-muted">Dispatched and pending figures start on the day the dispatch team began entering every dispatch.</p>
+      </div>
+    );
+  }
+  const vs = periodLabel(a.previous);
+  const fill = d.ordered.qty ? Math.round((d.ordered.shippedQty / d.ordered.qty) * 100) : null;
+
+  return (
+    <>
+      <section aria-label="Dispatch at a glance" className={cn(CARD, 'flex flex-wrap')}>
+        <Kpi label="Dispatched value" loading={false} value={rupees(d.shipped.value)} delta={change(d.shipped.value, d.prevShipped.value, vs)} />
+        <Kpi label="Labels dispatched" loading={false} value={qtyShort(d.shipped.qty)} delta={change(d.shipped.qty, d.prevShipped.qty, vs)} />
+        <Kpi label="Still to dispatch" loading={false} value={rupees(d.open.value)}
+          delta={{ text: `${plural(d.open.lines, 'order line')} · ${qtyShort(d.open.qty)} labels, today`, tone: 'muted' }} />
+        <Kpi label="This period's orders dispatched" loading={false} value={fill == null ? '—' : `${fill}%`}
+          delta={{ text: d.ordered.lines ? `${d.ordered.full} of ${plural(d.ordered.lines, 'line')} complete` : 'no tracked orders in this period', tone: 'muted' }} />
+        <Kpi label="PO to first dispatch" loading={false} value={d.leadFirst == null ? '—' : plural(d.leadFirst, 'day')}
+          delta={{ text: d.leadDone == null ? 'median, this period' : `median · ${plural(d.leadDone, 'day')} to complete`, tone: 'muted' }} />
+      </section>
+
+      <section aria-label="What these figures cover" className={cn(CARD, 'p-5 sm:p-6')}>
+        <h2 className="text-base font-semibold text-brand-ink">What these figures cover</h2>
+        <ul className="mt-3 grid gap-x-8 gap-y-2 text-[13px] leading-5 text-brand-muted md:grid-cols-2">
+          <li>Every dispatch is entered from <B>{dayLabel(d.since, true)}</B>. Orders and entries dated before that aren&apos;t counted{d.untracked.lines ? <>: {plural(d.untracked.lines, 'order line')} ({rupees(d.untracked.value)}) in this period</> : ''}. Older entries stay in History.</li>
+          <li>An entry counts from the day of its first team email, against the order line with the same PO and PM code.</li>
+          {d.unmatched.entries > 0 && (
+            <li><B>{plural(d.unmatched.entries, 'entry', 'entries')}</B> ({qtyShort(d.unmatched.qty)} labels) in this period match no order line, so they&apos;re not in these figures.
+              {' '}<Link href="/admin/dispatch-notifications?tab=history" className="font-medium text-brand-primary underline-offset-2 hover:underline">Fix or remove them in History</Link></li>
+          )}
+          {d.held.lines > 0 && <li>{plural(d.held.lines, 'pending line')} ({rupees(d.held.value)}) with JC status on hold or cancelled are left out of what&apos;s still to dispatch.</li>}
+          {d.ordered.lines > 0 && <li>This period&apos;s tracked orders: {d.ordered.full} fully dispatched, {d.ordered.part} part dispatched, {d.ordered.none} not started; {rupees(d.ordered.pendingValue)} of them still to go.</li>}
+        </ul>
+      </section>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <section aria-label="Still to dispatch, by age" className={cn(CARD, 'p-5 sm:p-6')}>
+          <h2 className="text-base font-semibold text-brand-ink">Still to dispatch, by age</h2>
+          <p className="mt-1 text-[13px] text-brand-muted">Days since the PO date, as of today.</p>
+          <ul className="mt-4 space-y-3">
+            {d.open.ages.map((b, i) => (
+              <li key={b.label}>
+                <span className="flex items-baseline justify-between gap-3">
+                  <span className={cn('text-sm', i >= 3 && b.lines ? 'font-semibold text-brand-warning' : 'font-medium text-brand-ink')}>{b.label}</span>
+                  <span className="font-mono text-sm font-semibold text-brand-ink" title={rupeesFull(b.value)}>{rupees(b.value)}</span>
+                </span>
+                <Bar pct={d.open.value ? (b.value / d.open.value) * 100 : 0} strong={i >= 3} />
+                <span className="mt-1 block font-mono text-xs text-brand-muted">{plural(b.lines, 'line')}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+        <OpenByParty d={d} onWho={onWho} />
+      </div>
+
+      <OpenLines d={d} onWho={onWho} />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[3fr_2fr]">
+        <section aria-label="Ordered and dispatched by month" className={cn(CARD, 'overflow-hidden')}>
+          <div className="px-5 pt-5 sm:px-6">
+            <h2 className="text-base font-semibold text-brand-ink">Ordered and dispatched by month</h2>
+            <p className="mt-0.5 text-[13px] text-brand-muted">Order value by PO date against dispatched value by dispatch day. Under 100% means the backlog grew that month.</p>
+          </div>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[420px] border-collapse text-sm">
+              <thead>
+                <tr className="text-xs font-medium text-brand-muted">
+                  <th className="px-5 py-2.5 text-left sm:px-6">Month</th>
+                  <th className="px-3 py-2.5 text-right">Ordered</th>
+                  <th className="px-3 py-2.5 text-right">Dispatched</th>
+                  <th className="px-5 py-2.5 text-right sm:px-6">Out vs in</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.months.map((m) => {
+                  const pct = m.ordered ? Math.round((m.shipped / m.ordered) * 100) : null;
+                  return (
+                    <tr key={m.month} className="border-t border-brand-line-soft even:bg-brand-surface-alt">
+                      <td className="px-5 py-2.5 font-medium text-brand-ink sm:px-6">{monthLabel(m.month)}</td>
+                      <td className="px-3 py-2.5 text-right font-mono text-brand-ink" title={rupeesFull(m.ordered)}>{rupees(m.ordered)}</td>
+                      <td className="px-3 py-2.5 text-right font-mono font-semibold text-brand-ink" title={rupeesFull(m.shipped)}>{rupees(m.shipped)}</td>
+                      <td className={cn('px-5 py-2.5 text-right font-mono text-xs sm:px-6', pct == null ? 'text-brand-muted' : pct >= 100 ? 'text-brand-success' : 'text-brand-warning')}>
+                        {pct == null ? '—' : `${pct}%`}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <OverDispatched d={d} onWho={onWho} />
+      </div>
+    </>
+  );
+}
+
+function OpenByParty({ d, onWho }: { d: DispatchView; onWho: (w: string | null) => void }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? d.parties : d.parties.slice(0, 8);
+  return (
+    <section aria-label="Still to dispatch, by party" className={cn(CARD, 'p-5 sm:p-6')}>
+      <h2 className="text-base font-semibold text-brand-ink">Still to dispatch, by party</h2>
+      <p className="mt-1 text-[13px] text-brand-muted">Biggest pending value first. Tap a party to see its whole report.</p>
+      {d.parties.length === 0 ? <p className="mt-4 text-sm text-brand-muted">Nothing pending. Every tracked order has gone out.</p> : (
+        <ul className="mt-3">
+          {shown.map((p) => (
+            <li key={p.key} className="flex min-h-11 items-center justify-between gap-3 border-t border-brand-line-soft first:border-t-0">
+              <button type="button" onClick={() => onWho(`p:${p.key}`)} className="min-h-11 truncate text-left text-sm font-medium text-brand-ink underline-offset-2 hover:underline">{p.party}</button>
+              <span className="flex shrink-0 items-baseline gap-3 font-mono text-xs text-brand-muted">
+                <span>{plural(p.lines, 'line')}</span>
+                <span className={p.oldestDays > 30 ? 'font-semibold text-brand-warning' : ''}>oldest {p.oldestDays} d</span>
+                <span className="text-sm font-semibold text-brand-ink" title={rupeesFull(p.value)}>{rupees(p.value)}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {d.parties.length > 8 && (
+        <button type="button" onClick={() => setAll(!all)} className="mt-1 min-h-11 text-sm font-medium text-brand-primary hover:underline">
+          {all ? 'Show top 8' : `Show all ${d.parties.length} parties`}
+        </button>
+      )}
+    </section>
+  );
+}
+
+function OpenLines({ d, onWho }: { d: DispatchView; onWho: (w: string | null) => void }) {
+  const [all, setAll] = useState(false);
+  const list = d.openLines;
+  const shown = all ? list : list.slice(0, 15);
+  const TH = 'px-3 py-2.5 text-right text-xs font-medium text-brand-muted';
+  return (
+    <section aria-label="Order lines still to dispatch" className={cn(CARD, 'overflow-hidden')}>
+      <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-5 sm:px-6">
+        <div className="max-w-[72ch]">
+          <h2 className="text-base font-semibold text-brand-ink">Order lines still to dispatch</h2>
+          <p className="mt-0.5 text-[13px] text-brand-muted">Oldest PO first, as of today. A line leaves this list when its entries add up to the order.</p>
+        </div>
+        <CsvExportButton rows={list} columns={OPEN_COLUMNS} filename="still-to-dispatch" label="CSV" />
+      </div>
+      {list.length === 0 ? <p className="px-5 py-10 text-center text-sm text-brand-muted sm:px-6">Nothing pending. Every tracked order has gone out.</p> : (
+        <>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[980px] border-collapse text-sm">
+              <thead>
+                <tr>
+                  <th className="px-5 py-2.5 text-left text-xs font-medium text-brand-muted sm:px-6">Party</th>
+                  <th className={cn(TH, 'text-left')}>Product</th>
+                  <th className={cn(TH, 'text-left')}>PO</th>
+                  <th className={TH}>PO date</th>
+                  <th className={TH}>Ordered</th>
+                  <th className={TH}>Dispatched</th>
+                  <th className={TH}>Pending</th>
+                  <th className={TH}>Pending value</th>
+                  <th className={cn(TH, 'px-5 sm:px-6')}>Waiting</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((s) => (
+                  <tr key={s.line.id} className="border-t border-brand-line-soft even:bg-brand-surface-alt">
+                    <td className="px-5 py-0 sm:px-6">
+                      <button type="button" onClick={() => onWho(`p:${partyKey(s.line.party)}`)}
+                        className="min-h-11 text-left font-semibold text-brand-ink underline-offset-2 hover:underline">{s.line.party}</button>
+                    </td>
+                    <td className="max-w-[260px] px-3 py-2">
+                      <span className="block truncate text-brand-ink" title={s.line.material_name ?? ''}>{s.line.material_name ?? '—'}</span>
+                      <span className="block font-mono text-xs text-brand-muted">{s.line.sr_no ?? ''}{s.line.pm_code ? ` · ${s.line.pm_code}` : ''}</span>
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs text-brand-ink">{s.line.po_no ?? '—'}</td>
+                    <td className="px-3 py-2 text-right font-mono text-brand-muted">{dayLabel(s.line.day)}</td>
+                    <td className="px-3 py-2 text-right font-mono text-brand-ink" title={qtyFull(s.line.quantity ?? 0)}>{qtyShort(s.line.quantity ?? 0)}</td>
+                    <td className="px-3 py-2 text-right font-mono text-brand-ink" title={qtyFull(s.shipped)}>{s.shipped ? qtyShort(s.shipped) : '—'}</td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-brand-ink" title={qtyFull(s.pending)}>{qtyShort(s.pending)}</td>
+                    <td className="px-3 py-2 text-right font-mono text-brand-ink" title={rupeesFull(pendingValue(s))}>{rupees(pendingValue(s))}</td>
+                    <td className={cn('whitespace-nowrap px-5 py-2 text-right font-mono text-xs sm:px-6', s.ageDays > 30 ? 'font-semibold text-brand-warning' : 'text-brand-muted')}>
+                      {plural(s.ageDays, 'day')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {list.length > 15 && (
+            <div className="border-t border-brand-line-soft px-5 py-1 sm:px-6">
+              <button type="button" onClick={() => setAll(!all)} className="min-h-11 text-sm font-medium text-brand-primary hover:underline">
+                {all ? 'Show oldest 15' : `Show all ${list.length}`}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function OverDispatched({ d, onWho }: { d: DispatchView; onWho: (w: string | null) => void }) {
+  return (
+    <section aria-label="More dispatched than ordered" className={cn(CARD, 'p-5 sm:p-6')}>
+      <h2 className="text-base font-semibold text-brand-ink">More dispatched than ordered</h2>
+      <p className="mt-1 text-[13px] text-brand-muted">Lines whose entries add up past the order: a normal overrun, or an entry typed twice. Check them in History.</p>
+      {d.over.length === 0 ? <p className="mt-4 text-sm text-brand-muted">None. No line has more entered than ordered.</p> : (
+        <ul className="mt-3">
+          {d.over.slice(0, 10).map((s) => (
+            <li key={s.line.id} className="flex min-h-11 items-center justify-between gap-3 border-t border-brand-line-soft py-1.5 first:border-t-0">
+              <span className="min-w-0">
+                <button type="button" onClick={() => onWho(`p:${partyKey(s.line.party)}`)} className="block truncate text-left text-sm font-medium text-brand-ink underline-offset-2 hover:underline">{s.line.party}</button>
+                <span className="block truncate font-mono text-xs text-brand-muted">{s.line.po_no}{s.line.pm_code ? ` · ${s.line.pm_code}` : ''}</span>
+              </span>
+              <span className="shrink-0 text-right font-mono text-xs">
+                <span className="block font-semibold text-brand-warning">+{qtyFull(s.over)} ({Math.round((s.over / (s.line.quantity || 1)) * 100)}%)</span>
+                <span className="block text-brand-muted">{qtyFull(s.shipped)} of {qtyFull(s.line.quantity ?? 0)}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
 
 function TrendChart({ a, metric }: { a: Analysis; metric: Metric }) {
   const b = a.trend.buckets;

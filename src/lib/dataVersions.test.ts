@@ -24,10 +24,11 @@ describe('change-aware refresh', () => {
     expect(shouldRefetch('job_separations:12', null)).toBe(false);
   });
 
-  it('watches the same six tables the migration puts triggers on', () => {
+  it('watches the same tables the migrations put triggers on (075 + 085)', () => {
     expect([...DATA_VERSION_TABLES].sort()).toEqual([
       'bom_costings', 'bom_material_orders', 'bom_material_requests',
       'bom_materials', 'job_separations', 'paper_stock_movements',
+      'pending_dispatch_notifications',
     ]);
   });
 });

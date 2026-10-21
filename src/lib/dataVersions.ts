@@ -5,10 +5,11 @@
 // the rule.
 // ============================================================
 
-/** Must match the trigger list in supabase/migrations/075_data_versions.sql. */
+/** Must match the trigger list in supabase/migrations/075_data_versions.sql (+ 085). */
 export const DATA_VERSION_TABLES = [
   'job_separations', 'bom_costings', 'bom_materials',
   'bom_material_requests', 'bom_material_orders', 'paper_stock_movements',
+  'pending_dispatch_notifications',
 ] as const;
 export type DataVersionTable = typeof DATA_VERSION_TABLES[number];
 

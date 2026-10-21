@@ -50,7 +50,8 @@ export async function POST(request: NextRequest) {
     .from('pending_dispatch_notifications')
     .select('*')
     .eq('party', party)
-    .is('notified_at', null);
+    .is('notified_at', null)
+    .is('removed_at', null);
 
   if (itemIds && itemIds.length > 0) {
     query = query.in('id', itemIds);
@@ -140,9 +141,9 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Party send clears the rows from the pending queue (and, via the DB
-  // trigger, prunes sent history beyond the last 100). Internal send just
-  // stamps internal_notified_at — the rows stay pending for the party send.
+  // Party send clears the rows from the pending queue; the sent rows stay
+  // as dispatch history (084). Internal send just stamps
+  // internal_notified_at — the rows stay pending for the party send.
   const { error: markError } = await admin
     .from('pending_dispatch_notifications')
     .update(
@@ -154,6 +155,17 @@ export async function POST(request: NextRequest) {
 
   if (markError) {
     console.error('[dispatch-notifications send] mark notified:', markError);
+  }
+
+  // The first team email is when an entry starts counting as dispatched
+  // (migration 085). A re-send leaves the date where it was.
+  if (target === 'internal') {
+    const { error: confirmError } = await admin
+      .from('pending_dispatch_notifications')
+      .update({ confirmed_at: new Date().toISOString() })
+      .in('id', items.map((i) => i.id))
+      .is('confirmed_at', null);
+    if (confirmError) console.error('[dispatch-notifications send] confirm:', confirmError);
   }
 
   return NextResponse.json({

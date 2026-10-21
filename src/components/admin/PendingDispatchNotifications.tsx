@@ -17,6 +17,11 @@
 //
 // Vehicle no and LR ride in each item's remark, which the email prints
 // (lib/dispatchRemark.ts) — saved when the field is left.
+//
+// The first team email is when an entry starts counting in Reports
+// (migration 085). Re-sending one item asks first, since a second email
+// reads as a second dispatch; removing one that already counts asks why,
+// and it stays in the History tab struck out.
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Send, Mail, PackageCheck, Plus, Pencil, Trash2, CheckCircle2 } from 'lucide-react';
@@ -25,6 +30,7 @@ import { cn, formatAdminDate } from '@/lib/utils';
 import { parseDispatchRemark, composeDispatchRemark } from '@/lib/dispatchRemark';
 import type { PendingDispatchGroup, PendingDispatchNotification } from '@/lib/types';
 import AddCustomDispatchModal from './AddCustomDispatchModal';
+import { ConfirmModal, PromptModal } from './modals';
 
 type SendTarget = 'internal' | 'party';
 type Preview = { to: string[]; subject: string; html: string };
@@ -74,10 +80,19 @@ export default function PendingDispatchNotifications() {
 
   const group = groups.find((g) => g.party === selected) ?? null;
 
-  async function removeItem(item: PendingDispatchNotification) {
+  // An item that already counts needs a reason; a re-send needs a yes.
+  const [asking, setAsking] = useState<{ kind: 'remove' | 'resend'; item: PendingDispatchNotification } | null>(null);
+
+  async function removeItem(item: PendingDispatchNotification, reason?: string) {
+    if (item.confirmed_at && reason === undefined) { setAsking({ kind: 'remove', item }); return; }
+    setAsking(null);
     setDeletingId(item.id);
     try {
-      const res  = await fetch(`/api/dispatch-notifications/${item.id}`, { method: 'DELETE' });
+      const res  = await fetch(`/api/dispatch-notifications/${item.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.error ?? 'Failed to remove entry');
@@ -130,7 +145,7 @@ export default function PendingDispatchNotifications() {
         const now = new Date().toISOString();
         setGroups((prev) => prev.map((g) => (
           g.party === party
-            ? { ...g, items: g.items.map((i) => (!itemIds || itemIds.includes(i.id) ? { ...i, internal_notified_at: now } : i)) }
+            ? { ...g, items: g.items.map((i) => (!itemIds || itemIds.includes(i.id) ? { ...i, internal_notified_at: now, confirmed_at: i.confirmed_at ?? now } : i)) }
             : g
         )));
       }
@@ -175,6 +190,28 @@ export default function PendingDispatchNotifications() {
           existing={modalItem === 'new' ? null : modalItem}
           onClose={() => setModalItem(null)}
           onSaved={() => { setModalItem(null); load(); }}
+        />
+      )}
+
+      {asking?.kind === 'remove' && (
+        <PromptModal
+          title="Remove a counted dispatch?"
+          description={<>The team was already emailed about {asking.item.po_number}, so Reports counts it. It will be struck out and kept in History with your reason.</>}
+          label="Why remove it"
+          example="entered twice by mistake"
+          required
+          confirmLabel="Remove entry"
+          onCancel={() => setAsking(null)}
+          onConfirm={(reason) => removeItem(asking.item, reason)}
+        />
+      )}
+      {asking?.kind === 'resend' && (
+        <ConfirmModal
+          title="Already sent to the team"
+          message={<>The team was emailed about {asking.item.po_number} on {formatAdminDate(asking.item.internal_notified_at)}. Send it again? Reports still counts it once.</>}
+          confirmLabel="Send again"
+          onCancel={() => setAsking(null)}
+          onConfirm={() => { const it = asking.item; setAsking(null); void sendFor(it.party, 'internal', [it.id]); }}
         />
       )}
 
@@ -259,7 +296,11 @@ export default function PendingDispatchNotifications() {
               group={group}
               sendingKey={sendingKey}
               deletingId={deletingId}
-              onSendTeam={(ids) => sendFor(group.party, 'internal', ids)}
+              onSendTeam={(ids) => {
+                const one = ids?.length === 1 ? group.items.find((i) => i.id === ids[0]) : undefined;
+                if (one?.internal_notified_at) setAsking({ kind: 'resend', item: one });
+                else void sendFor(group.party, 'internal', ids);
+              }}
               onSendParty={() => sendFor(group.party, 'party')}
               onEdit={(item) => setModalItem(item)}
               onRemove={removeItem}

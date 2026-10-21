@@ -15,6 +15,7 @@
 // Pure, so the merge and the check are unit-tested.
 
 import type { SepRow, ShadeCard } from './reports';
+import type { DispatchEntry } from './dispatchLedger';
 
 export type MonthPrint = { month: string; lines: number; cancelled: number; value: number; qty: number };
 
@@ -82,12 +83,12 @@ export function printMismatch(db: MonthPrint[], page: MonthPrint[]): string | nu
   return null;
 }
 
-/** /api/reports's whole answer. */
-export type Fetched = SyncPayload & { cards: ShadeCard[]; today: string };
+/** /api/reports's whole answer. Cards and dispatches come whole every time. */
+export type Fetched = SyncPayload & { cards: ShadeCard[]; dispatches: DispatchEntry[]; today: string };
 
 /** What the page holds between syncs. */
 export type ReportData = {
-  rows: SepRow[]; cards: ShadeCard[]; today: string; cursor: string | null;
+  rows: SepRow[]; cards: ShadeCard[]; dispatches: DispatchEntry[]; today: string; cursor: string | null;
   sync: { at: number; full: boolean; changed: number; mismatch: string | null };
 };
 
@@ -106,14 +107,14 @@ export async function syncReports(prev: ReportData | undefined, full: boolean, g
     const m = mergeRows(prev.rows, d.rows);
     if (!printMismatch(d.print, fingerprintOf(m.rows))) {
       return {
-        rows: m.rows, cards: keep(prev.cards, d.cards), today: d.today, cursor: d.cursor,
+        rows: m.rows, cards: keep(prev.cards, d.cards), dispatches: keep(prev.dispatches, d.dispatches), today: d.today, cursor: d.cursor,
         sync: { at: Date.now(), full: false, changed: m.changed, mismatch: null },
       };
     }
   }
   const d = await get(null);
   return {
-    rows: keep(prev?.rows, d.rows), cards: keep(prev?.cards, d.cards), today: d.today, cursor: d.cursor,
+    rows: keep(prev?.rows, d.rows), cards: keep(prev?.cards, d.cards), dispatches: keep(prev?.dispatches, d.dispatches), today: d.today, cursor: d.cursor,
     // Still off after a full reload: a write landed between the two reads
     // (the next sync settles it), or the page and the database count a row
     // differently — shown, not hidden.

@@ -50,7 +50,7 @@ describe('syncReports', () => {
   const get = async (since: string | null): Promise<Fetched> => {
     calls.push(since);
     const all = Array.from(table.values());
-    return { full: !since, rows: since ? all.filter((r) => r.sr_no === 'new') : all, cursor: 't2', print: fingerprintOf(all), cards: [], today: '2026-10-15' };
+    return { full: !since, rows: since ? all.filter((r) => r.sr_no === 'new') : all, cursor: 't2', print: fingerprintOf(all), cards: [], dispatches: [], today: '2026-10-15' };
   };
 
   it('loads everything first, then only changes; nothing changed keeps the rows as they were', async () => {

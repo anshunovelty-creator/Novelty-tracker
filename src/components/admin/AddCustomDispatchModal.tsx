@@ -9,6 +9,11 @@
 // The PM code field searches orders the same way the slip page does
 // (src/lib/slipSource.ts): pick a job or Job Separation row and its party,
 // PO, job name and quantity fill in; anything can still be typed by hand.
+//
+// Saving is checked against the order (lib/dispatchChecks.ts): the same PO
+// and PM code entered in the last 3 days, more labels than ordered, or no
+// order line at all. The warnings show here and Save becomes "Save anyway";
+// changing a field clears them so the next save checks again.
 
 import React, { useState, useEffect, useId, useMemo } from 'react';
 import { Check, X } from 'lucide-react';
@@ -51,6 +56,9 @@ export default function AddCustomDispatchModal({ existing, onClose, onSaved }: P
   const [remark,     setRemark]     = useState(existing?.remark ?? '');
   const [pmCode,     setPmCode]     = useState(existing?.pm_code ?? '');
   const [saving,     setSaving]     = useState(false);
+  const [warnings,   setWarnings]   = useState<string[]>([]);
+
+  useEffect(() => { setWarnings([]); }, [poNumber, pmCode, qty]);
 
   // Only what's typed into the PM code box searches — not the value an
   // entry being edited opens with, nor the code a pick fills in.
@@ -120,10 +128,15 @@ export default function AddCustomDispatchModal({ existing, onClose, onSaved }: P
             qty:       qty.trim() ? Number(qty) : undefined,
             remark:    remark.trim() || undefined,
             pm_code:   pmCode.trim() || undefined,
+            confirm:   warnings.length > 0,
           }),
         },
       );
       const data = await res.json();
+      if (res.status === 409 && Array.isArray(data.warnings)) {
+        setWarnings(data.warnings);
+        return;
+      }
       if (!res.ok) {
         toast.error(data.error ?? `Failed to ${existing ? 'save' : 'add'} entry`);
         return;
@@ -147,7 +160,7 @@ export default function AddCustomDispatchModal({ existing, onClose, onSaved }: P
             </h2>
             <p className="text-xs text-[var(--glass-muted)] mt-0.5">
               {existing
-                ? 'Only affects what gets emailed — nothing on the job itself changes'
+                ? 'Fixes what gets emailed and what Reports counts. The job itself doesn’t change'
                 : 'For a dispatch that happened outside the system — no job record needed'}
             </p>
           </div>
@@ -286,6 +299,15 @@ export default function AddCustomDispatchModal({ existing, onClose, onSaved }: P
           </div>
         </div>
 
+        {warnings.length > 0 && (
+          <div role="alert" className="mx-5 mb-1 shrink-0 rounded-xl bg-[#FFFBEB] px-3.5 py-3 text-[13px] leading-relaxed text-[#92400E]">
+            <p className="font-semibold">Check before saving</p>
+            <ul className="mt-1 list-disc space-y-1 pl-4">
+              {warnings.map((w) => <li key={w}>{w}</li>)}
+            </ul>
+          </div>
+        )}
+
         <div className="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-white/12 shrink-0">
           <Button
             type="button"
@@ -300,7 +322,7 @@ export default function AddCustomDispatchModal({ existing, onClose, onSaved }: P
             icon={Check}
             disabled={saving}
             >
-              {saving ? 'Saving…' : existing ? 'Save changes' : 'Add entry'}
+              {saving ? 'Saving…' : warnings.length ? 'Save anyway' : existing ? 'Save changes' : 'Add entry'}
           </Button>
         </div>
       </form>

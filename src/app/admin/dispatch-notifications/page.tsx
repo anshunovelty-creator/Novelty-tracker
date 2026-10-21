@@ -18,6 +18,7 @@ import {
   canDeptManageNotificationRecipients,
 } from '@/lib/constants/departments';
 import PendingDispatchNotifications from '@/components/admin/PendingDispatchNotifications';
+import DispatchHistory from '@/components/admin/DispatchHistory';
 import PartyContactsManager from '@/components/admin/PartyContactsManager';
 import NotificationRecipientsManager from '@/components/admin/NotificationRecipientsManager';
 import DispatchEmailTabs, { type DispatchTab, type DispatchTabId } from '@/components/admin/DispatchEmailTabs';
@@ -55,6 +56,14 @@ export default async function DispatchNotificationsPage({
         + 'instantly. Once a batch (e.g. a truck load) is complete, send one combined email '
         + 'covering everything in it.',
     },
+    canQueue && {
+      id: 'history' as const,
+      label: 'History',
+      caption:
+        'Every entry sent to the team, cleared or removed. Reports counts dispatched labels from '
+        + 'here, from the day of the first team email. Confirm entries cleared without one; '
+        + 'remove a wrong or doubled entry with a reason, and it stays here struck out.',
+    },
     canParties && {
       id: 'parties' as const,
       label: 'Party contacts',
@@ -89,6 +98,7 @@ export default async function DispatchNotificationsPage({
 
       <DispatchEmailTabs tabs={tabs} active={active}>
         {active === 'queue'   && <PendingDispatchNotifications />}
+        {active === 'history' && <DispatchHistory />}
         {active === 'parties' && <PartyContactsManager canEdit={canEditParties} />}
         {active === 'team'    && <NotificationRecipientsManager />}
       </DispatchEmailTabs>

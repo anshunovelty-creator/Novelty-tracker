@@ -693,7 +693,20 @@ export interface PendingDispatchNotification {
   pm_code:     string | null;
   created_at:  string;
   notified_at: string | null;            // set once the PARTY email is sent — clears it from the pending list
-  internal_notified_at: string | null;   // set once the internal-team email is sent — bookkeeping only
+  internal_notified_at: string | null;   // set by every internal-team email — the latest send
+  // Migration 085: the entry counts as dispatched from here (first team
+  // email, or confirmed by hand); never moved by a re-send.
+  confirmed_at:  string | null;
+  created_by:    string | null;
+  removed_at:    string | null;          // struck out — left out of every figure
+  removed_by:    string | null;
+  remove_reason: string | null;
+}
+
+// One entry in the Dispatch history tab: the entry plus the order line it
+// matched (lib/dispatchLedger.ts lineFor) and that line's running total.
+export interface DispatchHistoryRow extends PendingDispatchNotification {
+  line: { sr_no: string | null; quantity: number | null; entered: number } | null;
 }
 
 // One party's group of pending dispatch notifications, as returned by

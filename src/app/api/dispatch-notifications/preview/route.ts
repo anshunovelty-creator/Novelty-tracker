@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
 
   const admin = createAdminClient();
   const [{ data: pending, error }, { data: contacts }] = await Promise.all([
-    admin.from('pending_dispatch_notifications').select('*').eq('party', party).is('notified_at', null).order('created_at', { ascending: true }),
+    admin.from('pending_dispatch_notifications').select('*').eq('party', party).is('notified_at', null).is('removed_at', null).order('created_at', { ascending: true }),
     admin.from('party_contacts').select('email, contact_name').eq('party', party),
   ]);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

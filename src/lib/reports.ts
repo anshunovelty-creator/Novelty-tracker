@@ -1116,12 +1116,15 @@ function standing(all: SepRow[], live: SepRow[], filter: Filter, today: string, 
   return value;
 }
 
+/** Whether a row passes the unit / customer filter. */
+export const rowMatches = (filter: Filter) => (r: SepRow) =>
+  (!filter.unit || unitKey(r.unit) === filter.unit)
+  && (!filter.group || groupKey(r.party) === filter.group)
+  && (!filter.party || partyKey(r.party) === filter.party);
+
 export function analyse(all: SepRow[], period: Period, filter: Filter, today: string, cards?: ShadeCard[]): Analysis {
   const previous = previousPeriod(period);
-  const matches = (r: SepRow) =>
-    (!filter.unit || unitKey(r.unit) === filter.unit)
-    && (!filter.group || groupKey(r.party) === filter.group)
-    && (!filter.party || partyKey(r.party) === filter.party);
+  const matches = rowMatches(filter);
 
   const live      = all.filter((r) => !r.cancelled && matches(r));
   const rows      = live.filter((r) => inPeriod(r, period));

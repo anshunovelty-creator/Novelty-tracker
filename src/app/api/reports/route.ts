@@ -7,7 +7,8 @@
 // lib/reports.ts analyses. The page slices by period, unit and party on its
 // own, so one fetch serves every view. Shade cards come along for the
 // colour approval section: only those started since the first order day,
-// since an older card's PO isn't on Job Separation.
+// since an older card's PO isn't on Job Separation. Dispatch entries that
+// count come along too, in full every time (lib/dispatchLedger.ts).
 //
 // ?since=<cursor>: only rows written since (updated_at, a couple of minutes
 // earlier for slow commits — lib/reportSync.ts). The page loads everything
@@ -27,7 +28,8 @@ import { istToday } from '@/lib/jobViews';
 import { allPages } from '@/lib/api/allPages';
 import { deptKeyOf } from '@/lib/identity';
 import type { SepRow, ShadeCard } from '@/lib/reports';
-import { OVERLAP_MS, type MonthPrint, type SyncPayload } from '@/lib/reportSync';
+import type { DispatchEntry } from '@/lib/dispatchLedger';
+import { OVERLAP_MS, type MonthPrint, type Fetched } from '@/lib/reportSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -98,7 +100,24 @@ export async function GET(req: Request) {
     }));
   }
 
+  // Dispatch entries that count (confirmed, not removed), every sync in full:
+  // a few thousand a year, and they change without touching Job Separation.
+  let dispatches: DispatchEntry[];
+  try {
+    const entries = await allPages<{ id: string; party: string; po_number: string; pm_code: string | null; qty: number | null; confirmed_at: string }>((from, to) => admin
+      .from('pending_dispatch_notifications')
+      .select('id, party, po_number, pm_code, qty, confirmed_at')
+      .not('confirmed_at', 'is', null)
+      .is('removed_at', null)
+      .order('id', { ascending: true })
+      .range(from, to));
+    dispatches = entries.map((d) => ({ id: d.id, party: d.party, po: d.po_number, pm: d.pm_code, qty: d.qty ?? 0, day: istToday(new Date(d.confirmed_at)) }));
+  } catch (err) {
+    console.error('[GET /api/reports] dispatches', err);
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+  }
+
   const cursor = raw.reduce<string | null>((m, r) => (!m || r.updated_at > m ? r.updated_at : m), since);
-  const body: SyncPayload & { cards: ShadeCard[]; today: string } = { full: !since, rows, cursor, print, cards, today: istToday() };
+  const body: Fetched = { full: !since, rows, cursor, print, cards, dispatches, today: istToday() };
   return NextResponse.json(body);
 }
