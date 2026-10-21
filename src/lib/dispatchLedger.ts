@@ -42,6 +42,25 @@ export function lineFor<L extends LineLike>(po: string | null, pm: string | null
   return hits.length === 1 ? hits[0] : null;
 }
 
+/**
+ * Labels entered against each line: line id → total. `lines`: every live
+ * line that shares a PO with the ones asked about (so an ambiguous PO + PM
+ * code stays unmatched); `entries`: the entries that count.
+ */
+export function dispatchedByLine<L extends LineLike>(lines: L[], entries: { po_number: string; pm_code: string | null; qty: number | null }[]): Map<string, number> {
+  const byPo = new Map<string, L[]>();
+  for (const l of lines) {
+    const k = poKey(l.po_no);
+    if (k) byPo.set(k, [...(byPo.get(k) ?? []), l]);
+  }
+  const out = new Map<string, number>();
+  for (const e of entries) {
+    const l = lineFor(e.po_number, e.pm_code, byPo.get(poKey(e.po_number)) ?? []);
+    if (l) out.set(l.id, (out.get(l.id) ?? 0) + (e.qty ?? 0));
+  }
+  return out;
+}
+
 const fmt = (n: number) => n.toLocaleString('en-IN');
 const shortDay = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
 

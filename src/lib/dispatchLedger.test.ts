@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { lineFor, entryWarnings, dispatchOf, type DispatchEntry } from './dispatchLedger';
+import { lineFor, entryWarnings, dispatchOf, dispatchedByLine, type DispatchEntry } from './dispatchLedger';
 import type { SepRow } from './reports';
 
 const row = (p: Partial<SepRow>): SepRow => ({
@@ -23,6 +23,19 @@ describe('lineFor', () => {
   });
   it('refuses to guess between two lines with the same PO and PM code', () => {
     expect(lineFor('PO1', 'PM1', [a, row({ po_no: 'PO1', pm_code: 'PM1' })])).toBeNull();
+  });
+});
+
+describe('dispatchedByLine', () => {
+  it('adds entries up per line and skips ones that match no single line', () => {
+    const lines = [row({ id: 'a', po_no: 'PO1', pm_code: 'PM1' }), row({ id: 'b', po_no: 'PO1', pm_code: 'PM2' })];
+    const m = dispatchedByLine(lines, [
+      { po_number: 'po1', pm_code: 'PM1', qty: 300 },
+      { po_number: 'PO1', pm_code: 'PM1', qty: 200 },
+      { po_number: 'PO1', pm_code: null, qty: 999 },   // two lines on PO1: no guess
+    ]);
+    expect(m.get('a')).toBe(500);
+    expect(m.has('b')).toBe(false);
   });
 });
 

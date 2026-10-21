@@ -1,6 +1,8 @@
 // src/app/api/job-separations/route.ts
 // ============================================================
-// GET  /api/job-separations  — the live worksheet (any authenticated user)
+// GET  /api/job-separations  — the live worksheet (any authenticated user);
+//      with dispatch_qty_view, each row carries `dispatched`: labels entered
+//      against it, or null
 // POST /api/job-separations  — add a row (Prepress or Admin)
 // ============================================================
 
@@ -8,10 +10,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getDeptPermissions, canDeptManageJobSeparation } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptManageJobSeparation, canDeptSeeDispatchedQty } from '@/lib/constants/departments';
 import { parseDateRange, rangeOrClause, parseLimit, type DateRange } from '@/lib/jobSeparationQuery';
 import { containsPattern, orContains } from '@/lib/search';
 import { deptKeyOf } from '@/lib/identity';
+import { allPages } from '@/lib/api/allPages';
+import { dispatchedByLine } from '@/lib/dispatchLedger';
 
 // Optional free text: blank means "not recorded", not an empty string.
 function text(value: unknown): string | null {
@@ -115,13 +119,42 @@ export async function GET(request: NextRequest) {
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const rows = data ?? [];
-  const hasMore = rows.length > limit;
+  const all = data ?? [];
+  const hasMore = all.length > limit;
+  const rows = hasMore ? all.slice(0, limit) : all;
 
-  return NextResponse.json({
-    job_separations: hasMore ? rows.slice(0, limit) : rows,
-    hasMore,
-  });
+  // Dispatched figures are an Admin-granted feature: without it the rows go
+  // out as they always did, with no `dispatched` at all.
+  if (!rows.length || !canDeptSeeDispatchedQty(await getDeptPermissions(deptKeyOf(user)))) {
+    return NextResponse.json({ job_separations: rows, hasMore });
+  }
+  try {
+    const dispatched = await dispatchedPerLine();
+    return NextResponse.json({
+      job_separations: rows.map((r) => ({ ...r, dispatched: dispatched.get(r.id) ?? null })),
+      hasMore,
+    });
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+  }
+}
+
+// Dispatched labels per line: the counted dispatch entries (confirmed, not
+// removed) matched by PO + PM code, the same way Reports matches them
+// (lib/dispatchLedger.ts). Matched against every live line, so a PO + PM
+// code shared by two lines stays unmatched instead of guessed.
+// ponytail: reads the live lines' keys and every counted entry per request
+// (~500 lines and a few hundred entries a month); cache or filter by PO
+// past ~20k lines.
+async function dispatchedPerLine(): Promise<Map<string, number>> {
+  const admin = createAdminClient();
+  const [lines, entries] = await Promise.all([
+    allPages<{ id: string; po_no: string | null; pm_code: string | null }>((from, to) => admin.from('job_separations')
+      .select('id, po_no, pm_code').is('cancelled_at', null).order('id').range(from, to)),
+    allPages<{ po_number: string; pm_code: string | null; qty: number | null }>((from, to) => admin.from('pending_dispatch_notifications')
+      .select('po_number, pm_code, qty').not('confirmed_at', 'is', null).is('removed_at', null).order('id').range(from, to)),
+  ]);
+  return dispatchedByLine(lines, entries);
 }
 
 // ── POST ──────────────────────────────────────────────────────

@@ -136,6 +136,14 @@ export function canDeptManageDispatchNotifications(perms: DeptPermissions | null
   return hasFeature(perms, 'dispatch_notifications');
 }
 
+/** Who sees the Dispatched column on Job Separation (labels dispatched per
+ *  line). Granted by Admin per department; no department starts with it.
+ *  Recording a dispatch there also needs job_separation_edit or
+ *  dispatch_notifications. */
+export function canDeptSeeDispatchedQty(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'dispatch_qty_view');
+}
+
 /** Who may add/correct/remove a party's dispatch-email contact. */
 export function canDeptManagePartyContacts(perms: DeptPermissions | null): boolean {
   return hasFeature(perms, 'party_contacts_manage');

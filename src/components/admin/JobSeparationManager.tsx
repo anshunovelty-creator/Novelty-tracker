@@ -7,6 +7,11 @@
 // list polls quietly in the background (see the effect below) so a row
 // someone else just added shows up without a manual refresh — the same
 // visibility-aware pattern the room displays use, not Supabase Realtime.
+//
+// Dispatched: labels dispatched against each line, filled from the dispatch
+// team's entries as they're sent. The + beside it records a dispatch by
+// hand (Prepress, Dispatch, Admin) — a dispatch entry like any other, so it
+// shows in Dispatch History and Reports too.
 
 import dynamic from 'next/dynamic';
 import { useState, useEffect, useMemo, useRef } from 'react';
@@ -23,7 +28,7 @@ import { csvDate, csvTimestamp, type CsvColumn } from '@/lib/export/csv';
 import type { JobSeparation, AddJobFormData, Job } from '@/lib/types';
 import type { Department } from '@/lib/constants/departments';
 import AddJobForm from './AddJobForm';
-import { PromptModal } from './modals';
+import { PromptModal, ConfirmModal } from './modals';
 import ManagePartiesModal from './ManagePartiesModal';
 import PrepressTodoPanel from './PrepressTodoPanel';
 import MeterCalculatorPanel from './MeterCalculatorPanel';
@@ -55,10 +60,12 @@ function jobPrefillFromRow(row: JobSeparation): Partial<AddJobFormData> {
 // but kept out of the table to hold off horizontal scroll on desktop.
 // Must stay in the same order as the <td>s rendered below.
 const JOB_SEPARATION_COLUMNS = [
-  'Sr No', 'Party', 'PO No / Date', 'PM Code / Material', 'Qty / Rate', 'Unit',
+  'Sr No', 'Party', 'PO No / Date', 'PM Code / Material', 'Qty / Rate', 'Dispatched', 'Unit',
   'Artwork Status', 'Order Value', 'Job Card Status', 'AW SENT to U1', 'Actions',
 ] as const;
-const JOB_SEPARATION_COLS = JOB_SEPARATION_COLUMNS.length;
+// Dispatched is an Admin-granted feature (dispatch_qty_view): without it the
+// column, its CSV field and the + aren't there at all.
+const WITHOUT_DISPATCHED = JOB_SEPARATION_COLUMNS.filter((c) => c !== 'Dispatched');
 
 
 // Mirrors DEFAULT_LIMIT in src/app/api/job-separations/route.ts. "Current
@@ -160,6 +167,7 @@ const JOB_SEPARATION_EXPORT_COLUMNS: CsvColumn<JobSeparation>[] = [
   { header: 'PM Code',        value: (j) => j.pm_code },
   { header: 'Material Name',  value: (j) => j.material_name },
   { header: 'Quantity',       value: (j) => j.quantity },
+  { header: 'Dispatched',     value: (j) => j.dispatched ?? null },
   { header: 'Unit',           value: (j) => j.unit },
   { header: 'Artwork Status', value: (j) => j.job_status },
   { header: 'Rate',           value: (j) => j.rate },
@@ -169,9 +177,30 @@ const JOB_SEPARATION_EXPORT_COLUMNS: CsvColumn<JobSeparation>[] = [
   { header: 'Added',          value: (j) => csvTimestamp(j.created_at) },
 ];
 
-type Props = { canManage: boolean; canManageTodo: boolean; canUseMeterCalculator: boolean; canSeeTotal: boolean; dept: Department | null };
+type Props = { canManage: boolean; canManageTodo: boolean; canUseMeterCalculator: boolean; canSeeTotal: boolean; canSeeDispatched: boolean; canDispatch: boolean; dept: Department | null };
 
-export default function JobSeparationManager({ canManage, canManageTodo, canUseMeterCalculator, canSeeTotal, dept }: Props) {
+/** "3,000" over "7,000 left" / "Done" / "+500 over" — what's gone out against the order. */
+function DispatchedFigure({ row }: { row: JobSeparation }) {
+  const d = row.dispatched ?? 0;
+  const q = row.quantity;
+  return (
+    <>
+      <p className="font-mono text-[13px] font-bold tracking-wide text-[var(--glass-ink)]">{d ? formatQty(d) : '—'}</p>
+      {d > 0 && q != null && (
+        <p className={cn('font-mono text-xs mt-0.5',
+          d > q ? 'font-semibold text-amber-700' : d === q ? 'font-semibold text-emerald-700' : 'text-[var(--glass-muted)]')}>
+          {d > q ? `+${formatQty(d - q)} over` : d === q ? 'Done' : `${formatQty(q - d)} left`}
+        </p>
+      )}
+    </>
+  );
+}
+
+export default function JobSeparationManager({ canManage, canManageTodo, canUseMeterCalculator, canSeeTotal, canSeeDispatched, canDispatch, dept }: Props) {
+  const columns = canSeeDispatched ? JOB_SEPARATION_COLUMNS : WITHOUT_DISPATCHED;
+  const exportColumns = canSeeDispatched
+    ? JOB_SEPARATION_EXPORT_COLUMNS
+    : JOB_SEPARATION_EXPORT_COLUMNS.filter((c) => c.header !== 'Dispatched');
   const [search,      setSearch]      = useState('');
   // Opened with ?q= (the jobs table's "Look in Job Separation", Ctrl K): pre-fill the search.
   useUrlSearch(setSearch);
@@ -202,6 +231,9 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
   // The row a Cancel Job prompt is open for — cancelling always asks for a
   // reason, never a bare confirm, since it can't be undone afterward.
   const [cancellingRow, setCancellingRow] = useState<JobSeparation | null>(null);
+  // Recording a dispatch: ask the labels, then show any warnings before saving.
+  const [dispatchingRow, setDispatchingRow] = useState<JobSeparation | null>(null);
+  const [dispatchWarn,   setDispatchWarn]   = useState<{ row: JobSeparation; qty: number; warnings: string[] } | null>(null);
   const [busyId,        setBusyId]        = useState<string | null>(null);
   const [managingParties, setManagingParties] = useState(false);
   const [limit,       setLimit]       = useState(PAGE_SIZE);
@@ -248,7 +280,7 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
   // A row someone else just added shows up without a manual refresh: every
   // 30 s the page asks whether job_separations changed (a few bytes) and
   // re-downloads the list only if it did. Paused while the tab is hidden.
-  useRefetchOnChange(['job_separations'], [['job-separations']]);
+  useRefetchOnChange(['job_separations', 'pending_dispatch_notifications'], [['job-separations']]);
   const rows    = rowsQuery.data?.rows ?? EMPTY_ROWS;
   const hasMore = rowsQuery.data?.hasMore ?? false;
   const loading = rowsQuery.isLoading;
@@ -308,6 +340,37 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
     ),
     [sortedRows],
   );
+
+  async function recordDispatch(row: JobSeparation, qty: number, confirm = false) {
+    setBusyId(row.id);
+    try {
+      const res = await fetch(`/api/job-separations/${row.id}/dispatch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ qty, confirm }),
+      });
+      const data = await res.json();
+      if (res.status === 409 && Array.isArray(data.warnings)) {
+        setDispatchWarn({ row, qty, warnings: data.warnings });
+        return;
+      }
+      if (!res.ok) {
+        toast.error(data.error ?? 'Failed to record the dispatch');
+        return;
+      }
+      queryClient.setQueriesData<{ rows: JobSeparation[]; hasMore: boolean }>(
+        { queryKey: ['job-separations'] },
+        (old) => old
+          ? { ...old, rows: old.rows.map((r) => (r.id === row.id ? { ...r, dispatched: data.dispatched } : r)) }
+          : old
+      );
+      toast.success(`${formatQty(qty)} labels recorded as dispatched`);
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   async function cancelRow(row: JobSeparation, reason: string) {
     setBusyId(row.id);
@@ -425,7 +488,7 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
           <SearchClearButton value={search} onClear={() => setSearch('')} />
         </div>
 
-        <CsvExportButton rows={sortedRows} columns={JOB_SEPARATION_EXPORT_COLUMNS} filename="job-separation" />
+        <CsvExportButton rows={sortedRows} columns={exportColumns} filename="job-separation" />
 
         {canManage && (
           <button
@@ -489,7 +552,7 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
               <table className="w-full min-w-[980px] border-collapse text-sm">
                 <thead>
                   <tr>
-                    {JOB_SEPARATION_COLUMNS.map((col) => (
+                    {columns.map((col) => (
                       <th key={col} scope="col" className={cn(
                         'sticky top-0 z-10 px-3 py-1.5 text-left text-[11px] font-semibold text-[var(--glass-muted)]',
                         'uppercase tracking-[0.06em] whitespace-nowrap bg-[var(--glass-bg-strong)] backdrop-blur-[14px]',
@@ -520,7 +583,7 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
                   </tr>
                 </thead>
                 <tbody>
-                  <SkeletonRows rows={5} cols={JOB_SEPARATION_COLS} />
+                  <SkeletonRows rows={5} cols={columns.length} />
                 </tbody>
               </table>
             </div>
@@ -596,6 +659,7 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
                         <SpecField label="PO Date" value={formatNumericDate(row.po_date)} mono />
                         <SpecField label="PM Code" value={row.pm_code} mono />
                         <SpecField label="Quantity" value={row.quantity !== null ? formatQty(row.quantity) : null} mono />
+                        {canSeeDispatched && <SpecField label="Dispatched" value={row.dispatched ? formatQty(row.dispatched) : null} mono />}
                         <SpecField label="Rate" value={formatMoney(row.rate)} mono />
                         <SpecField label="Artwork Status" value={row.job_status} />
                         <SpecField label="Order Value" value={formatMoney(row.order_value)} mono />
@@ -603,8 +667,24 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
                       </div>
                     </div>
 
-                    {canManage && !isCancelled && (
+                    {(canManage || canDispatch) && !isCancelled && (
                       <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                        {canDispatch && (
+                          <button
+                            onClick={() => setDispatchingRow(row)}
+                            disabled={busyId === row.id}
+                            aria-label={`Record labels dispatched for ${row.sr_no ?? row.party}`}
+                            className={cn(
+                              'inline-flex items-center justify-center gap-1.5 min-h-11 px-3 rounded-lg disabled:opacity-50',
+                              'text-xs font-medium border border-black/[0.12] text-[var(--glass-muted)]',
+                              'hover:bg-black/[0.04] hover:text-[var(--glass-ink)] transition-colors',
+                            )}
+                          >
+                            <Plus className="w-4 h-4" aria-hidden="true" />
+                            Dispatched
+                          </button>
+                        )}
+                        {canManage && <>
                         <button
                           onClick={() => setEditing(row)}
                           aria-label={`Edit job separation row for ${row.party}`}
@@ -655,6 +735,7 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
                           <Ban className="w-4 h-4" aria-hidden="true" />
                           {busyId === row.id ? 'Cancelling…' : 'Cancel Job'}
                         </button>
+                        </>}
                       </div>
                     )}
                   </div>
@@ -670,7 +751,7 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
               <table className="w-full min-w-[980px] border-collapse text-sm">
                 <thead>
                   <tr>
-                    {JOB_SEPARATION_COLUMNS.map((col) => (
+                    {columns.map((col) => (
                       <th key={col} scope="col" className={cn(
                         'sticky top-0 z-10 px-3 py-1.5 text-left text-[11px] font-semibold text-[var(--glass-muted)]',
                         'uppercase tracking-[0.06em] whitespace-nowrap bg-[var(--glass-bg-strong)] backdrop-blur-[14px]',
@@ -757,6 +838,25 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
                           <p className={cn('font-mono text-[13px] font-bold tracking-wide', !isCancelled && 'text-[var(--glass-ink)]')}>{row.quantity !== null ? formatQty(row.quantity) : '—'}</p>
                           <p className={cn('font-mono text-xs mt-0.5', !isCancelled && 'text-[var(--glass-muted)]')}>@ {formatMoney(row.rate) ?? '—'}</p>
                         </td>
+                        {canSeeDispatched && <td className="px-3 py-1.5 whitespace-nowrap align-top border-r border-white/8">
+                          <div className="flex items-start justify-between gap-1.5">
+                            <div><DispatchedFigure row={row} /></div>
+                            {canDispatch && !isCancelled && (
+                              <button
+                                onClick={() => setDispatchingRow(row)}
+                                disabled={busyId === row.id}
+                                aria-label={`Record labels dispatched for ${row.sr_no ?? row.party}`}
+                                title="Record a dispatch"
+                                className={cn(
+                                  'inline-flex items-center justify-center min-h-11 min-w-11 -my-1.5 rounded-lg disabled:opacity-50',
+                                  'text-[var(--glass-muted)] hover:bg-black/[0.04] hover:text-[var(--glass-ink)] transition-colors',
+                                )}
+                              >
+                                <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+                              </button>
+                            )}
+                          </div>
+                        </td>}
                         <td className="px-3 py-1.5 whitespace-nowrap border-r border-white/8">{row.unit || '—'}</td>
                         <td className="px-3 py-1.5 whitespace-normal break-words min-w-[90px] border-r border-white/8">
                           {row.job_status ? (
@@ -889,7 +989,7 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
               (old) => {
                 if (!old) return old;
                 return old.rows.some((r) => r.id === saved.id)
-                  ? { ...old, rows: old.rows.map((r) => (r.id === saved.id ? saved : r)) }
+                  ? { ...old, rows: old.rows.map((r) => (r.id === saved.id ? { ...saved, dispatched: r.dispatched } : r)) }
                   : { ...old, rows: [saved, ...old.rows] };
               },
             );
@@ -915,6 +1015,42 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
             const row = cancellingRow;
             setCancellingRow(null);
             cancelRow(row, reason);
+          }}
+        />
+      )}
+
+      {dispatchingRow && (
+        <PromptModal
+          title={`Record a dispatch for ${dispatchingRow.sr_no ?? dispatchingRow.party}`}
+          description={<>
+            {dispatchingRow.party} · PO {dispatchingRow.po_no ?? '—'}{dispatchingRow.pm_code ? ` · PM ${dispatchingRow.pm_code}` : ''}.
+            {' '}Ordered {dispatchingRow.quantity != null ? formatQty(dispatchingRow.quantity) : '—'}, dispatched so far {formatQty(dispatchingRow.dispatched ?? 0)}.
+            {' '}It counts at once and shows in Dispatch History, where it can be removed.
+          </>}
+          label="Labels dispatched now"
+          kind="number"
+          min={1}
+          required
+          confirmLabel="Record dispatch"
+          onCancel={() => setDispatchingRow(null)}
+          onConfirm={(value) => {
+            const row = dispatchingRow;
+            setDispatchingRow(null);
+            recordDispatch(row, Math.trunc(Number(value)));
+          }}
+        />
+      )}
+
+      {dispatchWarn && (
+        <ConfirmModal
+          title="Check before recording"
+          message={<>{dispatchWarn.warnings.join(' ')} Record {formatQty(dispatchWarn.qty)} labels anyway?</>}
+          confirmLabel="Record anyway"
+          onCancel={() => setDispatchWarn(null)}
+          onConfirm={() => {
+            const { row, qty } = dispatchWarn;
+            setDispatchWarn(null);
+            recordDispatch(row, qty, true);
           }}
         />
       )}

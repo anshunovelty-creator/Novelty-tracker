@@ -240,6 +240,10 @@ export interface JobSeparation {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  // Not a column: GET /api/job-separations adds the labels dispatched
+  // against this line (counted dispatch entries, lib/dispatchLedger.ts);
+  // null when none, absent on rows returned by a save.
+  dispatched?: number | null;
 }
 
 // Master list of party names — feeds the Job Separation Party typeahead
