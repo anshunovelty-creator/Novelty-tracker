@@ -11,7 +11,7 @@
 
 import type { LucideIcon } from 'lucide-react';
 import {
-  BarChart3, Building2, ClipboardList, Contact, Cpu, Disc, LayoutDashboard, Package,
+  BarChart3, Building2, ClipboardList, Contact, Cpu, Cylinder, Disc, LayoutDashboard, Package,
   Palette, Printer, Scissors, Settings, SplitSquareHorizontal, Truck, Users,
 } from 'lucide-react';
 import {
@@ -78,13 +78,14 @@ export function buildNavGroups(dept: DeptPermissions, counts: NavCounts = {}): N
       items: [{ href: '/admin/job-separation', label: 'Job Separation', icon: SplitSquareHorizontal }],
     },
     {
-      // Dies and plates are readable by every department; Prepress alone
-      // changes them (enforced in their API routes).
+      // Dies, plates and cylinders are readable by every department; only
+      // their edit features change them (enforced in their API routes).
       key: 'production', label: 'Production', icon: Cpu,
       items: [
         { href: '/admin/machines', label: 'Machines', icon: Cpu },
         { href: '/admin/plates',   label: 'Plates',   icon: Disc },
         { href: '/admin/dies',     label: 'Dies',     icon: Scissors },
+        { href: '/admin/cylinders', label: 'Cylinders', icon: Cylinder },
       ],
     },
     {

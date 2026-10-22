@@ -36,6 +36,7 @@ const FEATURES: { key: string; label: string }[] = [
   { key: 'roll_slip_print',                label: 'Print roll slips' },
   { key: 'party_contacts_manage',          label: 'Manage party contacts' },
   { key: 'dies_plates_edit',               label: 'Manage dies & plates' },
+  { key: 'cylinders_edit',                 label: 'Manage cylinders' },
   { key: 'shade_card_manage',              label: 'Manage shade cards' },
   { key: 'job_separation_edit',            label: 'Manage job separation' },
   { key: 'job_separation_total_view',      label: 'See money totals (Job Separation total, BOM totals, paper stock value)' },

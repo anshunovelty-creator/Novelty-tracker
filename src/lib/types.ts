@@ -201,6 +201,21 @@ export interface Plate {
   updated_at: string;
 }
 
+// ── cylinders (migration 087) ───────────────────────────────
+// One row per press cylinder. Repeat length is derived (repeatLengthMm in
+// src/lib/cylinders.ts), never stored.
+export interface Cylinder {
+  id: string;
+  serial_no: string;
+  teeth: number;
+  type: 'Print' | 'Magnetic';
+  manufacturer: string | null;
+  purchase_date: string | null;   // ISO date string
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ── job separations ─────────────────────────────────────────
 // The Prepress worksheet that splits an incoming PO into individually
 // trackable line items ahead of job-card creation. Every department can

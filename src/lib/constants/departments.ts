@@ -160,6 +160,11 @@ export function canDeptManageDiesPlates(perms: DeptPermissions | null): boolean 
   return hasFeature(perms, 'dies_plates_edit');
 }
 
+/** Who may add/correct/remove a cylinder. Everyone can see the list. */
+export function canDeptManageCylinders(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'cylinders_edit');
+}
+
 /** Who may add/correct/remove a Job Separation row. */
 export function canDeptManageJobSeparation(perms: DeptPermissions | null): boolean {
   return hasFeature(perms, 'job_separation_edit');
