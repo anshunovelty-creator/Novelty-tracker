@@ -20,7 +20,7 @@ import { useUrlSearch } from '@/hooks/useUrlSearch';
 import { useRefetchOnChange } from '@/hooks/useRefetchOnChange';
 import Link from 'next/link';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { Search, Plus, Pencil, Copy, Ban, SplitSquareHorizontal, ArrowUp, ArrowDown, Users, FilePlus2 } from 'lucide-react';
+import { Search, Plus, Pencil, Copy, Ban, SplitSquareHorizontal, ArrowUp, ArrowDown, Users, FilePlus2, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, formatQty, formatNumericDate, formatJobCardNumber } from '@/lib/utils';
 import { compareValues, type SortDir, type SortKind } from '@/lib/sort';
@@ -156,6 +156,12 @@ function sortRows(rows: JobSeparation[], field: SortField, dir: SortDir): JobSep
   return sorted;
 }
 
+// The eye in the toolbar masks rate, order value and the total so a
+// screenshot can be shared without prices. Remembered per browser; CSV
+// export and the edit form are untouched.
+const HIDE_MONEY_KEY = 'meterlabels.jobSeparation.hideMoney';
+const MASK = '••••';
+
 function formatMoney(value: number | null): string | null {
   if (value === null) return null;
   return value.toLocaleString('en-IN', { maximumFractionDigits: 2 });
@@ -240,6 +246,16 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
   const [managingParties, setManagingParties] = useState(false);
   const [limit,       setLimit]       = useState(PAGE_SIZE);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [hideMoney,   setHideMoney]   = useState(false);
+  useEffect(() => {
+    try { setHideMoney(window.localStorage.getItem(HIDE_MONEY_KEY) === '1'); } catch { /* shown */ }
+  }, []);
+  function toggleHideMoney() {
+    const next = !hideMoney;
+    setHideMoney(next);
+    try { window.localStorage.setItem(HIDE_MONEY_KEY, next ? '1' : '0'); } catch { /* this visit only */ }
+  }
+  const money = (value: number | null) => (hideMoney ? MASK : formatMoney(value));
 
   const queryClient = useQueryClient();
 
@@ -490,6 +506,22 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
           <SearchClearButton value={search} onClear={() => setSearch('')} />
         </div>
 
+        <button
+          type="button"
+          onClick={toggleHideMoney}
+          aria-pressed={hideMoney}
+          aria-label={hideMoney ? 'Show rates and order values' : 'Hide rates and order values'}
+          title={hideMoney ? 'Show rates and order values' : 'Hide rates and order values (for screenshots)'}
+          className={cn(
+            'inline-flex items-center justify-center min-h-11 min-w-11 rounded-xl shrink-0',
+            'border border-[var(--glass-border)] text-[var(--glass-muted)]',
+            'hover:bg-black/[0.04] hover:text-[var(--glass-ink)] transition-colors',
+            hideMoney && 'text-[var(--glass-ink)] bg-black/[0.04]',
+          )}
+        >
+          {hideMoney ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
+        </button>
+
         <CsvExportButton rows={sortedRows} columns={exportColumns} filename="job-separation" />
 
         {canManage && (
@@ -533,7 +565,7 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
               className="text-sm font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1"
               title={hasMore ? 'Totals only what’s loaded — narrow the search or "Load more" to cover the rest' : 'Total order value of the rows shown above, excluding cancelled rows'}
             >
-              Total order value: ₹{formatMoney(totalOrderValue)}
+              Total order value: ₹{money(totalOrderValue)}
               {hasMore && <span className="text-emerald-700">*</span>}
             </p>
           )}
@@ -662,9 +694,9 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
                         <SpecField label="PM Code" value={row.pm_code} mono />
                         <SpecField label="Quantity" value={row.quantity !== null ? formatQty(row.quantity) : null} mono />
                         {canSeeDispatched && <SpecField label="Dispatched" value={row.dispatched ? formatQty(row.dispatched) : null} mono />}
-                        <SpecField label="Rate" value={formatMoney(row.rate)} mono />
+                        <SpecField label="Rate" value={money(row.rate)} mono />
                         <SpecField label="Artwork Status" value={row.job_status} />
-                        <SpecField label="Order Value" value={formatMoney(row.order_value)} mono />
+                        <SpecField label="Order Value" value={money(row.order_value)} mono />
                         <SpecField label="Added" value={formatNumericDate(row.created_at)} mono />
                       </div>
                     </div>
@@ -838,7 +870,7 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
                         </td>
                         <td className="px-3 py-1.5 whitespace-nowrap align-top border-r border-white/8">
                           <p className={cn('font-mono text-[13px] font-bold tracking-wide', !isCancelled && 'text-[var(--glass-ink)]')}>{row.quantity !== null ? formatQty(row.quantity) : '—'}</p>
-                          <p className={cn('font-mono text-xs mt-0.5', !isCancelled && 'text-[var(--glass-muted)]')}>@ {formatMoney(row.rate) ?? '—'}</p>
+                          <p className={cn('font-mono text-xs mt-0.5', !isCancelled && 'text-[var(--glass-muted)]')}>@ {money(row.rate) ?? '—'}</p>
                         </td>
                         {canSeeDispatched && <td className="px-3 py-1.5 whitespace-nowrap align-top border-r border-white/8">
                           <div className="flex items-start justify-between gap-1.5">
@@ -867,7 +899,7 @@ export default function JobSeparationManager({ canManage, canManageTodo, canUseM
                             </span>
                           ) : '—'}
                         </td>
-                        <td className="px-3 py-1.5 font-mono whitespace-nowrap border-r border-white/8">{formatMoney(row.order_value) ?? '—'}</td>
+                        <td className="px-3 py-1.5 font-mono whitespace-nowrap border-r border-white/8">{money(row.order_value) ?? '—'}</td>
                         <td className="px-3 py-1.5 whitespace-nowrap border-r border-white/8">
                           {row.jc_status ? (
                             <span className={cn(
