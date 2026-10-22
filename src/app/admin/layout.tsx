@@ -54,7 +54,7 @@ export default async function AdminLayout({
             on every admin page — see the FAB stack rhythm documented in
             NotesFeed/PrepressTodoPanel/MeterCalculatorPanel. */}
         <NotesFeed deptName={perms.displayName} deptKey={perms.key} userEmail={user.email ?? ''} username={usernameOf(appMetaOf(user), user.email)} isAdmin={perms.isSuperAdmin} />
-        <MessagesWidget userEmail={user.email ?? ''} isSuperAdmin={perms.isSuperAdmin} />
+        <MessagesWidget userEmail={user.email ?? ''} />
         <NotificationPrompt />
       </div>
     </QueryProvider>

@@ -3,9 +3,9 @@
 // ============================================================
 // Slide-out panel (MessagesWidget). Two panes from sm up: conversations on
 // the left, the open thread (or a new chat) on the right; on a phone it is
-// one pane at a time with a Back button. Admin-initiated
-// only — the "New chat" button (compose view) is hidden for anyone who
-// isn't Admin, but every participant can reply once a thread exists.
+// one pane at a time with a Back button. Anyone with a login starts a chat
+// with one teammate or several (+, migration 086); a thread is private to
+// the people in it.
 //
 // Realtime nudges live at the widget level (one shared subscription,
 // see MessagesWidget) and invalidate the ['messages', ...] query keys
@@ -15,7 +15,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Send, X, Tag, Plus, Check, Search } from 'lucide-react';
+import { ArrowLeft, Send, X, Tag, Plus, Check, CheckCheck, Search } from 'lucide-react';
 import { format, formatDistanceToNowStrict, isToday, isYesterday } from 'date-fns';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -28,7 +28,6 @@ import { DesktopNotificationsToggle } from '@/components/ui/DesktopNotifications
 
 type Props = {
   userEmail:    string;
-  isSuperAdmin: boolean;
   onClose:      () => void;
   /** Open on this thread — set when the drawer is opened from a message alert. */
   initialConversationId?: string | null;
@@ -77,11 +76,42 @@ function Avatar({ name, size = 40 }: { name: string; size?: number }) {
 }
 
 /** Everyone in the thread except me — what a list row/thread header shows. */
+/**
+ * Read receipt on your own message: ✓ Sent until someone has opened the
+ * thread since it was sent, ✓✓ Seen once they have (their last_read_at,
+ * migration 059). In a group, "Seen by 2 of 3", naming them on hover and
+ * to screen readers.
+ */
+function Receipt({ sentAt, participants, userEmail, nameOf }: {
+  sentAt: string;
+  participants: { member_email: string; last_read_at: string | null }[];
+  userEmail: string;
+  nameOf: (email: string) => string;
+}) {
+  const others = participants.filter((p) => p.member_email !== userEmail);
+  const seen = others.filter((p) => p.last_read_at && p.last_read_at >= sentAt);
+  if (!others.length) return null;
+  const all = seen.length === others.length;
+  const names = seen.map((p) => nameOf(p.member_email)).join(', ');
+  const text = !seen.length ? 'Sent' : others.length === 1 ? 'Seen' : all ? 'Seen by all' : `Seen by ${seen.length} of ${others.length}`;
+  const Icon = seen.length ? CheckCheck : Check;
+  return (
+    <span
+      className={cn('inline-flex items-center gap-0.5 font-medium', seen.length ? 'text-brand-primary' : 'text-brand-muted')}
+      title={seen.length ? `Seen by ${names}` : 'Not seen yet'}
+      aria-label={seen.length ? `Seen by ${names}` : 'Sent, not seen yet'}
+    >
+      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      <span aria-hidden="true">{text}</span>
+    </span>
+  );
+}
+
 function otherParticipants(c: { participants: { member_email: string }[] }, userEmail: string) {
   return c.participants.filter((p) => p.member_email !== userEmail).map((p) => p.member_email);
 }
 
-export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose, initialConversationId = null }: Props) {
+export default function MessagesDrawer({ userEmail, onClose, initialConversationId = null }: Props) {
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(initialConversationId);
   const [draft,       setDraft]     = useState('');
@@ -104,10 +134,8 @@ export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose, initi
   const messageRef = useRef<HTMLTextAreaElement | null>(null);
   const toRef = useRef<HTMLInputElement>(null);
 
-  // Everyone's username, for names in the list and thread. Starting a chat
-  // stays an Admin action, so only Admin gets people to pick from.
-  const { people, nameOf } = useTeamDirectory();
-  const members = useMemo(() => (isSuperAdmin ? people : []), [isSuperAdmin, people]);
+  // Everyone's username: names in the list and thread, and who to message.
+  const { people: members, nameOf } = useTeamDirectory();
   const namesOf = (emails: string[]) => emails.map((e) => nameOf(e)).join(', ');
 
   const { data: conversations = [], isLoading: listLoading } = useQuery({
@@ -134,15 +162,18 @@ export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose, initi
 
   // Opening a thread marks it read — the server only ever touches the
   // caller's own participant row (RLS), so this can't affect anyone else.
+  // A message arriving while it's open on a visible screen is read too:
+  // the sender's "Seen" (read receipts below) comes from this.
+  const messageCount = thread?.messages.length ?? 0;
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId || document.visibilityState !== 'visible') return;
     fetch(`/api/messages/conversations/${selectedId}/read`, { method: 'POST' })
       .then(() => {
         queryClient.invalidateQueries({ queryKey: ['messages', 'unread-count'] });
         queryClient.invalidateQueries({ queryKey: ['messages', 'conversations'] });
       })
       .catch(() => { /* best-effort — the badge just stays stale until the next nudge */ });
-  }, [selectedId, queryClient]);
+  }, [selectedId, messageCount, queryClient]);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ block: 'end' });
@@ -320,17 +351,15 @@ export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose, initi
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-lg font-semibold text-brand-ink">Messages</h2>
             <div className="flex items-center gap-1.5">
-              {isSuperAdmin && (
-                <button
-                  type="button"
-                  onClick={openCompose}
-                  aria-label="New message"
-                  title="New message"
-                  className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-brand-primary text-white hover:bg-brand-primary-hover"
-                >
-                  <Plus className="h-4 w-4" aria-hidden="true" />
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={openCompose}
+                aria-label="New message"
+                title="New message"
+                className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-brand-primary text-white hover:bg-brand-primary-hover"
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" />
+              </button>
               <button type="button" onClick={onClose} aria-label="Close messages" className={cn(iconBtn, 'sm:hidden')}>
                 <X className="h-[18px] w-[18px]" aria-hidden="true" />
               </button>
@@ -353,9 +382,7 @@ export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose, initi
           {listLoading && <li className="px-4 py-8 text-center text-xs text-brand-muted">Loading…</li>}
           {!listLoading && conversations.length === 0 && (
             <li className="px-4 py-8 text-center text-xs text-brand-muted">
-              {isSuperAdmin
-                ? 'No conversations yet — use + to message someone.'
-                : 'No conversations yet. Messages Admin sends you will show up here.'}
+              No conversations yet — use + to message someone.
             </li>
           )}
           {!listLoading && conversations.length > 0 && shownConversations.length === 0 && (
@@ -425,7 +452,7 @@ export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose, initi
 
         {!rightOpen && (
           <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-brand-muted">
-            {conversations.length ? 'Pick a conversation to read it.' : isSuperAdmin ? 'Start one with +.' : 'Nothing here yet.'}
+            {conversations.length ? 'Pick a conversation to read it.' : 'Start one with +.'}
           </div>
         )}
       {/* ── New-chat view ───────────────────────────────────────
@@ -565,9 +592,12 @@ export default function MessagesDrawer({ userEmail, isSuperAdmin, onClose, initi
                       </Link>
                     )}
                   </div>
-                  <time className="mt-1 text-[11px] text-brand-muted" title={relativeTime(m.created_at)}>
-                    {mine ? 'You' : nameOf(m.sender_email)} · <span className="font-mono">{format(new Date(m.created_at), 'HH:mm')}</span>
-                  </time>
+                  <span className="mt-1 flex items-center gap-1.5 text-[11px] text-brand-muted">
+                    <time title={relativeTime(m.created_at)}>
+                      {mine ? 'You' : nameOf(m.sender_email)} · <span className="font-mono">{format(new Date(m.created_at), 'HH:mm')}</span>
+                    </time>
+                    {mine && <Receipt sentAt={m.created_at} participants={thread.participants} userEmail={userEmail} nameOf={nameOf} />}
+                  </span>
                 </li>
               );
             })}

@@ -3,9 +3,9 @@
 // GET  /api/messages/conversations — list the caller's threads, newest
 //      activity first, each with its last message + unread count (reads
 //      the my_conversations view, see migration 059) plus its roster.
-// POST /api/messages/conversations — start a new thread. Admin only: any
-//      participant can reply once a thread exists (see /[id]/messages),
-//      but only Admin tags people into a brand new one.
+// POST /api/messages/conversations — start a new thread with one teammate
+//      or several. Anyone with a login (migration 086); the thread stays
+//      private to the people in it.
 // ============================================================
 
 import { randomUUID } from 'crypto';
@@ -13,9 +13,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getDeptPermissions } from '@/lib/constants/departments';
 import type { ConversationSummary, ConversationParticipant } from '@/lib/types';
-import { deptKeyOf, appMetaOf } from '@/lib/identity';
+import { appMetaOf } from '@/lib/identity';
 import { usernameOf } from '@/lib/username';
 import { pushTo } from '@/lib/push';
 
@@ -80,11 +79,6 @@ export async function POST(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const user = await getClaimsUser(supabase);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const perms = await getDeptPermissions(deptKeyOf(user));
-  if (!perms?.isSuperAdmin) {
-    return NextResponse.json({ error: 'Only Admin can start a new conversation' }, { status: 403 });
-  }
 
   const body = await request.json().catch(() => ({}));
 

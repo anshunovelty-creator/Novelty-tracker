@@ -41,10 +41,9 @@ const POLL_MS = 120_000;
 
 type Props = {
   userEmail:    string;
-  isSuperAdmin: boolean;
 };
 
-export default function MessagesWidget({ userEmail, isSuperAdmin }: Props) {
+export default function MessagesWidget({ userEmail }: Props) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   // Thread to land on when the drawer is opened from a message alert.
@@ -96,6 +95,11 @@ export default function MessagesWidget({ userEmail, isSuperAdmin }: Props) {
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'conversation_participants' }, () => {
         queryClient.invalidateQueries({ queryKey: ['messages'] });
+      })
+      // Someone opened a thread (last_read_at moved): refresh open threads so
+      // the sender's ✓ Sent turns ✓✓ Seen without a reload.
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversation_participants' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['messages', 'conversation'] });
       })
       .subscribe();
 
@@ -163,7 +167,6 @@ export default function MessagesWidget({ userEmail, isSuperAdmin }: Props) {
     <MessagesDrawer
       key={openOn ?? 'list'}
       userEmail={userEmail}
-      isSuperAdmin={isSuperAdmin}
       onClose={() => setOpen(false)}
       initialConversationId={openOn}
     />
