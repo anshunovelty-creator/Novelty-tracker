@@ -10,8 +10,9 @@
 //
 // Dispatched: labels dispatched against each line, filled from the dispatch
 // team's entries as they're sent. The + beside it records a dispatch by
-// hand (Prepress, Dispatch, Admin) — a dispatch entry like any other, so it
-// shows in Dispatch History and Reports too.
+// hand — a dispatch entry like any other, so it shows in Dispatch History
+// and Reports too. Seeing the column (dispatch_qty_view) and adding to it
+// (dispatch_qty_edit) are separate features Admin grants per department.
 
 import dynamic from 'next/dynamic';
 import { useState, useEffect, useMemo, useRef } from 'react';
@@ -63,7 +64,8 @@ const JOB_SEPARATION_COLUMNS = [
   'Sr No', 'Party', 'PO No / Date', 'PM Code / Material', 'Qty / Rate', 'Dispatched', 'Unit',
   'Artwork Status', 'Order Value', 'Job Card Status', 'AW SENT to U1', 'Actions',
 ] as const;
-// Dispatched is an Admin-granted feature (dispatch_qty_view): without it the
+// Dispatched is an Admin-granted feature (dispatch_qty_view; the + needs
+// dispatch_qty_edit): without it the
 // column, its CSV field and the + aren't there at all.
 const WITHOUT_DISPATCHED = JOB_SEPARATION_COLUMNS.filter((c) => c !== 'Dispatched');
 

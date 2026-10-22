@@ -138,10 +138,16 @@ export function canDeptManageDispatchNotifications(perms: DeptPermissions | null
 
 /** Who sees the Dispatched column on Job Separation (labels dispatched per
  *  line). Granted by Admin per department; no department starts with it.
- *  Recording a dispatch there also needs job_separation_edit or
- *  dispatch_notifications. */
+ *  Adding quantities implies seeing them, as stock_edit implies stock_view. */
 export function canDeptSeeDispatchedQty(perms: DeptPermissions | null): boolean {
-  return hasFeature(perms, 'dispatch_qty_view');
+  return hasFeature(perms, 'dispatch_qty_view') || hasFeature(perms, 'dispatch_qty_edit');
+}
+
+/** Who may add dispatched quantities from Job Separation (the + in the
+ *  Dispatched column). Its own Admin-granted feature, separate from
+ *  seeing the column. */
+export function canDeptRecordDispatchedQty(perms: DeptPermissions | null): boolean {
+  return hasFeature(perms, 'dispatch_qty_edit');
 }
 
 /** Who may add/correct/remove a party's dispatch-email contact. */

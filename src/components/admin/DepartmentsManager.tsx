@@ -31,6 +31,7 @@ const FEATURES: { key: string; label: string }[] = [
   { key: 'stock_edit',                     label: 'Manage label stock (add, edit, dispatch, delete)' },
   { key: 'dispatch_notifications',         label: 'Send dispatch emails' },
   { key: 'dispatch_qty_view',              label: 'See dispatched quantities on Job Separation' },
+  { key: 'dispatch_qty_edit',              label: 'Add dispatched quantities on Job Separation (includes seeing them)' },
   { key: 'box_slip_print',                 label: 'Print box slips' },
   { key: 'roll_slip_print',                label: 'Print roll slips' },
   { key: 'party_contacts_manage',          label: 'Manage party contacts' },

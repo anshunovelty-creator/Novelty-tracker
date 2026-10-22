@@ -10,14 +10,13 @@
 //
 // Only a line its PO + PM code picks out on its own can take one — otherwise
 // the entry would count against whichever line matching lands on.
-// Needs dispatch_qty_view (the column itself) plus job_separation_edit or
-// dispatch_notifications.
+// Needs dispatch_qty_edit, granted by Admin per department.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getDeptPermissions, canDeptManageJobSeparation, canDeptManageDispatchNotifications, canDeptSeeDispatchedQty } from '@/lib/constants/departments';
+import { getDeptPermissions, canDeptRecordDispatchedQty } from '@/lib/constants/departments';
 import { deptKeyOf } from '@/lib/identity';
 import { containsPattern } from '@/lib/search';
 import { dispatchWarnings } from '@/lib/dispatchChecks';
@@ -33,7 +32,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const perms = await getDeptPermissions(deptKeyOf(user));
-  if (!canDeptSeeDispatchedQty(perms) || (!canDeptManageJobSeparation(perms) && !canDeptManageDispatchNotifications(perms))) {
+  if (!canDeptRecordDispatchedQty(perms)) {
     return NextResponse.json({ error: 'Your department can\'t record dispatches here. Admin grants it in Departments.' }, { status: 403 });
   }
 

@@ -1,7 +1,7 @@
 // src/app/api/job-separations/route.ts
 // ============================================================
 // GET  /api/job-separations  — the live worksheet (any authenticated user);
-//      with dispatch_qty_view, each row carries `dispatched`: labels entered
+//      with dispatch_qty_view or _edit, each row carries `dispatched`: labels entered
 //      against it, or null
 // POST /api/job-separations  — add a row (Prepress or Admin)
 // ============================================================
