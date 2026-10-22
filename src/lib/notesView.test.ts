@@ -1,5 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { mentions, filterNotes, dayLabel, groupByDay, parseNoteId, canEditNote, EDIT_WINDOW_MS, isNewerThan } from './notesView';
+import { mentions, filterNotes, dayLabel, groupByDay, parseNoteId, canEditNote, EDIT_WINDOW_MS, isNewerThan, receiptsOf } from './notesView';
+
+describe('receiptsOf', () => {
+  it('splits the team into seen (earliest first) and not yet, leaving out the author', () => {
+    const r = receiptsOf(
+      { created_by_email: 'Ravi@x.in', seen_by: [
+        { email: 'b@x.in', read_at: '2026-10-22T09:00:00Z' },
+        { email: 'a@x.in', read_at: '2026-10-22T08:00:00Z' },
+        { email: 'ravi@x.in', read_at: '2026-10-22T07:00:00Z' },
+      ] },
+      [{ email: 'ravi@x.in' }, { email: 'A@x.in' }, { email: 'b@x.in' }, { email: 'c@x.in' }, { email: '' }],
+    );
+    expect(r.seen.map((s) => s.email)).toEqual(['a@x.in', 'b@x.in']);
+    expect(r.notSeen).toEqual(['c@x.in']);
+  });
+});
 
 const note = (id: string, comment: string, created_at: string, by: string | null = 'a@x.in') =>
   ({ id, comment, created_at, created_by_email: by });

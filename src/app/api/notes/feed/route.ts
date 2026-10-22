@@ -4,7 +4,8 @@
 //   Newest-first internal notes across every job (and general notes
 //   with no job, migration 077), for the global
 //   notes box in the admin shell. Each note carries `read`, the
-//   caller's own read state (see migration 017_note_reads).
+//   caller's own read state (see migration 017_note_reads), and
+//   `seen_by`, everyone else who has marked it read (read receipts).
 //
 //   `limit`  — page size, 1..100, default 50.
 //   `q`      — optional search: notes whose text contains it (2+ chars),
@@ -27,6 +28,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getClaimsUser } from '@/lib/supabase/claims';
 import { containsPattern } from '@/lib/search';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { allPages } from '@/lib/api/allPages';
 import type { NoteFeedItem } from '@/lib/types';
 
 const DEFAULT_LIMIT = 50;
@@ -97,6 +100,22 @@ export async function GET(request: NextRequest) {
 
   const readIds = new Set((readRows ?? []).map((r: { note_id: string }) => r.note_id));
 
+  // Read receipts: who else has marked each note read. note_reads' RLS shows
+  // each user only their own rows, so everyone's comes through the admin
+  // client — notes are team-wide, and so is who has read them.
+  const seenBy = new Map<string, { email: string; read_at: string }[]>();
+  if (noteIds.length) {
+    const admin = createAdminClient();
+    try {
+      const all = await allPages<{ note_id: string; user_email: string; read_at: string }>((from, to) => admin
+        .from('note_reads').select('note_id, user_email, read_at').in('note_id', noteIds)
+        .order('note_id').order('user_email').range(from, to));
+      for (const r of all) seenBy.set(r.note_id, [...(seenBy.get(r.note_id) ?? []), { email: r.user_email, read_at: r.read_at }]);
+    } catch (err) {
+      return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    }
+  }
+
   // The quoted original of each reply (migration 078). Usually already in
   // this page; an older one is fetched — one query for all of them.
   type Quoted = NonNullable<NoteFeedItem['reply_to']>;
@@ -135,6 +154,7 @@ export async function GET(request: NextRequest) {
       read:             readIds.has(r.id),
       reply_to:         r.reply_to_id ? quoted.get(r.reply_to_id) ?? null : null,
       edited_at:        r.edited_at ?? null,
+      seen_by:          (seenBy.get(r.id) ?? []).filter((s) => s.email !== r.created_by_email),
     }));
 
   // Unread = notes in this page the caller hasn't marked read, excluding

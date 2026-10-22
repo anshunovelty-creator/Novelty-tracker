@@ -71,6 +71,23 @@ export function filterNotes<T extends NoteLike>(
 }
 
 /** "Today", "Yesterday", or "03 Oct" — in the browser's time zone. */
+/**
+ * A note's read receipts: who has seen it (marked it read), earliest
+ * first, and who on the team hasn't yet. Notes are team-wide, so "not
+ * yet" is everyone with a login but the author.
+ */
+export function receiptsOf(
+  note: { created_by_email: string | null; seen_by: { email: string; read_at: string }[] },
+  people: readonly { email: string }[],
+): { seen: { email: string; read_at: string }[]; notSeen: string[] } {
+  const key = (e: string | null | undefined) => (e ?? '').trim().toLowerCase();
+  const author = key(note.created_by_email);
+  const seen = note.seen_by.filter((s) => key(s.email) !== author).sort((a, b) => a.read_at.localeCompare(b.read_at));
+  const done = new Set(seen.map((s) => key(s.email)));
+  const notSeen = people.map((p) => p.email).filter((e) => e && key(e) !== author && !done.has(key(e)));
+  return { seen, notSeen };
+}
+
 export function dayLabel(iso: string, now: Date = new Date()): string {
   const d = new Date(iso);
   const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();

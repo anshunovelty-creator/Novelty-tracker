@@ -20,7 +20,8 @@
 // that tag you or your department, and replies to your notes.
 //
 // Read state is per user, synced across devices (POST /api/notes/read, see
-// migration 017_note_reads). The old single localStorage "last seen"
+// migration 017_note_reads). Each note's eye count is its read receipts:
+// tap it for who has marked it read, and who on the team hasn't yet. The old single localStorage "last seen"
 // timestamp is migrated into real read receipts on first load (see the
 // backfill in `poll`) and then discarded.
 //
@@ -30,14 +31,14 @@
 
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { X, Send, Reply, Trash2, Pencil, Search } from 'lucide-react';
+import { X, Send, Reply, Trash2, Pencil, Search, Eye } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { requestOpen, subscribeActiveWidget } from '@/lib/floatingWidgetCoordinator';
 import { NOTES_OPEN_EVENT, NOTES_UNREAD_EVENT } from '@/lib/constants/events';
-import { filterNotes, groupByDay, mentions, canEditNote, isNewerThan, type NotesTab } from '@/lib/notesView';
+import { filterNotes, groupByDay, mentions, canEditNote, isNewerThan, receiptsOf, type NotesTab } from '@/lib/notesView';
 import { useTeamDirectory } from '@/hooks/useReferenceData';
 import { MentionText, MentionTextarea } from '@/components/ui/Mention';
 import { initials } from '@/lib/team';
@@ -117,6 +118,8 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
   const [flashId, setFlashId] = useState<string | null>(null);
   // Admin's "Delete for everyone?" step, and the note being deleted.
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  // The note whose read receipts are open under it.
+  const [receiptsId, setReceiptsId] = useState<string | null>(null);
   const [deletingId,      setDeletingId]      = useState<string | null>(null);
   const listRef  = useRef<HTMLDivElement | null>(null);
   // Is the list scrolled to (near) the bottom? Then new notes keep it there.
@@ -126,7 +129,7 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
   const titleId  = useId();
 
   // Authors are stored by email; the directory turns that into a username.
-  const { nameOf } = useTeamDirectory();
+  const { nameOf, people } = useTeamDirectory();
 
   // Refs, not state: the poll loop reads these without re-subscribing.
   const openRef = useRef(false);
@@ -722,12 +725,30 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
                             <p className="whitespace-pre-line break-words text-sm leading-normal text-brand-ink">
                               <MentionText text={note.comment} />
                               {/* Room for the time, so it tucks in after a short last line. */}
-                              <span aria-hidden="true" className={cn('inline-block', note.edited_at ? 'w-24' : 'w-12')} />
+                              <span aria-hidden="true" className={cn('inline-block', note.edited_at ? 'w-36' : 'w-24')} />
                             </p>
-                            <time dateTime={note.created_at} className="-mt-4 self-end font-mono text-[11px] text-brand-muted">
-                              {note.edited_at && <span className="mr-1 font-sans italic">edited</span>}
-                              {format(new Date(note.created_at), 'HH:mm')}
-                            </time>
+                            <span className="-mt-4 flex items-center gap-2 self-end font-mono text-[11px] text-brand-muted">
+                              {/* Read receipts: how many have seen it; tap for who. The
+                                  after: box widens the tap target to 44px without
+                                  growing the bubble. */}
+                              <button
+                                type="button"
+                                onClick={() => setReceiptsId(receiptsId === note.id ? null : note.id)}
+                                aria-expanded={receiptsId === note.id}
+                                aria-label={`Seen by ${note.seen_by.length}. Show who has seen it`}
+                                className={cn(
+                                  'relative inline-flex items-center gap-0.5 rounded after:absolute after:-inset-x-2 after:-inset-y-3 after:content-[""] hover:text-brand-ink',
+                                  note.seen_by.length > 0 && 'text-brand-primary',
+                                )}
+                              >
+                                <Eye className="h-3 w-3" aria-hidden="true" />
+                                {note.seen_by.length}
+                              </button>
+                              <time dateTime={note.created_at}>
+                                {note.edited_at && <span className="mr-1 font-sans italic">edited</span>}
+                                {format(new Date(note.created_at), 'HH:mm')}
+                              </time>
+                            </span>
                           </div>
                           <button
                             type="button"
@@ -784,6 +805,32 @@ export default function NotesFeed({ deptName, deptKey, userEmail, username, isAd
                           </span>
                         </div>
                       )}
+                      {receiptsId === note.id && (() => {
+                        const r = receiptsOf(note, people);
+                        return (
+                          <div className={cn('mx-3 mt-1 flex w-fit max-w-[84%] flex-col gap-2 rounded-xl border border-brand-border bg-white px-3 py-2.5 text-xs shadow-[0_1px_2px_rgba(12,42,32,0.06)]', mine ? 'self-end' : 'ml-11 self-start')}>
+                            <div>
+                              <p className="font-semibold text-brand-ink">Seen by <span className="font-mono">{r.seen.length}</span></p>
+                              {r.seen.length === 0 ? <p className="mt-0.5 text-brand-muted">No one yet.</p> : (
+                                <ul className="mt-1 flex flex-col gap-0.5">
+                                  {r.seen.map((s) => (
+                                    <li key={s.email} className="flex justify-between gap-4">
+                                      <span className="text-brand-ink">{nameFor(s.email, s.email)}</span>
+                                      <span className="font-mono text-brand-muted">{format(new Date(s.read_at), 'd MMM, HH:mm')}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                            {r.notSeen.length > 0 && (
+                              <div>
+                                <p className="font-semibold text-brand-ink">Not seen yet <span className="font-mono">{r.notSeen.length}</span></p>
+                                <p className="mt-0.5 text-brand-muted">{r.notSeen.map((e) => nameFor(e, e)).join(', ')}</p>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </li>
                   );
                 })}
